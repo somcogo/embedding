@@ -3,7 +3,7 @@ import random
 
 import numpy as np
 
-from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_pascal_voc_datasets
+from .datasets import get_cifar10_datasets, get_cifar100_datasets
 
 def partition(data_dir, dataset, partition, n_sites, alpha=None):
 
@@ -18,8 +18,6 @@ def partition_by_class(data_dir, dataset, n_sites):
         train_ds, test_ds = get_cifar10_datasets(data_dir)
     if dataset == 'cifar100':
         train_ds, test_ds = get_cifar100_datasets(data_dir)
-    if dataset == 'pascalvoc':
-        train_ds, test_ds = get_pascal_voc_datasets(data_dir, use_hdf5=True)
     y_train = train_ds.targets
     y_test = test_ds.targets
 
@@ -109,8 +107,6 @@ def partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha):
         train_ds, test_ds = get_cifar10_datasets(data_dir)
     if dataset == 'cifar100':
         train_ds, test_ds = get_cifar100_datasets(data_dir)
-    if dataset == 'pascalvoc':
-        train_ds, test_ds = get_pascal_voc_datasets(data_dir, use_hdf5=True)
     y_train = train_ds.targets
     y_test = test_ds.targets
 

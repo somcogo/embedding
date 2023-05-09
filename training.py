@@ -23,18 +23,19 @@ log.setLevel(logging.INFO)
 # log.setLevel(logging.DEBUG)
 
 class LayerPersonalisationTrainingApp:
-    def __init__(self, sys_argv=None, epochs=None, batch_size=None, logdir=None, lr=None, comment=None, dataset='cifar10', site_number=5, model_name=None, optimizer_type=None, scheduler_mode=None, label_smoothing=None, T_max=None, pretrained=None, aug_mode=None, save_model=None, partition=None, alpha=None, strategy=None):
+    def __init__(self, sys_argv=None, epochs=None, batch_size=None, logdir=None, lr=None, comment=None, dataset='cifar10', site_number=None, model_name=None, optimizer_type=None, scheduler_mode=None, label_smoothing=None, T_max=None, pretrained=None, aug_mode=None, save_model=None, partition=None, alpha=None, strategy=None):
         if sys_argv is None:
             sys_argv = sys.argv[1:]
 
         parser = argparse.ArgumentParser(description="Test training")
         parser.add_argument("--epochs", default=2, type=int, help="number of training epochs")
-        parser.add_argument("--batch_size", default=500, type=int, help="number of batch size")
+        parser.add_argument("--batch_size", default=64, type=int, help="number of batch size")
         parser.add_argument("--logdir", default="test", type=str, help="directory to save the tensorboard logs")
         parser.add_argument("--in_channels", default=3, type=int, help="number of image channels")
         parser.add_argument("--lr", default=1e-5, type=float, help="learning rate")
         parser.add_argument("--dataset", default='cifar10', type=str, help="dataset to train on")
-        parser.add_argument("--model_name", default='resnet34', type=str, help="name of the model to use")
+        parser.add_argument("--site_number", default=1, type=int, help="number of sites")
+        parser.add_argument("--model_name", default='resnet34emb', type=str, help="name of the model to use")
         parser.add_argument("--optimizer_type", default='adam', type=str, help="type of optimizer to use")
         parser.add_argument("--label_smoothing", default=0.0, type=float, help="label smoothing in Cross Entropy Loss")
         parser.add_argument("--T_max", default=1000, type=int, help="T_max in Cosine LR scheduler")
@@ -135,10 +136,10 @@ class LayerPersonalisationTrainingApp:
             schedulers = None
         else:
             schedulers = []
-        for optim in self.optims:
-            if self.args.scheduler_mode == 'cosine':
-                scheduler = CosineAnnealingLR(optim, T_max=self.args.T_max)
-            schedulers.append(scheduler)
+            for optim in self.optims:
+                if self.args.scheduler_mode == 'cosine':
+                    scheduler = CosineAnnealingLR(optim, T_max=self.args.T_max)
+                schedulers.append(scheduler)
             
         return schedulers
 
@@ -189,7 +190,7 @@ class LayerPersonalisationTrainingApp:
                     scheduler.step()
                     # log.debug(self.scheduler.get_last_lr())
 
-            if self.args.site_number > 0:
+            if self.args.site_number > 1:
                 self.mergeModels()
 
         if hasattr(self, 'trn_writer'):
@@ -269,17 +270,14 @@ class LayerPersonalisationTrainingApp:
 
     def computeBatchLoss(self, batch_ndx, batch_tup, model, metrics, mode):
         batch, labels = batch_tup
-        if self.args.dataset == 'pascalvoc':
-            batch = batch.to(device=self.device, non_blocking=True)
-        else:
-            batch = batch.to(device=self.device, non_blocking=True).permute(0, 3, 1, 2).float()
+        batch = batch.to(device=self.device, non_blocking=True).float()
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
 
         if mode == 'trn':
             assert self.args.aug_mode in ['classification', 'segmentation']
-            batch, labels = aug_image(batch, labels, self.args.aug_mode)
+            batch = aug_image(batch)
 
-        pred = model(batch)
+        pred = model(batch, torch.tensor([1, 1], device=self.device, dtype=torch.float32))
         pred_label = torch.argmax(pred, dim=1)
         loss_fn = nn.CrossEntropyLoss(label_smoothing=self.args.label_smoothing)
         loss = loss_fn(pred, labels)
@@ -304,10 +302,6 @@ class LayerPersonalisationTrainingApp:
         self.initTensorboardWriters()
 
         writer = getattr(self, mode_str + '_writer')
-        if self.args.aug_mode == 'classification':
-            metric_name = 'accuracy'
-        else:
-            metric_name = 'miou'
         for ndx in range(self.args.site_number):
             writer.add_scalar(
                 'loss/site {}'.format(ndx),
@@ -315,7 +309,7 @@ class LayerPersonalisationTrainingApp:
                 global_step=epoch_ndx
             )
             writer.add_scalar(
-                '{}/site {}'.format(metric_name,ndx),
+                'accuracy/site {}'.format(ndx),
                 scalar_value=metrics[2*ndx + 1],
                 global_step=epoch_ndx
             )
@@ -325,7 +319,7 @@ class LayerPersonalisationTrainingApp:
             global_step=epoch_ndx
         )
         writer.add_scalar(
-            '{}/overall'.format(metric_name),
+            'accuracy/overall',
             scalar_value=metrics[-1],
             global_step=epoch_ndx
         )

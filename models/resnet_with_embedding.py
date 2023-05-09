@@ -4,7 +4,7 @@ from torch import nn
 from .edmcode import UNetBlock
 
 class ResNetWithEmbeddings(nn.Module):
-    def __init__(self, num_classes, in_channels=3, embed_dim=1, layers=[3, 4, 6, 3]):
+    def __init__(self, num_classes, in_channels=3, embed_dim=2, layers=[3, 4, 6, 3]):
         super().__init__()
 
         self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=7, stride=2, padding=3, bias=False)
