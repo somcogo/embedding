@@ -3,38 +3,87 @@ import argparse
 import os
 import datetime
 import shutil
+import random
 
 import torch
 import torch.nn as nn
-from torch.optim import Adam
+from torch.optim import Adam, AdamW, SGD
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
-import numpy as np
 
-from models.model import SampleModel
+from models.model import ResNetWithEmbeddings
 from utils.logconf import logging
-from utils.data_loader import getDataLoader
-from utils.ops import aug_rand
-from utils.losses import SampleLoss
+from utils.data_loader import get_cifar10_dl, get_cifar100_dl, get_dl_lists
+from utils.ops import aug_image
+from utils.merge_strategies import get_layer_list
 
 log = logging.getLogger(__name__)
 # log.setLevel(logging.WARN)
 log.setLevel(logging.INFO)
-log.setLevel(logging.DEBUG)
+# log.setLevel(logging.DEBUG)
 
-class SegmentationTrainingApp:
-    def __init__(self, sys_argv=None):
+class LayerPersonalisationTrainingApp:
+    def __init__(self, sys_argv=None, epochs=None, batch_size=None, logdir=None, lr=None, comment=None, dataset='cifar10', site_number=5, model_name=None, optimizer_type=None, scheduler_mode=None, label_smoothing=None, T_max=None, pretrained=None, aug_mode=None, save_model=None, partition=None, alpha=None, strategy=None):
         if sys_argv is None:
             sys_argv = sys.argv[1:]
 
         parser = argparse.ArgumentParser(description="Test training")
-        parser.add_argument("--epochs", default=100, type=int, help="number of training epochs")
-        parser.add_argument("--batch_size", default=32, type=int, help="number of batch size")
+        parser.add_argument("--epochs", default=2, type=int, help="number of training epochs")
+        parser.add_argument("--batch_size", default=500, type=int, help="number of batch size")
         parser.add_argument("--logdir", default="test", type=str, help="directory to save the tensorboard logs")
-        parser.add_argument("--in_channels", default=1, type=int, help="number of image channels")
-        parser.add_argument("--lr", default=4e-4, type=float, help="learning rate")
+        parser.add_argument("--in_channels", default=3, type=int, help="number of image channels")
+        parser.add_argument("--lr", default=1e-5, type=float, help="learning rate")
+        parser.add_argument("--dataset", default='cifar10', type=str, help="dataset to train on")
+        parser.add_argument("--model_name", default='resnet34', type=str, help="name of the model to use")
+        parser.add_argument("--optimizer_type", default='adam', type=str, help="type of optimizer to use")
+        parser.add_argument("--label_smoothing", default=0.0, type=float, help="label smoothing in Cross Entropy Loss")
+        parser.add_argument("--T_max", default=1000, type=int, help="T_max in Cosine LR scheduler")
+        parser.add_argument("--pretrained", default=False, type=bool, help="use pretrained model")
+        parser.add_argument("--aug_mode", default='segmentation', type=str, help="mode of data augmentation")
+        parser.add_argument("--scheduler_mode", default=None, type=str, help="choice of LR scheduler")
+        parser.add_argument("--save_model", default=False, type=bool, help="save models during training")
+        parser.add_argument("--partition", default='regular', type=str, help="how to partition the data among sites")
+        parser.add_argument("--alpha", default=None, type=float, help="alpha used for the Dirichlet distribution")
+        parser.add_argument("--strategy", default='all', type=str, help="merging strategy")
         parser.add_argument('comment', help="Comment suffix for Tensorboard run.", nargs='?', default='dwlpt')
 
         self.args = parser.parse_args()
+        if epochs is not None:
+            self.args.epochs = epochs
+        if batch_size is not None:
+            self.args.batch_size = batch_size
+        if logdir is not None:
+            self.args.logdir = logdir
+        if lr is not None:
+            self.args.lr = lr
+        if comment is not None:
+            self.args.comment = comment
+        if dataset is not None:
+            self.args.dataset = dataset
+        if site_number is not None:
+            self.args.site_number = site_number
+        if model_name is not None:
+            self.args.model_name = model_name
+        if optimizer_type is not None:
+            self.args.optimizer_type = optimizer_type
+        if label_smoothing is not None:
+            self.args.label_smoothing = label_smoothing
+        if T_max is not None:
+            self.args.T_max = T_max
+        if pretrained is not None:
+            self.args.pretrained = pretrained
+        if aug_mode is not None:
+            self.args.aug_mode = aug_mode
+        if scheduler_mode is not None:
+            self.args.scheduler_mode = scheduler_mode
+        if save_model is not None:
+            self.args.save_model = save_model
+        if partition is not None:
+            self.args.partition = partition
+        if alpha is not None:
+            self.args.alpha = alpha
+        if strategy is not None:
+            self.args.strategy = strategy
         self.time_str = datetime.datetime.now().strftime('%Y-%m-%d_%H.%M.%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
@@ -45,23 +94,57 @@ class SegmentationTrainingApp:
         self.val_writer = None
         self.totalTrainingSamples_count = 0
 
-        self.model = self.initModel()
-        self.optimizer = self.initOptimizer()
+        self.models = self.initModels()
+        self.optims = self.initOptimizers()
+        self.schedulers = self.initSchedulers()
 
-    def initModel(self):
-        model = SampleModel()
+    def initModels(self):
+        if self.args.dataset == 'cifar10':
+            num_classes = 10
+        elif self.args.dataset == 'cifar100':
+            num_classes = 100
+        elif self.args.dataset == 'pascalvoc':
+            num_classes = 21
+        models = []
+        for _ in range(self.args.site_number):
+            if self.args.model_name == 'resnet34emb':
+                model = ResNetWithEmbeddings(num_classes=num_classes)
+            models.append(model)
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
-            if torch.cuda.device_count() > 1:
-                model = nn.DataParallel(model)
-            model = model.to(self.device)
-        return model
+            for model in models:
+                if torch.cuda.device_count() > 1:
+                    model = nn.DataParallel(model)
+                model = model.to(self.device)
+        return models
 
-    def initOptimizer(self):
-        return Adam(params=self.model.parameters(), lr=self.args.lr)
+    def initOptimizers(self):
+        optims = []
+        for model in self.models:
+            if self.args.optimizer_type == 'adam':
+                optim = Adam(params=model.parameters(), lr=self.args.lr)
+            elif self.args.optimizer_type == 'adamw':
+                optim = AdamW(params=model.parameters(), lr=self.args.lr, weight_decay=0.05)
+            elif self.args.optimizer_type == 'sgd':
+                optim = SGD(params=model.parameters(), lr=self.args.lr, weight_decay=0.0001, momentum=0.9)
+            optims.append(optim)
+        return optims
+    
+    def initSchedulers(self):
+        if self.args.scheduler_mode is None:
+            schedulers = None
+        else:
+            schedulers = []
+        for optim in self.optims:
+            if self.args.scheduler_mode == 'cosine':
+                scheduler = CosineAnnealingLR(optim, T_max=self.args.T_max)
+            schedulers.append(scheduler)
+            
+        return schedulers
 
-    def initDl(self):
-        return getDataLoader(self.args.batch_size)
+    def initDls(self):
+        trn_dls, val_dls = get_dl_lists(dataset=self.args.dataset, partition=self.args.partition, n_site=self.args.site_number, batch_size=self.args.batch_size, alpha=self.args.alpha)
+        return trn_dls, val_dls
 
     def initTensorboardWriters(self):
         if self.trn_writer is None:
@@ -73,151 +156,180 @@ class SegmentationTrainingApp:
     def main(self):
         log.info("Starting {}, {}".format(type(self).__name__, self.args))
 
-        train_dl, val_dl = self.initDl()
+        trn_dls, val_dls = self.initDls()
+        log.debug('initiated dls')
 
-        val_best = 1e8
+        saving_criterion = 0
         validation_cadence = 5
         for epoch_ndx in range(1, self.args.epochs + 1):
 
-            log.info("Epoch {} of {}, {}/{} batches of size {}*{}".format(
-                epoch_ndx,
-                self.args.epochs,
-                len(train_dl),
-                len(val_dl),
-                self.args.batch_size,
-                (torch.cuda.device_count() if self.use_cuda else 1),
-            ))
+            if epoch_ndx == 1:
+                log.info("Epoch {} of {}, training on {} sites, using {} device".format(
+                    epoch_ndx,
+                    self.args.epochs,
+                    len(trn_dls),
+                    (torch.cuda.device_count() if self.use_cuda else 1),
+                ))
 
-            trnMetrics = self.doTraining(epoch_ndx, train_dl)
-            self.logMetrics(epoch_ndx, 'trn', trnMetrics)
+            trn_metrics = self.doTraining(epoch_ndx, trn_dls)
+            self.logMetrics(epoch_ndx, 'trn', trn_metrics)
 
             if epoch_ndx == 1 or epoch_ndx % validation_cadence == 0:
-                valMetrics, val_loss, img_list = self.doValidation(epoch_ndx, val_dl)
-                self.logMetrics(epoch_ndx, 'val', valMetrics, img_list=img_list)
-                val_best = min(val_loss, val_best)
+                val_metrics, accuracy = self.doValidation(epoch_ndx, val_dls)
+                self.logMetrics(epoch_ndx, 'val', val_metrics)
+                saving_criterion = max(accuracy, saving_criterion)
 
-                self.saveModel('mnist', epoch_ndx, val_loss == val_best)
+                if self.args.save_model:
+                    self.saveModel('imagenet', epoch_ndx, accuracy == saving_criterion)
+
+                log.info('Epoch {} of {}, accuracy/miou {}'.format(epoch_ndx, self.args.epochs, accuracy))
+            
+            if self.args.scheduler_mode == 'cosine':
+                for scheduler in self.schedulers:
+                    scheduler.step()
+                    # log.debug(self.scheduler.get_last_lr())
+
+            if self.args.site_number > 0:
+                self.mergeModels()
 
         if hasattr(self, 'trn_writer'):
             self.trn_writer.close()
             self.val_writer.close()
 
-    def doTraining(self, epoch_ndx, train_dl):
-        self.model.train()
-        trnMetrics = torch.zeros(3, len(train_dl), device=self.device)
+    def doTraining(self, epoch_ndx, trn_dls):
+        for model in self.models:
+            model.train()
 
-        log.warning('E{} Training ---/{} starting'.format(epoch_ndx, len(train_dl)))
+        trn_metrics = torch.zeros(2 + 2*self.args.site_number, device=self.device)
+        loss = 0
+        correct = 0
+        total = 0
+        for ndx, trn_dl in enumerate(trn_dls):
+            local_trn_metrics = torch.zeros(3, len(trn_dl), device=self.device)
 
-        for batch_ndx, batch_tuple in enumerate(train_dl):
-            self.optimizer.zero_grad()
+            for batch_ndx, batch_tuple in enumerate(trn_dl):
+                self.optims[ndx].zero_grad()
 
-            loss = self.computeBatchLoss(
-                batch_ndx,
-                batch_tuple,
-                trnMetrics)
-
-            loss.backward()
-            self.optimizer.step()
-
-            if batch_ndx % 100 == 0:
-                log.info('E{} Training {}/{}'.format(epoch_ndx, batch_ndx, len(train_dl)))
-
-        self.totalTrainingSamples_count += len(train_dl.dataset)
-
-        return trnMetrics.to('cpu')
-
-    def doValidation(self, epoch_ndx, val_dl):
-        with torch.no_grad():
-            self.model.eval()
-            valMetrics = torch.zeros(3, len(val_dl), device=self.device)
-
-            log.warning('E{} Validation ---/{} starting'.format(epoch_ndx, len(val_dl)))
-
-            for batch_ndx, batch_tuple in enumerate(val_dl):
-                val_loss, img_list = self.computeBatchLoss(
+                loss, _ = self.computeBatchLoss(
                     batch_ndx,
                     batch_tuple,
-                    valMetrics,
-                    need_imgs=True
-                )
-                if batch_ndx % 50 == 0:
-                    log.info('E{} Validation {}/{}'.format(epoch_ndx, batch_ndx, len(val_dl)))
+                    self.models[ndx],
+                    local_trn_metrics,
+                    'trn')
 
-        return valMetrics.to('cpu'), val_loss, img_list
+                loss.backward()
+                self.optims[ndx].step()
 
-    def computeBatchLoss(self, batch_ndx, batch_tup, metrics, need_imgs=False):
+            loss += local_trn_metrics[0].sum()
+            correct += local_trn_metrics[1].sum()
+            total += local_trn_metrics[2].sum()
+            trn_metrics[2*ndx] = local_trn_metrics[0].sum() / local_trn_metrics[2].sum()
+            trn_metrics[2*ndx + 1] = local_trn_metrics[1].sum() / local_trn_metrics[2].sum()
+
+        trn_metrics[-2] = loss / total
+        trn_metrics[-1] = correct / total
+
+        self.totalTrainingSamples_count += len(trn_dls[0].dataset)
+
+        return trn_metrics.to('cpu')
+
+    def doValidation(self, epoch_ndx, val_dls):
+        with torch.no_grad():
+            for model in self.models:
+                model.eval()
+            if epoch_ndx == 1:
+                log.warning('E{} Validation starting'.format(epoch_ndx))
+
+            val_metrics = torch.zeros(2 + 2*self.args.site_number, device=self.device)
+            loss = 0
+            correct = 0
+            total = 0
+            for ndx, val_dl in enumerate(val_dls):
+                local_val_metrics = torch.zeros(3, len(val_dl), device=self.device)
+
+                for batch_ndx, batch_tuple in enumerate(val_dl):
+                    _, accuracy = self.computeBatchLoss(
+                        batch_ndx,
+                        batch_tuple,
+                        self.models[ndx],
+                        local_val_metrics,
+                        'val'
+                    )
+                
+                loss += local_val_metrics[0].sum()
+                correct += local_val_metrics[1].sum()
+                total += local_val_metrics[2].sum()
+                val_metrics[2*ndx] = local_val_metrics[0].sum() / local_val_metrics[2].sum()
+                val_metrics[2*ndx + 1] = local_val_metrics[1].sum() / local_val_metrics[2].sum()
+
+            val_metrics[-2] = loss / total
+            val_metrics[-1] = correct / total
+
+        return val_metrics.to('cpu'), correct / total
+
+    def computeBatchLoss(self, batch_ndx, batch_tup, model, metrics, mode):
         batch, labels = batch_tup
-        batch = batch.to(device=self.device, non_blocking=True)
-
-        loss_fn = SampleLoss()
-        loss, loss_tasks = loss_fn(batch, labels)
-
-        metrics[:, batch_ndx] = torch.FloatTensor([
-            loss.detach(),
-            loss_tasks[0].detach(),
-            loss_tasks[1].detach()
-        ])
-
-        if need_imgs:
-            img1 = 0
-            img2 = 0
-            return loss.mean(), [img1, img2]
+        if self.args.dataset == 'pascalvoc':
+            batch = batch.to(device=self.device, non_blocking=True)
         else:
-            return loss.mean()
+            batch = batch.to(device=self.device, non_blocking=True).permute(0, 3, 1, 2).float()
+        labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
+
+        if mode == 'trn':
+            assert self.args.aug_mode in ['classification', 'segmentation']
+            batch, labels = aug_image(batch, labels, self.args.aug_mode)
+
+        pred = model(batch)
+        pred_label = torch.argmax(pred, dim=1)
+        loss_fn = nn.CrossEntropyLoss(label_smoothing=self.args.label_smoothing)
+        loss = loss_fn(pred, labels)
+
+        metrics[0, batch_ndx] = loss.detach()
+        metrics[2, batch_ndx] = batch.shape[0]
+
+        correct_mask = pred_label == labels
+        correct = torch.sum(correct_mask)
+        accuracy = correct / batch.shape[0] * 100
+
+        metrics[1, batch_ndx] = correct
+
+        return loss.mean(), accuracy
 
     def logMetrics(
         self,
         epoch_ndx,
         mode_str,
-        metrics,
-        img_list=None
+        metrics
     ):
         self.initTensorboardWriters()
-        log.info("E{} {}".format(
-            epoch_ndx,
-            type(self).__name__,
-        ))
-
-        log.info(
-            "E{} {}:{} loss, {} reconstruction loss, {} contrastive loss".format(
-                epoch_ndx,
-                mode_str,
-                metrics[0].mean(),
-                metrics[1].mean(),
-                metrics[2].mean()
-            )
-        )
 
         writer = getattr(self, mode_str + '_writer')
-        writer.add_scalar(
-            'loss_total',
-            scalar_value=metrics[0].mean(),
-            global_step=self.totalTrainingSamples_count
-        )
-        writer.add_scalar(
-            'loss_recon',
-            scalar_value=metrics[1].mean(),
-            global_step=self.totalTrainingSamples_count
-        )
-        writer.add_scalar(
-            'loss_contr',
-            scalar_value=metrics[2].mean(),
-            global_step=self.totalTrainingSamples_count
-        )
-
-        if img_list:
-            writer.add_image(
-                'aug',
-                img_list[0],
-                global_step=self.totalTrainingSamples_count,
-                dataformats='HW'
+        if self.args.aug_mode == 'classification':
+            metric_name = 'accuracy'
+        else:
+            metric_name = 'miou'
+        for ndx in range(self.args.site_number):
+            writer.add_scalar(
+                'loss/site {}'.format(ndx),
+                scalar_value=metrics[2*ndx],
+                global_step=epoch_ndx
             )
-            writer.add_image(
-                'recon',
-                img_list[1],
-                global_step=self.totalTrainingSamples_count,
-                dataformats='HW'
+            writer.add_scalar(
+                '{}/site {}'.format(metric_name,ndx),
+                scalar_value=metrics[2*ndx + 1],
+                global_step=epoch_ndx
             )
+        writer.add_scalar(
+            'loss/overall',
+            scalar_value=metrics[-2],
+            global_step=epoch_ndx
+        )
+        writer.add_scalar(
+            '{}/overall'.format(metric_name),
+            scalar_value=metrics[-1],
+            global_step=epoch_ndx
+        )
+        writer.flush()
 
     def saveModel(self, type_str, epoch_ndx, isBest=False):
         file_path = os.path.join(
@@ -265,5 +377,18 @@ class SegmentationTrainingApp:
 
             log.debug("Saved model params to {}".format(best_path))
 
+    def mergeModels(self):
+        layer_list = get_layer_list(model=self.args.model_name, strategy=self.args.strategy)
+        state_dicts = [model.state_dict() for model in self.models]
+        param_dict = {layer: torch.zeros(state_dicts[0][layer].shape, device=self.device) for layer in layer_list}
+
+        for layer in layer_list:
+            for state_dict in state_dicts:
+                param_dict[layer] += state_dict[layer]
+            param_dict[layer] /= len(state_dicts)
+
+        for model in self.models:
+            model.load_state_dict(param_dict, strict=False)
+
 if __name__ == '__main__':
-    SegmentationTrainingApp().main()
+    LayerPersonalisationTrainingApp().main()

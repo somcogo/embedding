@@ -1,6 +1,8 @@
 import torch.nn as  nn
 import math
 
+from .resnet_with_embedding import ResNetWithEmbeddings
+
 class SampleModel(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()

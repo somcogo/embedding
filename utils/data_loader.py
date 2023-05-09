@@ -1,42 +1,48 @@
-from torchvision import datasets
-from torchvision.transforms import ToTensor, Normalize, Compose
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 
-data_path = '../data/'
-mean = 0.1307
-mean_val = 0.1325
-std = 0.3081
-std_val = 0.3105
+from .datasets import get_cifar10_datasets, get_cifar100_datasets, TruncatedDataset
+from .partition import partition_by_class, partition_with_dirichlet_distribution
 
-trn_datalist = ''
-val_datalist = ''
+data_path = 'data/'
 
-trn_transforms = Compose([
-    ToTensor(),
-    Normalize(mean, std)
-])
-val_transforms = Compose([
-    ToTensor(),
-    Normalize(mean, std)
-])
+def get_cifar10_dl(partition, n_sites, batch_size):
+    if partition == 'regular':
+        dataset, val_dataset = get_cifar10_datasets(data_path)
 
-class SampleDataset(Dataset):
-    def __init__(self, datalist):
-        super().__init__()
-        self.datalist = datalist
-    
-    def __len__(self):
-        return len(self.datalist)
+    train_dl = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, drop_last=False)
+    val_dl = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=False, drop_last=False)
+    return train_dl, val_dl
 
-    def __getitem__(self, index):
-        return self.datalist[index]
-        
-trn_dataset = SampleDataset(data=trn_datalist)
-val_dataset = SampleDataset(data=val_datalist)
-    
+def get_cifar100_dl(partition, n_sites, batch_size):
+    if partition == 'regular':
+        dataset, val_dataset = get_cifar100_datasets(data_path)
 
-def get_loader(batch_size):
-    train_loader = DataLoader(trn_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+    train_dl = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, drop_last=False)
+    val_dl = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=False, drop_last=False)
+    return train_dl, val_dl
 
-    return train_loader, val_loader
+def get_datasets(data_dir, dataset, use_hdf5=None):
+    if dataset == 'cifar10':
+        trn_dataset, val_dataset = get_cifar10_datasets(data_dir=data_dir)
+    elif dataset == 'cifar100':
+        trn_dataset, val_dataset = get_cifar100_datasets(data_dir=data_dir)
+    return trn_dataset, val_dataset
+
+def get_dl_lists(dataset, partition, n_site, batch_size, alpha=None, use_hdf5=True):
+    trn_dataset, val_dataset = get_datasets(data_dir=data_path, dataset=dataset, use_hdf5=use_hdf5)
+
+    if partition == 'regular':
+        trn_ds_list = [trn_dataset]
+        val_ds_list = [val_dataset]
+    elif partition == 'by_class':
+        (net_dataidx_map_train, net_dataidx_map_test) = partition_by_class(data_dir=data_path, dataset=dataset, n_sites=n_site)
+        trn_ds_list = [TruncatedDataset(trn_dataset, dataset, idx_map) for idx_map in net_dataidx_map_train.values()]
+        val_ds_list = [TruncatedDataset(val_dataset, dataset, idx_map) for idx_map in net_dataidx_map_test.values()]
+    elif partition == 'dirichlet':
+        (net_dataidx_map_train, net_dataidx_map_test) = partition_with_dirichlet_distribution(data_dir=data_path, dataset=dataset, n_sites=n_site, alpha=alpha)
+        trn_ds_list = [TruncatedDataset(trn_dataset, dataset, idx_map) for idx_map in net_dataidx_map_train.values()]
+        val_ds_list = [TruncatedDataset(val_dataset, dataset, idx_map) for idx_map in net_dataidx_map_test.values()]
+
+    trn_dl_list = [DataLoader(dataset=trn_ds, batch_size=batch_size, shuffle=True, drop_last=False) for trn_ds in trn_ds_list]
+    val_dl_list = [DataLoader(dataset=val_ds, batch_size=batch_size, shuffle=False, drop_last=False) for val_ds in val_ds_list]
+    return trn_dl_list, val_dl_list
