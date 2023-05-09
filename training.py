@@ -96,6 +96,7 @@ class LayerPersonalisationTrainingApp:
         self.totalTrainingSamples_count = 0
 
         self.models = self.initModels()
+        self.mergeModels(is_init=True)
         self.optims = self.initOptimizers()
         self.schedulers = self.initSchedulers()
 
@@ -371,10 +372,13 @@ class LayerPersonalisationTrainingApp:
 
             log.debug("Saved model params to {}".format(best_path))
 
-    def mergeModels(self):
+    def mergeModels(self, is_init=False):
         layer_list = get_layer_list(model=self.args.model_name, strategy=self.args.strategy)
         state_dicts = [model.state_dict() for model in self.models]
-        param_dict = {layer: torch.zeros(state_dicts[0][layer].shape, device=self.device) for layer in layer_list}
+        if is_init:
+            param_dict = {key: torch.zeros(state_dicts[0][key].shape, device=self.device) for key in state_dicts[0].keys()}
+        else:
+            param_dict = {layer: torch.zeros(state_dicts[0][layer].shape, device=self.device) for layer in layer_list}
 
         for layer in layer_list:
             for state_dict in state_dicts:
