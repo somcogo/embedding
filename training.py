@@ -232,13 +232,13 @@ class LayerPersonalisationTrainingApp:
 
             loss += local_trn_metrics[-2].sum()
             correct += local_trn_metrics[-1].sum()
-            total += len(trn_dl)
+            total += len(trn_dl.dataset)
 
             correct_by_class += local_trn_metrics[:self.num_classes].sum(dim=1)
             total_by_class += local_trn_metrics[self.num_classes: 2*self.num_classes].sum(dim=1)
 
-            trn_metrics[2*ndx] = local_trn_metrics[-2].sum() / len(trn_dl)
-            trn_metrics[2*ndx + 1] = local_trn_metrics[-1].sum() / len(trn_dl)
+            trn_metrics[2*ndx] = local_trn_metrics[-2].sum() / len(trn_dl.dataset)
+            trn_metrics[2*ndx + 1] = local_trn_metrics[-1].sum() / len(trn_dl.dataset)
 
         trn_metrics[2*self.args.site_number: 2*self.args.site_number + self.num_classes] = correct_by_class / total_by_class
         trn_metrics[-2] = loss / total
