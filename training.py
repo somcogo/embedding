@@ -222,7 +222,8 @@ class LayerPersonalisationTrainingApp:
                     batch_tuple,
                     self.models[ndx],
                     local_trn_metrics,
-                    'trn')
+                    'trn',
+                    ndx)
 
                 loss.backward()
                 self.optims[ndx].step()
@@ -260,7 +261,8 @@ class LayerPersonalisationTrainingApp:
                         batch_tuple,
                         self.models[ndx],
                         local_val_metrics,
-                        'val'
+                        'val',
+                        ndx
                     )
                 
                 loss += local_val_metrics[0].sum()
@@ -274,7 +276,7 @@ class LayerPersonalisationTrainingApp:
 
         return val_metrics.to('cpu'), correct / total
 
-    def computeBatchLoss(self, batch_ndx, batch_tup, model, metrics, mode):
+    def computeBatchLoss(self, batch_ndx, batch_tup, model, metrics, mode, site_id):
         batch, labels = batch_tup
         batch = batch.to(device=self.device, non_blocking=True).float()
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
@@ -283,7 +285,7 @@ class LayerPersonalisationTrainingApp:
             assert self.args.aug_mode in ['classification', 'segmentation']
             batch = aug_image(batch)
         if self.args.model_name == 'resnet34emb' or self.args.model_name == 'resnet18emb':
-            pred = model(batch, torch.tensor([1, 1], device=self.device, dtype=torch.float32))
+            pred = model(batch, torch.tensor(site_id, device=self.device, dtype=torch.int))
         else:
             pred = model(batch)
         pred_label = torch.argmax(pred, dim=1)
