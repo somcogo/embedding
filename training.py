@@ -108,6 +108,7 @@ class LayerPersonalisationTrainingApp:
             num_classes = 100
         elif self.args.dataset == 'pascalvoc':
             num_classes = 21
+        self.num_classes = num_classes
         models = []
         for _ in range(self.args.site_number):
             if self.args.model_name == 'resnet34emb':
@@ -207,12 +208,14 @@ class LayerPersonalisationTrainingApp:
         for model in self.models:
             model.train()
 
-        trn_metrics = torch.zeros(2 + 2*self.args.site_number, device=self.device)
+        trn_metrics = torch.zeros(2 + 2*self.args.site_number + self.num_classes, device=self.device)
         loss = 0
         correct = 0
         total = 0
+        correct_by_class = torch.zeros(self.num_classes, device=self.device)
+        total_by_class = torch.zeros(self.num_classes, device=self.device)
         for ndx, trn_dl in enumerate(trn_dls):
-            local_trn_metrics = torch.zeros(3, len(trn_dl), device=self.device)
+            local_trn_metrics = torch.zeros(2 + self.num_classes, len(trn_dl), device=self.device)
 
             for batch_ndx, batch_tuple in enumerate(trn_dl):
                 self.optims[ndx].zero_grad()
@@ -227,12 +230,17 @@ class LayerPersonalisationTrainingApp:
                 loss.backward()
                 self.optims[ndx].step()
 
-            loss += local_trn_metrics[0].sum()
-            correct += local_trn_metrics[1].sum()
-            total += local_trn_metrics[2].sum()
-            trn_metrics[2*ndx] = local_trn_metrics[0].sum() / local_trn_metrics[2].sum()
-            trn_metrics[2*ndx + 1] = local_trn_metrics[1].sum() / local_trn_metrics[2].sum()
+            loss += local_trn_metrics[-2].sum()
+            correct += local_trn_metrics[-1].sum()
+            total += len(trn_dl)
 
+            correct_by_class += local_trn_metrics[:self.num_classes]
+            total_by_class += local_trn_metrics[self.num_classes: 2*self.num_classes]
+
+            trn_metrics[2*ndx] = local_trn_metrics[-2].sum() / len(trn_dl)
+            trn_metrics[2*ndx + 1] = local_trn_metrics[-1].sum() / len(trn_dl)
+
+        trn_metrics[2*self.args.site_number: 2*self.args.site_number + self.num_classes] = correct_by_class / total_by_class
         trn_metrics[-2] = loss / total
         trn_metrics[-1] = correct / total
 
@@ -247,12 +255,14 @@ class LayerPersonalisationTrainingApp:
             if epoch_ndx == 1:
                 log.warning('E{} Validation starting'.format(epoch_ndx))
 
-            val_metrics = torch.zeros(2 + 2*self.args.site_number, device=self.device)
+            val_metrics = torch.zeros(2 + 2*self.args.site_number + self.num_classes, device=self.device)
             loss = 0
             correct = 0
             total = 0
+            correct_by_class = torch.zeros(self.num_classes, device=self.device)
+            total_by_class = torch.zeros(self.num_classes, device=self.device)
             for ndx, val_dl in enumerate(val_dls):
-                local_val_metrics = torch.zeros(3, len(val_dl), device=self.device)
+                local_val_metrics = torch.zeros(2 + self.num_classes, len(val_dl), device=self.device)
 
                 for batch_ndx, batch_tuple in enumerate(val_dl):
                     _, accuracy = self.computeBatchLoss(
@@ -263,12 +273,17 @@ class LayerPersonalisationTrainingApp:
                         'val'
                     )
                 
-                loss += local_val_metrics[0].sum()
-                correct += local_val_metrics[1].sum()
-                total += local_val_metrics[2].sum()
-                val_metrics[2*ndx] = local_val_metrics[0].sum() / local_val_metrics[2].sum()
-                val_metrics[2*ndx + 1] = local_val_metrics[1].sum() / local_val_metrics[2].sum()
+                loss += local_val_metrics[-2].sum()
+                correct += local_val_metrics[-1].sum()
+                total += len(val_dl)
 
+                correct_by_class += local_val_metrics[:self.num_classes]
+                total_by_class += local_val_metrics[self.num_classes: 2*self.num_classes]
+
+                val_metrics[2*ndx] = local_val_metrics[-2].sum() / len(val_dl)
+                val_metrics[2*ndx + 1] = local_val_metrics[-1].sum() / len(val_dl)
+
+            val_metrics[2*self.args.site_number: 2*self.args.site_number + self.num_classes] = correct_by_class / total_by_class
             val_metrics[-2] = loss / total
             val_metrics[-1] = correct / total
 
@@ -282,6 +297,7 @@ class LayerPersonalisationTrainingApp:
         if mode == 'trn':
             assert self.args.aug_mode in ['classification', 'segmentation']
             batch = aug_image(batch)
+
         if self.args.model_name == 'resnet34emb' or self.args.model_name == 'resnet18emb':
             pred = model(batch, torch.tensor([1, 1], device=self.device, dtype=torch.float32))
         else:
@@ -290,14 +306,20 @@ class LayerPersonalisationTrainingApp:
         loss_fn = nn.CrossEntropyLoss(label_smoothing=self.args.label_smoothing)
         loss = loss_fn(pred, labels)
 
-        metrics[0, batch_ndx] = loss.detach()
-        metrics[2, batch_ndx] = batch.shape[0]
-
         correct_mask = pred_label == labels
         correct = torch.sum(correct_mask)
         accuracy = correct / batch.shape[0] * 100
 
-        metrics[1, batch_ndx] = correct
+        for cls in range(self.num_classes):
+            class_mask = labels == cls
+            correct_in_cls = torch.sum(correct_mask[class_mask])
+            total_in_cls = torch.sum(class_mask)
+            metrics[cls, batch_ndx] = correct_in_cls
+            metrics[self.num_classes + cls, batch_ndx] = total_in_cls
+
+
+        metrics[-2, batch_ndx] = loss.detach()
+        metrics[-1, batch_ndx] = correct
 
         return loss.mean(), accuracy
 
@@ -319,6 +341,12 @@ class LayerPersonalisationTrainingApp:
             writer.add_scalar(
                 'accuracy/site {}'.format(ndx),
                 scalar_value=metrics[2*ndx + 1],
+                global_step=epoch_ndx
+            )
+        for ndx in range(self.num_classes):
+            writer.add_scalar(
+                'accuracy/class {}'.format_map(ndx),
+                scalar_value=metrics[2*self.args.site_number + ndx],
                 global_step=epoch_ndx
             )
         writer.add_scalar(
