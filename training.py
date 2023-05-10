@@ -11,7 +11,7 @@ from torch.optim import Adam, AdamW, SGD
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 
-from models.model import ResNetWithEmbeddings
+from models.model import ResNetWithEmbeddings, ResNet34Model
 from utils.logconf import logging
 from utils.data_loader import get_cifar10_dl, get_cifar100_dl, get_dl_lists
 from utils.ops import aug_image
@@ -111,9 +111,11 @@ class LayerPersonalisationTrainingApp:
         models = []
         for _ in range(self.args.site_number):
             if self.args.model_name == 'resnet34emb':
-                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[3, 4, 6, 3])
+                model = ResNetWithEmbeddings(num_classes=num_classes)
             elif self.args.model_name == 'resnet18emb':
                 model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2])
+            elif self.args.model_name == 'resnet34':
+                model = ResNet34Model(num_classes=num_classes, pretrained=self.args.pretrained)
             models.append(model)
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
