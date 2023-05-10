@@ -96,8 +96,8 @@ class LayerPersonalisationTrainingApp:
         self.totalTrainingSamples_count = 0
 
         self.models = self.initModels()
-        # if self.args.site_number > 1:
-        #     self.mergeModels(is_init=True)
+        if self.args.site_number > 1:
+            self.mergeModels(is_init=True)
         self.optims = self.initOptimizers()
         self.schedulers = self.initSchedulers()
 
@@ -111,7 +111,7 @@ class LayerPersonalisationTrainingApp:
         models = []
         for _ in range(self.args.site_number):
             if self.args.model_name == 'resnet34emb':
-                model = ResNetWithEmbeddings(num_classes=num_classes)
+                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[3, 4, 6, 3])
             elif self.args.model_name == 'resnet18emb':
                 model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2])
             elif self.args.model_name == 'resnet34':
