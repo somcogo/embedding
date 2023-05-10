@@ -282,8 +282,10 @@ class LayerPersonalisationTrainingApp:
         if mode == 'trn':
             assert self.args.aug_mode in ['classification', 'segmentation']
             batch = aug_image(batch)
-
-        pred = model(batch, torch.tensor([1, 1], device=self.device, dtype=torch.float32))
+        if self.args.model_name == 'resnet34emb' or self.args.model_name == 'resnet18emb':
+            pred = model(batch, torch.tensor([1, 1], device=self.device, dtype=torch.float32))
+        else:
+            pred = model(batch)
         pred_label = torch.argmax(pred, dim=1)
         loss_fn = nn.CrossEntropyLoss(label_smoothing=self.args.label_smoothing)
         loss = loss_fn(pred, labels)
