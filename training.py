@@ -215,7 +215,7 @@ class LayerPersonalisationTrainingApp:
         correct_by_class = torch.zeros(self.num_classes, device=self.device)
         total_by_class = torch.zeros(self.num_classes, device=self.device)
         for ndx, trn_dl in enumerate(trn_dls):
-            local_trn_metrics = torch.zeros(2 + self.num_classes, len(trn_dl), device=self.device)
+            local_trn_metrics = torch.zeros(2 + 2*self.num_classes, len(trn_dl), device=self.device)
 
             for batch_ndx, batch_tuple in enumerate(trn_dl):
                 self.optims[ndx].zero_grad()
@@ -234,8 +234,8 @@ class LayerPersonalisationTrainingApp:
             correct += local_trn_metrics[-1].sum()
             total += len(trn_dl)
 
-            correct_by_class += local_trn_metrics[:self.num_classes]
-            total_by_class += local_trn_metrics[self.num_classes: 2*self.num_classes]
+            correct_by_class += local_trn_metrics[:self.num_classes].sum(dim=1)
+            total_by_class += local_trn_metrics[self.num_classes: 2*self.num_classes].sum(dim=1)
 
             trn_metrics[2*ndx] = local_trn_metrics[-2].sum() / len(trn_dl)
             trn_metrics[2*ndx + 1] = local_trn_metrics[-1].sum() / len(trn_dl)
@@ -262,7 +262,7 @@ class LayerPersonalisationTrainingApp:
             correct_by_class = torch.zeros(self.num_classes, device=self.device)
             total_by_class = torch.zeros(self.num_classes, device=self.device)
             for ndx, val_dl in enumerate(val_dls):
-                local_val_metrics = torch.zeros(2 + self.num_classes, len(val_dl), device=self.device)
+                local_val_metrics = torch.zeros(2 + 2*self.num_classes, len(val_dl), device=self.device)
 
                 for batch_ndx, batch_tuple in enumerate(val_dl):
                     _, accuracy = self.computeBatchLoss(
@@ -275,13 +275,13 @@ class LayerPersonalisationTrainingApp:
                 
                 loss += local_val_metrics[-2].sum()
                 correct += local_val_metrics[-1].sum()
-                total += len(val_dl)
+                total += len(val_dl.dataset)
 
-                correct_by_class += local_val_metrics[:self.num_classes]
-                total_by_class += local_val_metrics[self.num_classes: 2*self.num_classes]
+                correct_by_class += local_val_metrics[:self.num_classes].sum(dim=1)
+                total_by_class += local_val_metrics[self.num_classes: 2*self.num_classes].sum(dim=1)
 
-                val_metrics[2*ndx] = local_val_metrics[-2].sum() / len(val_dl)
-                val_metrics[2*ndx + 1] = local_val_metrics[-1].sum() / len(val_dl)
+                val_metrics[2*ndx] = local_val_metrics[-2].sum() / len(val_dl.dataset)
+                val_metrics[2*ndx + 1] = local_val_metrics[-1].sum() / len(val_dl.dataset)
 
             val_metrics[2*self.args.site_number: 2*self.args.site_number + self.num_classes] = correct_by_class / total_by_class
             val_metrics[-2] = loss / total
@@ -345,7 +345,7 @@ class LayerPersonalisationTrainingApp:
             )
         for ndx in range(self.num_classes):
             writer.add_scalar(
-                'accuracy/class {}'.format_map(ndx),
+                'accuracy/class {}'.format(ndx),
                 scalar_value=metrics[2*self.args.site_number + ndx],
                 global_step=epoch_ndx
             )
