@@ -96,7 +96,8 @@ class LayerPersonalisationTrainingApp:
         self.totalTrainingSamples_count = 0
 
         self.models = self.initModels()
-        self.mergeModels(is_init=True)
+        if self.args.site_number > 1:
+            self.mergeModels(is_init=True)
         self.optims = self.initOptimizers()
         self.schedulers = self.initSchedulers()
 
