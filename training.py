@@ -111,9 +111,9 @@ class LayerPersonalisationTrainingApp:
         models = []
         for _ in range(self.args.site_number):
             if self.args.model_name == 'resnet34emb':
-                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[3, 4, 6, 3])
+                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[3, 4, 6, 3], site_number=self.args.site_number)
             elif self.args.model_name == 'resnet18emb':
-                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2])
+                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2], site_number=self.args.site_number)
             elif self.args.model_name == 'resnet34':
                 model = ResNet34Model(num_classes=num_classes, pretrained=self.args.pretrained)
             models.append(model)
@@ -215,6 +215,7 @@ class LayerPersonalisationTrainingApp:
             local_trn_metrics = torch.zeros(3, len(trn_dl), device=self.device)
 
             for batch_ndx, batch_tuple in enumerate(trn_dl):
+                log.debug('site {}'.format(ndx))
                 self.optims[ndx].zero_grad()
 
                 loss, _ = self.computeBatchLoss(
@@ -278,7 +279,7 @@ class LayerPersonalisationTrainingApp:
 
     def computeBatchLoss(self, batch_ndx, batch_tup, model, metrics, mode, site_id):
         batch, labels = batch_tup
-        batch = batch.to(device=self.device, non_blocking=True).float()
+        batch = batch.to(device=self.device, non_blocking=True).float().permute(0, 3, 1, 2)
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
 
         if mode == 'trn':
@@ -383,19 +384,21 @@ class LayerPersonalisationTrainingApp:
 
     def mergeModels(self, is_init=False):
         if is_init:
-            layer_list = get_layer_list(model=self.args.model_name, strategy='all')
+            state_dict = self.models[0].state_dict()
+            for model in self.models:
+                model.load_state_dict(state_dict)
         else:
             layer_list = get_layer_list(model=self.args.model_name, strategy=self.args.strategy)
-        state_dicts = [model.state_dict() for model in self.models]
-        param_dict = {layer: torch.zeros(state_dicts[0][layer].shape, device=self.device) for layer in layer_list}
+            state_dicts = [model.state_dict() for model in self.models]
+            param_dict = {layer: torch.zeros(state_dicts[0][layer].shape, device=self.device) for layer in layer_list}
 
-        for layer in layer_list:
-            for state_dict in state_dicts:
-                param_dict[layer] += state_dict[layer]
-            param_dict[layer] /= len(state_dicts)
+            for layer in layer_list:
+                for state_dict in state_dicts:
+                    param_dict[layer] += state_dict[layer]
+                param_dict[layer] /= len(state_dicts)
 
-        for model in self.models:
-            model.load_state_dict(param_dict, strict=False)
+            for model in self.models:
+                model.load_state_dict(param_dict, strict=False)
 
 if __name__ == '__main__':
     LayerPersonalisationTrainingApp().main()
