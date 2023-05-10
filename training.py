@@ -110,7 +110,9 @@ class LayerPersonalisationTrainingApp:
         models = []
         for _ in range(self.args.site_number):
             if self.args.model_name == 'resnet34emb':
-                model = ResNetWithEmbeddings(num_classes=num_classes)
+                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[3, 4, 6, 3])
+            elif self.args.model_name == 'resnet18emb':
+                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2])
             models.append(model)
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
@@ -373,12 +375,12 @@ class LayerPersonalisationTrainingApp:
             log.debug("Saved model params to {}".format(best_path))
 
     def mergeModels(self, is_init=False):
-        layer_list = get_layer_list(model=self.args.model_name, strategy=self.args.strategy)
-        state_dicts = [model.state_dict() for model in self.models]
         if is_init:
-            param_dict = {key: torch.zeros(state_dicts[0][key].shape, device=self.device) for key in state_dicts[0].keys()}
+            layer_list = get_layer_list(model=self.args.model_name, strategy='all')
         else:
-            param_dict = {layer: torch.zeros(state_dicts[0][layer].shape, device=self.device) for layer in layer_list}
+            layer_list = get_layer_list(model=self.args.model_name, strategy=self.args.strategy)
+        state_dicts = [model.state_dict() for model in self.models]
+        param_dict = {layer: torch.zeros(state_dicts[0][layer].shape, device=self.device) for layer in layer_list}
 
         for layer in layer_list:
             for state_dict in state_dicts:
