@@ -336,18 +336,18 @@ class LayerPersonalisationTrainingApp:
         writer = getattr(self, mode_str + '_writer')
         for ndx in range(self.args.site_number):
             writer.add_scalar(
-                'loss/site {}'.format(ndx),
+                'loss by site/site {}'.format(ndx),
                 scalar_value=metrics[2*ndx],
                 global_step=epoch_ndx
             )
             writer.add_scalar(
-                'accuracy/site {}'.format(ndx),
+                'accuracy by site/site {}'.format(ndx),
                 scalar_value=metrics[2*ndx + 1],
                 global_step=epoch_ndx
             )
         for ndx in range(self.num_classes):
             writer.add_scalar(
-                'accuracy/class {}'.format(ndx),
+                'accuracy by class/class {}'.format(ndx),
                 scalar_value=metrics[2*self.args.site_number + ndx],
                 global_step=epoch_ndx
             )
