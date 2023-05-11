@@ -215,7 +215,6 @@ class LayerPersonalisationTrainingApp:
             local_trn_metrics = torch.zeros(3, len(trn_dl), device=self.device)
 
             for batch_ndx, batch_tuple in enumerate(trn_dl):
-                log.debug('site {}'.format(ndx))
                 self.optims[ndx].zero_grad()
 
                 loss, _ = self.computeBatchLoss(
