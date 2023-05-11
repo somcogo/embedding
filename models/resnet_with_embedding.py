@@ -4,8 +4,10 @@ from torch import nn
 from .edmcode import UNetBlock
 
 class ResNetWithEmbeddings(nn.Module):
-    def __init__(self, num_classes, in_channels=3, embed_dim=2, layers=[3, 4, 6, 3]):
+    def __init__(self, num_classes, in_channels=3, embed_dim=2, layers=[3, 4, 6, 3], site_number=1):
         super().__init__()
+
+        self.embedding = nn.Embedding(site_number, embedding_dim=embed_dim)
 
         self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=7, stride=2, padding=3, bias=False)
         self.norm1 = nn.BatchNorm2d(64)
@@ -29,7 +31,9 @@ class ResNetWithEmbeddings(nn.Module):
 
         return blocks
 
-    def forward(self, x, latent_vector):
+    def forward(self, x, site_id):
+
+        latent_vector = self.embedding(site_id)
 
         x = self.pool(self.relu(self.norm1(self.conv1(x))))
         latent_vector = latent_vector.repeat(x.shape[0]).view(x.shape[0], -1)
