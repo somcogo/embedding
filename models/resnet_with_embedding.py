@@ -48,3 +48,41 @@ class ResNetWithEmbeddings(nn.Module):
 
         out = self.fc(self.avgpool(x).squeeze())
         return out
+    
+class UNetWithEmbedding(nn.Module):
+    def __init__(self, num_classes, in_channels, embed_dim=2, encoder_layers=[2, 2, 2, 2], decoder_layers=[2, 2, 2, 2], site_number=1):
+        super().__init__()
+
+        self.enc = nn.ModuleList()
+        self.dec = nn.ModuleList()
+
+        for level, depth in enumerate(encoder_layers):
+            self.enc.append(self._make_layer(
+                depth=depth,
+                in_channels=in_channels if level == 0 else 32 * 2**level,
+                out_channels=64 * 2**level,
+                embed_dim=embed_dim,
+                down=True if level == len(encoder_layers) - 1 else False
+            ))
+
+        for level, depth in enumerate(decoder_layers):
+            self.dec.append(self._make_layer(
+                depth=depth,
+            ))
+
+    def _make_layer(self, depth, in_channels, out_channels, embed_dim, up=False, down=False):
+        blocks = nn.ModuleList()
+
+        for ndx in range(depth):
+            blocks.append(UNetBlock(
+                in_channels=in_channels if ndx == 0 else out_channels,
+                out_channels=out_channels,
+                emb_channels=embed_dim,
+                up=up if ndx == depth - 1 else False,
+                down=down if ndx == depth - 1 else False 
+            ))
+
+        return blocks
+
+    def forward(self, x, site_id):
+        return x

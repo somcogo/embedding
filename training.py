@@ -183,14 +183,14 @@ class LayerPersonalisationTrainingApp:
             self.logMetrics(epoch_ndx, 'trn', trn_metrics)
 
             if epoch_ndx == 1 or epoch_ndx % validation_cadence == 0:
-                val_metrics, accuracy = self.doValidation(epoch_ndx, val_dls)
+                val_metrics, accuracy, loss = self.doValidation(epoch_ndx, val_dls)
                 self.logMetrics(epoch_ndx, 'val', val_metrics)
                 saving_criterion = max(accuracy, saving_criterion)
 
                 if self.args.save_model:
                     self.saveModel('imagenet', epoch_ndx, accuracy == saving_criterion)
 
-                log.info('Epoch {} of {}, accuracy/miou {}'.format(epoch_ndx, self.args.epochs, accuracy))
+                log.info('Epoch {} of {}, accuracy/miou {}, val loss {}'.format(epoch_ndx, self.args.epochs, accuracy, loss))
             
             if self.args.scheduler_mode == 'cosine':
                 for scheduler in self.schedulers:
@@ -289,7 +289,7 @@ class LayerPersonalisationTrainingApp:
             val_metrics[-2] = loss / total
             val_metrics[-1] = correct / total
 
-        return val_metrics.to('cpu'), correct / total
+        return val_metrics.to('cpu'), correct / total, loss / total
 
     def computeBatchLoss(self, batch_ndx, batch_tup, model, metrics, mode, site_id):
         batch, labels = batch_tup
@@ -364,50 +364,36 @@ class LayerPersonalisationTrainingApp:
         writer.flush()
 
     def saveModel(self, type_str, epoch_ndx, isBest=False):
-        file_path = os.path.join(
-            'saved_models',
-            self.args.logdir,
-            '{}_{}_{}.{}.state'.format(
-                type_str,
-                self.time_str,
-                self.args.comment,
-                self.totalTrainingSamples_count
-            )
-        )
-
-        os.makedirs(os.path.dirname(file_path), mode=0o755, exist_ok=True)
-
-        model = self.model
-        if isinstance(model, torch.nn.DataParallel):
-            model = model.module
-
-        state = {
-            'model_state': model.state_dict(),
-            'model_name': type(model).__name__,
-            'optimizer_state': self.optimizer.state_dict(),
-            'optimizer_name': type(self.optimizer).__name__,
-            'epoch': epoch_ndx,
-            'totalTrainingSamples_count': self.totalTrainingSamples_count
-        }
-
-        torch.save(state, file_path)
-
-        log.debug("Saved model params to {}".format(file_path))
-
-        if isBest:
-            best_path = os.path.join(
-                'saved_models',
-                self.args.logdir,
-                '{}_{}_{}.{}.state'.format(
-                    type_str,
-                    self.time_str,
-                    self.args.comment,
-                    'best'
+        for ndx, model in enumerate(self.models):
+            if isBest:
+                file_path = os.path.join(
+                    'saved_models',
+                    self.args.logdir,
+                    '{}_{}_{}.site{}.state'.format(
+                        type_str,
+                        self.time_str,
+                        self.args.comment,
+                        ndx
+                    )
                 )
-            )
-            shutil.copyfile(file_path, best_path)
 
-            log.debug("Saved model params to {}".format(best_path))
+                os.makedirs(os.path.dirname(file_path), mode=0o755, exist_ok=True)
+
+                if isinstance(model, torch.nn.DataParallel):
+                    model = model.module
+
+                state = {
+                    'model_state': model.state_dict(),
+                    'model_name': type(model).__name__,
+                    'optimizer_state': self.optims[0].state_dict(),
+                    'optimizer_name': type(self.optims[0]).__name__,
+                    'epoch': epoch_ndx,
+                    'totalTrainingSamples_count': self.totalTrainingSamples_count
+                }
+
+                torch.save(state, file_path)
+
+                log.debug("Saved model params to {}".format(file_path))
 
     def mergeModels(self, is_init=False):
         if is_init:
