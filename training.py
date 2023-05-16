@@ -23,7 +23,7 @@ log.setLevel(logging.INFO)
 # log.setLevel(logging.DEBUG)
 
 class LayerPersonalisationTrainingApp:
-    def __init__(self, sys_argv=None, epochs=None, batch_size=None, logdir=None, lr=None, comment=None, dataset='cifar10', site_number=None, model_name=None, optimizer_type=None, scheduler_mode=None, label_smoothing=None, T_max=None, pretrained=None, aug_mode=None, save_model=None, partition=None, alpha=None, strategy=None):
+    def __init__(self, sys_argv=None, epochs=None, batch_size=None, logdir=None, lr=None, comment=None, dataset='cifar10', site_number=None, model_name=None, optimizer_type=None, scheduler_mode=None, label_smoothing=None, T_max=None, pretrained=None, aug_mode=None, save_model=None, partition=None, alpha=None, strategy=None, model_path=None, finetuning=False):
         if sys_argv is None:
             sys_argv = sys.argv[1:]
 
@@ -46,6 +46,7 @@ class LayerPersonalisationTrainingApp:
         parser.add_argument("--partition", default='regular', type=str, help="how to partition the data among sites")
         parser.add_argument("--alpha", default=None, type=float, help="alpha used for the Dirichlet distribution")
         parser.add_argument("--strategy", default='all', type=str, help="merging strategy")
+        parser.add_argument("--finetuning", default=False, type=bool, help="true if we are finetuning the embeddings on a new site")
         parser.add_argument('comment', help="Comment suffix for Tensorboard run.", nargs='?', default='dwlpt')
 
         self.args = parser.parse_args()
@@ -85,6 +86,8 @@ class LayerPersonalisationTrainingApp:
             self.args.alpha = alpha
         if strategy is not None:
             self.args.strategy = strategy
+        if finetuning is not None:
+            self.args.finetuning = finetuning
         self.time_str = datetime.datetime.now().strftime('%Y-%m-%d_%H.%M.%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
@@ -97,8 +100,8 @@ class LayerPersonalisationTrainingApp:
 
         self.models = self.initModels()
         if self.args.site_number > 1:
-            self.mergeModels(is_init=True)
-        self.optims = self.initOptimizers()
+            self.mergeModels(is_init=True, model_path=model_path)
+        self.optims = self.initOptimizers(finetuning)
         self.schedulers = self.initSchedulers()
 
     def initModels(self):
@@ -126,15 +129,24 @@ class LayerPersonalisationTrainingApp:
                 model = model.to(self.device)
         return models
 
-    def initOptimizers(self):
+    def initOptimizers(self, finetuning):
         optims = []
         for model in self.models:
+            if finetuning:
+                layer_list = get_layer_list(self.args.model_name, strategy='onlyembed')
+                params_to_update = []
+                for name, param in model.named_parameters():
+                    if name in layer_list:
+                        params_to_update.append(param)
+            else:
+                params_to_update = model.parameters()
+
             if self.args.optimizer_type == 'adam':
-                optim = Adam(params=model.parameters(), lr=self.args.lr)
+                optim = Adam(params=params_to_update, lr=self.args.lr)
             elif self.args.optimizer_type == 'adamw':
-                optim = AdamW(params=model.parameters(), lr=self.args.lr, weight_decay=0.05)
+                optim = AdamW(params=params_to_update, lr=self.args.lr, weight_decay=0.05)
             elif self.args.optimizer_type == 'sgd':
-                optim = SGD(params=model.parameters(), lr=self.args.lr, weight_decay=0.0001, momentum=0.9)
+                optim = SGD(params=params_to_update, lr=self.args.lr, weight_decay=0.0001, momentum=0.9)
             optims.append(optim)
         return optims
     
@@ -395,11 +407,15 @@ class LayerPersonalisationTrainingApp:
 
                 log.debug("Saved model params to {}".format(file_path))
 
-    def mergeModels(self, is_init=False):
+    def mergeModels(self, is_init=False, model_path=None):
         if is_init:
-            state_dict = self.models[0].state_dict()
+            if model_path is not None:
+                state_dict = torch.load(model_path)['model_state']
+            else:
+                state_dict = self.models[0].state_dict()
+            del state_dict['embedding.weight']
             for model in self.models:
-                model.load_state_dict(state_dict)
+                model.load_state_dict(state_dict, strict=False)
         else:
             layer_list = get_layer_list(model=self.args.model_name, strategy=self.args.strategy)
             state_dicts = [model.state_dict() for model in self.models]
