@@ -32,8 +32,8 @@ def get_dl_lists(dataset, partition, n_site, batch_size, alpha=None, use_hdf5=Tr
     trn_dataset, val_dataset = get_datasets(data_dir=data_path, dataset=dataset, use_hdf5=use_hdf5)
 
     if partition == 'regular':
-        trn_ds_list = [trn_dataset]
-        val_ds_list = [val_dataset]
+        trn_ds_list = [trn_dataset for _ in range(n_site)]
+        val_ds_list = [val_dataset for _ in range(n_site)]
     elif partition == 'by_class':
         (net_dataidx_map_train, net_dataidx_map_test) = partition_by_class(data_dir=data_path, dataset=dataset, n_sites=n_site)
         trn_ds_list = [TruncatedDataset(trn_dataset, dataset, idx_map) for idx_map in net_dataidx_map_train.values()]
