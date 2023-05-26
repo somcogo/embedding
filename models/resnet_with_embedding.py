@@ -46,7 +46,7 @@ class ResNetWithEmbeddings(nn.Module):
         for block in self.layer3:
             x = block(x, latent_vector)
 
-        out = self.fc(self.avgpool(x).squeeze())
+        out = self.fc(self.avgpool(x).reshape(-1, 512))
         return out
     
 class UNetWithEmbedding(nn.Module):
