@@ -13,8 +13,11 @@ class TruncatedDataset(Dataset):
             self.labels = dataset.targets
 
         if indices is not None:
+            self.indices = indices
             self.data = self.data[indices]
             self.labels = self.labels[indices]
+        else:
+            self.indices = range(len(dataset))
 
     def __len__(self):
         return len(self.data)

@@ -11,7 +11,7 @@ from torch.optim import Adam, AdamW, SGD
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 
-from models.model import ResNetWithEmbeddings, ResNet34Model
+from models.model import ResNetWithEmbeddings, ResNet34Model, ResNet18Model
 from utils.logconf import logging
 from utils.data_loader import get_cifar10_dl, get_cifar100_dl, get_dl_lists
 from utils.ops import aug_image
@@ -105,6 +105,9 @@ class LayerPersonalisationTrainingApp:
         self.mergeModels(is_init=True, model_path=model_path)
         self.optims = self.initOptimizers(finetuning)
         self.schedulers = self.initSchedulers()
+        trn_dls, val_dls = self.initDls()
+        self.trn_dls = trn_dls
+        self.val_dls = val_dls
 
     def initModels(self):
         if self.args.dataset == 'cifar10':
@@ -122,6 +125,8 @@ class LayerPersonalisationTrainingApp:
                 model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim)
             elif self.args.model_name == 'resnet34':
                 model = ResNet34Model(num_classes=num_classes, pretrained=self.args.pretrained)
+            elif self.args.model_name == 'resnet18':
+                model = ResNet18Model(num_classes=num_classes, pretrained=self.args.pretrained)
             models.append(model)
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
@@ -180,8 +185,8 @@ class LayerPersonalisationTrainingApp:
     def main(self):
         log.info("Starting {}, {}".format(type(self).__name__, self.args))
 
-        trn_dls, val_dls = self.initDls()
-        log.debug('initiated dls')
+        trn_dls = self.trn_dls
+        val_dls = self.val_dls
 
         saving_criterion = 0
         validation_cadence = 5
@@ -315,10 +320,10 @@ class LayerPersonalisationTrainingApp:
 
     def computeBatchLoss(self, batch_ndx, batch_tup, model, metrics, mode, site_id):
         batch, labels = batch_tup
-        if self.args.partition == 'regular':
-            batch = batch.to(device=self.device, non_blocking=True).float()
-        else:
-            batch = batch.to(device=self.device, non_blocking=True).float().permute(0, 3, 1, 2)
+        # if self.args.partition == 'regular':
+        #     batch = batch.to(device=self.device, non_blocking=True).float()
+        # else:
+        batch = batch.to(device=self.device, non_blocking=True).float().permute(0, 3, 1, 2)
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
 
         if mode == 'trn':
@@ -408,7 +413,9 @@ class LayerPersonalisationTrainingApp:
                 state[ndx] = {
                     'emb_vector':model.state_dict()['embedding.weight'][ndx],
                     'trn_labels': trn_dls[ndx].dataset.labels,
-                    'val_labels': val_dls[ndx].dataset.labels
+                    'val_labels': val_dls[ndx].dataset.labels,
+                    'trn_indices': trn_dls[ndx].dataset.indices,
+                    'val_indices': val_dls[ndx].dataset.indices
                 }
             else:
                 state[ndx] = {
@@ -417,7 +424,9 @@ class LayerPersonalisationTrainingApp:
                     'optimizer_state': self.optims[ndx].state_dict(),
                     'optimizer_name': type(self.optims[ndx]).__name__,
                     'trn_labels': trn_dls[ndx].dataset.labels,
-                    'val_labels': val_dls[ndx].dataset.labels
+                    'val_labels': val_dls[ndx].dataset.labels,
+                    'trn_indices': trn_dls[ndx].dataset.indices,
+                    'val_indices': val_dls[ndx].dataset.indices
                 }
 
         torch.save(state, file_path)
@@ -426,10 +435,15 @@ class LayerPersonalisationTrainingApp:
     def mergeModels(self, is_init=False, model_path=None):
         if is_init:
             if model_path is not None:
-                state_dict = torch.load(model_path)['model_state']
+                loaded_dict = torch.load(model_path)
+                if 'model_state' in loaded_dict.keys():
+                    state_dict = loaded_dict['model_state']
+                else:
+                    state_dict = loaded_dict[0]['model_state']
             else:
                 state_dict = self.models[0].state_dict()
-            del state_dict['embedding.weight']
+            if 'embedding.weight' in state_dict:
+                del state_dict['embedding.weight']
             for model in self.models:
                 model.load_state_dict(state_dict, strict=False)
         else:
