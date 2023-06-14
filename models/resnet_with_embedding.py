@@ -4,7 +4,7 @@ from torch import nn
 from .edmcode import UNetBlock
 
 class ResNetWithEmbeddings(nn.Module):
-    def __init__(self, num_classes, in_channels=3, embed_dim=2, layers=[3, 4, 6, 3], site_number=1):
+    def __init__(self, num_classes, in_channels=3, embed_dim=2, layers=[3, 4, 6, 3], site_number=1, use_hypnns=False, version=None):
         super().__init__()
 
         self.embedding = nn.Embedding(site_number, embedding_dim=embed_dim)
@@ -14,20 +14,20 @@ class ResNetWithEmbeddings(nn.Module):
         self.relu = nn.ReLU()
         self.pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
-        self.layer0 = self._make_layer(layers[0], in_channels=64, out_channels=64, embed_dim=embed_dim)
-        self.layer1 = self._make_layer(layers[1], in_channels=64, out_channels=128, embed_dim=embed_dim)
-        self.layer2 = self._make_layer(layers[2], in_channels=128, out_channels=256, embed_dim=embed_dim)
-        self.layer3 = self._make_layer(layers[3], in_channels=256, out_channels=512, embed_dim=embed_dim)
+        self.layer0 = self._make_layer(layers[0], in_channels=64, out_channels=64, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version)
+        self.layer1 = self._make_layer(layers[1], in_channels=64, out_channels=128, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version)
+        self.layer2 = self._make_layer(layers[2], in_channels=128, out_channels=256, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version)
+        self.layer3 = self._make_layer(layers[3], in_channels=256, out_channels=512, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version)
 
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
         self.fc = nn.Linear(512, num_classes)
 
-    def _make_layer(self, depth, in_channels, out_channels, embed_dim):
+    def _make_layer(self, depth, in_channels, out_channels, embed_dim, use_hypnns=False, version=None):
         blocks = nn.ModuleList()
-        blocks.append(UNetBlock(in_channels=in_channels, out_channels=out_channels, emb_channels=embed_dim))
+        blocks.append(UNetBlock(in_channels=in_channels, out_channels=out_channels, emb_channels=embed_dim, use_hypnns=use_hypnns, version=version))
 
         for _ in range(1, depth):
-            blocks.append(UNetBlock(in_channels=out_channels, out_channels=out_channels, emb_channels=embed_dim))
+            blocks.append(UNetBlock(in_channels=out_channels, out_channels=out_channels, emb_channels=embed_dim, use_hypnns=use_hypnns, version=version))
 
         return blocks
 
@@ -36,7 +36,7 @@ class ResNetWithEmbeddings(nn.Module):
         latent_vector = self.embedding(site_id)
 
         x = self.pool(self.relu(self.norm1(self.conv1(x))))
-        latent_vector = latent_vector.repeat(x.shape[0]).view(x.shape[0], -1)
+        # latent_vector = latent_vector.repeat(x.shape[0]).view(x.shape[0], -1)
         for block in self.layer0:
             x = block(x, latent_vector)
         for block in self.layer1:

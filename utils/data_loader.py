@@ -28,7 +28,7 @@ def get_datasets(data_dir, dataset, use_hdf5=None):
         trn_dataset, val_dataset = get_cifar100_datasets(data_dir=data_dir)
     return trn_dataset, val_dataset
 
-def get_dl_lists(dataset, partition, n_site, batch_size, alpha=None, use_hdf5=True, net_dataidx_map_train=None, net_dataidx_map_test=None):
+def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, use_hdf5=True, net_dataidx_map_train=None, net_dataidx_map_test=None):
     trn_dataset, val_dataset = get_datasets(data_dir=data_path, dataset=dataset, use_hdf5=use_hdf5)
 
     if partition == 'regular':
@@ -46,6 +46,6 @@ def get_dl_lists(dataset, partition, n_site, batch_size, alpha=None, use_hdf5=Tr
         trn_ds_list = [TruncatedDataset(trn_dataset, dataset, idx_map) for idx_map in net_dataidx_map_train.values()]
         val_ds_list = [TruncatedDataset(val_dataset, dataset, idx_map) for idx_map in net_dataidx_map_test.values()]
 
-    trn_dl_list = [DataLoader(dataset=trn_ds, batch_size=batch_size, shuffle=True, drop_last=False) for trn_ds in trn_ds_list]
-    val_dl_list = [DataLoader(dataset=val_ds, batch_size=batch_size, shuffle=False, drop_last=False) for val_ds in val_ds_list]
+    trn_dl_list = [DataLoader(dataset=trn_ds, batch_size=batch_size, shuffle=True, drop_last=True) for trn_ds in trn_ds_list]
+    val_dl_list = [DataLoader(dataset=val_ds, batch_size=batch_size, shuffle=False, drop_last=True) for val_ds in val_ds_list]
     return trn_dl_list, val_dl_list

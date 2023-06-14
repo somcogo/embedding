@@ -7,7 +7,7 @@ import random
 
 import torch
 import torch.nn as nn
-from torch.optim import Adam, AdamW, SGD
+from torch.optim import Adam, AdamW, SGD, LBFGS
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 
@@ -51,6 +51,21 @@ class LayerPersonalisationTrainingApp:
         parser.add_argument('comment', help="Comment suffix for Tensorboard run.", nargs='?', default='dwlpt')
 
         self.args = parser.parse_args()
+        # self.epochs = epochs if epochs is not None else 2
+        # self.batch_size = batch_size if batch_size is not None else 128
+        # self.logdir = logdir if logdir is not None else 'test'
+        # self.comment = comment if comment is not None else 'dwlpt'
+        # self.dataset = dataset if dataset is not None else 'cifar10'
+        # self.site_number = site_number if site_number is not None else 1
+        # self.model_name = model_name if model_name is not None else 'resnet18emb'
+        # self.optimizer_type = optimizer_type if optimizer_type is not None else 'sgd'
+        # self.scheduler_mode = scheduler_mode 
+        # self.pretrained = pretrained if pretrained is not None else 500
+        # self.T_max = T_max if T_max is not None else 500
+        # self.T_max = T_max if T_max is not None else 500
+        # self.T_max = T_max if T_max is not None else 500
+        # self.T_max = T_max if T_max is not None else 500
+        self.model_path = model_path
         if epochs is not None:
             self.args.epochs = epochs
         if batch_size is not None:
@@ -91,7 +106,7 @@ class LayerPersonalisationTrainingApp:
             self.args.finetuning = finetuning
         if embed_dim is not None:
             self.args.embed_dim = embed_dim
-        self.time_str = datetime.datetime.now().strftime('%Y-%m-%d')
+        self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
         self.logdir = os.path.join('./runs', self.args.logdir)
@@ -123,6 +138,10 @@ class LayerPersonalisationTrainingApp:
                 model = ResNetWithEmbeddings(num_classes=num_classes, layers=[3, 4, 6, 3], site_number=self.args.site_number, embed_dim=self.args.embed_dim)
             elif self.args.model_name == 'resnet18emb':
                 model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim)
+            elif self.args.model_name == 'resnet18embhypnn1':
+                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=1)
+            elif self.args.model_name == 'resnet18embhypnn2':
+                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=2)
             elif self.args.model_name == 'resnet34':
                 model = ResNet34Model(num_classes=num_classes, pretrained=self.args.pretrained)
             elif self.args.model_name == 'resnet18':
@@ -138,9 +157,13 @@ class LayerPersonalisationTrainingApp:
 
     def initOptimizers(self, finetuning):
         optims = []
+        if self.args.model_name == 'resnet18embhypnn1' or self.args.model_name == 'resnet18embhypnn2':
+            weight_decay = 0.1
+        else:
+            weight_decay = 0.0001
         for model in self.models:
             if finetuning:
-                layer_list = get_layer_list(self.args.model_name, strategy='onlyembed')
+                layer_list = get_layer_list(self.args.model_name, strategy='finetuning')
                 params_to_update = []
                 for name, param in model.named_parameters():
                     if name in layer_list:
@@ -155,7 +178,9 @@ class LayerPersonalisationTrainingApp:
             elif self.args.optimizer_type == 'adamw':
                 optim = AdamW(params=params_to_update, lr=self.args.lr, weight_decay=0.05)
             elif self.args.optimizer_type == 'sgd':
-                optim = SGD(params=params_to_update, lr=self.args.lr, weight_decay=0.0001, momentum=0.9)
+                optim = SGD(params=params_to_update, lr=self.args.lr, weight_decay=weight_decay, momentum=0.9)
+            elif self.args.optimizer_type == 'lbfgs':
+                optim = LBFGS(params=params_to_update, lr=self.args.lr, line_search_fn='strong_wolfe')
             optims.append(optim)
         return optims
     
@@ -224,7 +249,7 @@ class LayerPersonalisationTrainingApp:
                     scheduler.step()
                     # log.debug(self.scheduler.get_last_lr())
 
-            if self.args.site_number > 1:
+            if self.args.site_number > 1 and not self.args.finetuning:
                 self.mergeModels()
 
         if hasattr(self, 'trn_writer'):
@@ -245,18 +270,22 @@ class LayerPersonalisationTrainingApp:
             local_trn_metrics = torch.zeros(2 + 2*self.num_classes, len(trn_dl), device=self.device)
 
             for batch_ndx, batch_tuple in enumerate(trn_dl):
-                self.optims[ndx].zero_grad()
-
-                loss, _ = self.computeBatchLoss(
-                    batch_ndx,
-                    batch_tuple,
-                    self.models[ndx],
-                    local_trn_metrics,
-                    'trn',
-                    ndx)
-
-                loss.backward()
-                self.optims[ndx].step()
+                def closure():
+                    self.optims[ndx].zero_grad()
+                    loss, _ = self.computeBatchLoss(
+                        batch_ndx,
+                        batch_tuple,
+                        self.models[ndx],
+                        local_trn_metrics,
+                        'trn',
+                        ndx)
+                    loss.backward()
+                    return loss
+                if self.args.optimizer_type == 'lbfgs':
+                    self.optims[ndx].step(closure)
+                else:
+                    loss = closure()
+                    self.optims[ndx].step()
 
             loss += local_trn_metrics[-2].sum()
             correct += local_trn_metrics[-1].sum()
@@ -330,7 +359,7 @@ class LayerPersonalisationTrainingApp:
             assert self.args.aug_mode in ['classification', 'segmentation']
             batch = aug_image(batch)
 
-        if self.args.model_name == 'resnet34emb' or self.args.model_name == 'resnet18emb':
+        if self.args.model_name == 'resnet34emb' or self.args.model_name == 'resnet18emb' or self.args.model_name == 'resnet18embhypnn1' or self.args.model_name == 'resnet18embhypnn2':
             pred = model(batch, torch.tensor(site_id, device=self.device, dtype=torch.int))
         else:
             pred = model(batch)
@@ -411,12 +440,16 @@ class LayerPersonalisationTrainingApp:
                 model = model.module
             if self.args.finetuning:
                 state[ndx] = {
-                    'emb_vector':model.state_dict()['embedding.weight'][ndx],
+                    'model_state': model.state_dict(),
                     'trn_labels': trn_dls[ndx].dataset.labels,
                     'val_labels': val_dls[ndx].dataset.labels,
                     'trn_indices': trn_dls[ndx].dataset.indices,
                     'val_indices': val_dls[ndx].dataset.indices
                 }
+                if self.args.model_name == 'resnet18emb':
+                    state[ndx]['emb_vector'] = model.state_dict()['embedding.weight'][ndx]
+                else:
+                    state[ndx]['model_state'] = model.state_dict()
             else:
                 state[ndx] = {
                     'model_state': model.state_dict(),
