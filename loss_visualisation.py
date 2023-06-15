@@ -44,6 +44,7 @@ def visualise_loss(state_dict, model, dl_list, x_min, x_max, x_step, y_min, y_ma
                         pred = model(batch, torch.tensor(0, device=device, dtype=torch.int))
                         loss_values[site_id, x_ndx, y_ndx] += loss_fn(pred, labels).sum()
     return loss_values
+
 def prepare_for_visualisation(model_path):
     loaded_dict = torch.load(model_path)
     state_dict = loaded_dict[0]['model_state']
@@ -59,6 +60,7 @@ def prepare_for_visualisation(model_path):
     axis_mins = torch.amin(emb_vector_list, dim=0)
     axis_maxs = torch.amax(emb_vector_list, dim=0)
     axis_abs = axis_maxs - axis_mins
+    axis_abs = torch.max(axis_abs, torch.ones(axis_abs.shape))
     x_max = center_point[0] + axis_abs[0]
     x_min = center_point[0] - axis_abs[0]
     x_step = (x_max-x_min) / 50
