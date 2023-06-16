@@ -478,8 +478,8 @@ class LayerPersonalisationTrainingApp:
                     state_dict = loaded_dict[0]['model_state']
             else:
                 state_dict = self.models[0].state_dict()
-            if 'embedding.weight' in state_dict:
-                del state_dict['embedding.weight']
+            # if 'embedding.weight' in state_dict:
+            #     del state_dict['embedding.weight']
             for model in self.models:
                 model.load_state_dict(state_dict, strict=False)
         else:
