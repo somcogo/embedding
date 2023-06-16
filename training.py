@@ -197,7 +197,10 @@ class LayerPersonalisationTrainingApp:
         return schedulers
 
     def initDls(self):
-        trn_dls, val_dls = get_dl_lists(dataset=self.args.dataset, partition=self.args.partition, n_site=self.args.site_number, batch_size=self.args.batch_size, alpha=self.args.alpha)
+        index_dict = torch.load('models/saved_index_maps') if self.args.partition == 'given' else None
+        trn_idx_map = index_dict[self.args.site_number][self.args.alpha]['trn'] if index_dict is not None else None
+        val_idx_map = index_dict[self.args.site_number][self.args.alpha]['val'] if index_dict is not None else None
+        trn_dls, val_dls = get_dl_lists(dataset=self.args.dataset, partition=self.args.partition, n_site=self.args.site_number, batch_size=self.args.batch_size, alpha=self.args.alpha, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map)
         return trn_dls, val_dls
 
     def initTensorboardWriters(self):
