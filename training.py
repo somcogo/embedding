@@ -6,6 +6,7 @@ import shutil
 import random
 
 import torch
+from torch import autograd
 import torch.nn as nn
 from torch.optim import Adam, AdamW, SGD, LBFGS
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -142,6 +143,10 @@ class LayerPersonalisationTrainingApp:
                 model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=1)
             elif self.args.model_name == 'resnet18embhypnn2':
                 model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=2)
+            elif self.args.model_name == 'resnet18lightweight1':
+                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=1, lightweight=True)
+            elif self.args.model_name == 'resnet18lightweight2':
+                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=2, lightweight=True)
             elif self.args.model_name == 'resnet34':
                 model = ResNet34Model(num_classes=num_classes, pretrained=self.args.pretrained)
             elif self.args.model_name == 'resnet18':
@@ -273,22 +278,23 @@ class LayerPersonalisationTrainingApp:
             local_trn_metrics = torch.zeros(2 + 2*self.num_classes, len(trn_dl), device=self.device)
 
             for batch_ndx, batch_tuple in enumerate(trn_dl):
-                def closure():
-                    self.optims[ndx].zero_grad()
-                    loss, _ = self.computeBatchLoss(
-                        batch_ndx,
-                        batch_tuple,
-                        self.models[ndx],
-                        local_trn_metrics,
-                        'trn',
-                        ndx)
-                    loss.backward()
-                    return loss
-                if self.args.optimizer_type == 'lbfgs':
-                    self.optims[ndx].step(closure)
-                else:
-                    loss = closure()
-                    self.optims[ndx].step()
+                with torch.autograd.detect_anomaly():
+                    def closure():
+                        self.optims[ndx].zero_grad()
+                        loss, _ = self.computeBatchLoss(
+                            batch_ndx,
+                            batch_tuple,
+                            self.models[ndx],
+                            local_trn_metrics,
+                            'trn',
+                            ndx)
+                        loss.backward()
+                        return loss
+                    if self.args.optimizer_type == 'lbfgs':
+                        self.optims[ndx].step(closure)
+                    else:
+                        loss = closure()
+                        self.optims[ndx].step()
 
             loss += local_trn_metrics[-2].sum()
             correct += local_trn_metrics[-1].sum()
@@ -362,7 +368,7 @@ class LayerPersonalisationTrainingApp:
             assert self.args.aug_mode in ['classification', 'segmentation']
             batch = aug_image(batch)
 
-        if self.args.model_name == 'resnet34emb' or self.args.model_name == 'resnet18emb' or self.args.model_name == 'resnet18embhypnn1' or self.args.model_name == 'resnet18embhypnn2':
+        if not self.args.model_name == 'resnet34' and not self.args.model_name == 'resnet18':
             pred = model(batch, torch.tensor(site_id, device=self.device, dtype=torch.int))
         else:
             pred = model(batch)

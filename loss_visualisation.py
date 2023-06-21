@@ -43,6 +43,7 @@ def visualise_loss(state_dict, model, dl_list, x_min, x_max, x_step, y_min, y_ma
                         model.embedding.weight[0] = torch.nn.Parameter(torch.tensor([x, y], dtype=torch.float, device=device))
                         pred = model(batch, torch.tensor(0, device=device, dtype=torch.int))
                         loss_values[site_id, x_ndx, y_ndx] += loss_fn(pred, labels).sum()
+                break
     return loss_values
 
 def prepare_for_visualisation(model_path):
@@ -67,6 +68,6 @@ def prepare_for_visualisation(model_path):
     y_max = center_point[1] + axis_abs[1]
     y_min = center_point[1] - axis_abs[1]
     y_step = (y_max-y_min) / 50
-    return state_dict, emb_vector_list, val_dls, x_max, x_min, x_step, y_max, y_min, y_step
+    return state_dict, emb_vector_list, val_dls, x_min, x_max, x_step, y_min, y_max, y_step
 
 
