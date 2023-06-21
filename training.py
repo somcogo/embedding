@@ -23,7 +23,7 @@ log.setLevel(logging.INFO)
 # log.setLevel(logging.DEBUG)
 
 class LayerPersonalisationTrainingApp:
-    def __init__(self, sys_argv=None, epochs=None, batch_size=None, logdir=None, lr=None, comment=None, dataset='cifar10', site_number=None, model_name=None, optimizer_type=None, scheduler_mode=None, label_smoothing=None, T_max=None, pretrained=None, aug_mode=None, save_model=None, partition=None, alpha=None, strategy=None, model_path=None, finetuning=False, embed_dim=None):
+    def __init__(self, sys_argv=None, epochs=None, batch_size=None, logdir=None, lr=None, comment=None, dataset='cifar10', site_number=None, model_name=None, optimizer_type=None, scheduler_mode=None, label_smoothing=None, T_max=None, pretrained=None, aug_mode=None, save_model=None, partition=None, alpha=None, strategy=None, model_path=None, finetuning=False, embed_dim=None, also_last_layer=None):
         if sys_argv is None:
             sys_argv = sys.argv[1:]
 
@@ -48,6 +48,7 @@ class LayerPersonalisationTrainingApp:
         parser.add_argument("--strategy", default='all', type=str, help="merging strategy")
         parser.add_argument("--finetuning", default=False, type=bool, help="true if we are finetuning the embeddings on a new site")
         parser.add_argument("--embed_dim", default=2, type=int, help="dimension of the latent space where the site number is mapped")
+        parser.add_argument("--also_last_layer", default=False, type=bool, help="whether to also finetune the last layer")
         parser.add_argument('comment', help="Comment suffix for Tensorboard run.", nargs='?', default='dwlpt')
 
         self.args = parser.parse_args()
@@ -106,6 +107,8 @@ class LayerPersonalisationTrainingApp:
             self.args.finetuning = finetuning
         if embed_dim is not None:
             self.args.embed_dim = embed_dim
+        if also_last_layer is not None:
+            self.args.also_last_layer = also_last_layer
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
@@ -118,7 +121,7 @@ class LayerPersonalisationTrainingApp:
 
         self.models = self.initModels()
         self.mergeModels(is_init=True, model_path=model_path)
-        self.optims = self.initOptimizers(finetuning)
+        self.optims = self.initOptimizers(finetuning, also_last_layer)
         self.schedulers = self.initSchedulers()
         trn_dls, val_dls = self.initDls()
         self.trn_dls = trn_dls
@@ -155,7 +158,7 @@ class LayerPersonalisationTrainingApp:
                 model = model.to(self.device)
         return models
 
-    def initOptimizers(self, finetuning):
+    def initOptimizers(self, finetuning, also_last_layer):
         optims = []
         if self.args.model_name == 'resnet18embhypnn1' or self.args.model_name == 'resnet18embhypnn2':
             weight_decay = 0.1
@@ -163,7 +166,10 @@ class LayerPersonalisationTrainingApp:
             weight_decay = 0.0001
         for model in self.models:
             if finetuning:
-                layer_list = get_layer_list(self.args.model_name, strategy='finetuning')
+                if self.args.model_name == 'resnet18emb' and also_last_layer:
+                    layer_list = get_layer_list(self.args.model_name, strategy='finetuning2')
+                else:
+                    layer_list = get_layer_list(self.args.model_name, strategy='finetuning')
                 params_to_update = []
                 for name, param in model.named_parameters():
                     if name in layer_list:
@@ -478,8 +484,8 @@ class LayerPersonalisationTrainingApp:
                     state_dict = loaded_dict[0]['model_state']
             else:
                 state_dict = self.models[0].state_dict()
-            # if 'embedding.weight' in state_dict:
-            #     del state_dict['embedding.weight']
+            if 'embedding.weight' in state_dict:
+                state_dict['embedding.weight'] = state_dict['embedding.weight'][0].unsqueeze(0).repeat(self.args.site_number, 1)
             for model in self.models:
                 model.load_state_dict(state_dict, strict=False)
         else:
