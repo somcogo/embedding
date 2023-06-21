@@ -133,7 +133,8 @@ class UNetBlock(torch.nn.Module):
         in_channels, out_channels, emb_channels, up=False, down=False, attention=False,
         num_heads=None, channels_per_head=64, dropout=0, skip_scale=1, eps=1e-5,
         resample_filter=[1,1], resample_proj=False, adaptive_scale=True,
-        init=dict(), init_zero=dict(init_weight=0), init_attn=None, use_hypnns=False, version=None
+        init=dict(), init_zero=dict(init_weight=0), init_attn=None, use_hypnns=False, version=None,
+        ffwrd=None, lightweight=None
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -143,6 +144,8 @@ class UNetBlock(torch.nn.Module):
         self.dropout = dropout
         self.skip_scale = skip_scale
         self.adaptive_scale = adaptive_scale
+        self.lightweight = lightweight
+        self.use_hypnns = use_hypnns
 
         self.norm0 = GroupNorm(num_channels=in_channels, eps=eps)
         self.conv0 = Conv2d(in_channels=in_channels, out_channels=out_channels, kernel=3, up=up, down=down, resample_filter=resample_filter, **init)
@@ -151,8 +154,11 @@ class UNetBlock(torch.nn.Module):
         self.conv1 = Conv2d(in_channels=out_channels, out_channels=out_channels, kernel=3, **init_zero)
 
         if use_hypnns:
-            self.ffwrd_w0 = FeedForward(emb_channels, 64, in_channels*out_channels*3*3, version=version)
-            self.ffwrd_w1 = FeedForward(emb_channels, 64, out_channels*out_channels*3*3, version=version)
+            if lightweight:
+                self.ffwrd = ffwrd
+            else:
+                self.ffwrd_w0 = FeedForward(emb_channels, 64, in_channels*out_channels*3*3, version=version)
+                self.ffwrd_w1 = FeedForward(emb_channels, 64, out_channels*out_channels*3*3, version=version)
 
         self.skip = None
         if out_channels != in_channels or up or down:
@@ -167,8 +173,17 @@ class UNetBlock(torch.nn.Module):
     def forward(self, x, emb):
         params = self.affine(emb)
         params = params.repeat(x.shape[0]).view(x.shape[0], -1).unsqueeze(2).unsqueeze(3).to(x.dtype)
-        w0 = self.ffwrd_w0(emb) if hasattr(self, 'ffwrd_w0') else None
-        w1 = self.ffwrd_w1(emb) if hasattr(self, 'ffwrd_w1') else None
+        if self.use_hypnns:
+            if self.lightweight:
+                w = self.ffwrd(emb)
+                w0 = w.repeat([self.in_channels*self.out_channels])
+                w1 = w.repeat([self.out_channels*self.out_channels])
+            else:
+                w0 = self.ffwrd_w0(emb)
+                w1 = self.ffwrd_w1(emb)
+        else:
+            w0 = None
+            w1 = None
 
         orig = x
         x = self.conv0(silu(self.norm0(x)), w0)
