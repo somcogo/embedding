@@ -46,7 +46,7 @@ class Linear(torch.nn.Module):
 class Conv2d(torch.nn.Module):
     def __init__(self,
         in_channels, out_channels, kernel, bias=True, up=False, down=False,
-        resample_filter=[1,1], fused_resample=False, init_mode='kaiming_normal', init_weight=1, init_bias=0,
+        resample_filter=[1,1], fused_resample=False, init_mode='kaiming_normal', init_weight=1, init_bias=0
     ):
         assert not (up and down)
         super().__init__()
@@ -62,8 +62,15 @@ class Conv2d(torch.nn.Module):
         f = f.ger(f).unsqueeze(0).unsqueeze(1) / f.sum().square()
         self.register_buffer('resample_filter', f if up or down else None)
 
-    def forward(self, x):
+    def forward(self, x, hyper_a=None, hyper_b=None):
         w = self.weight.to(x.dtype) if self.weight is not None else None
+        if hyper_a is not None:
+            if len(hyper_a.shape) == 4:
+                w = torch.einsum('klmn,ijmn->ijkl', hyper_a, w)
+            else:
+                w = torch.einsum('jklmn,ijmn->ijkl', hyper_a, w)
+        if hyper_b is not None:
+            w = w + torch.reshape(hyper_b, w.shape).to(x.dtype)
         b = self.bias.to(x.dtype) if self.bias is not None else None
         f = self.resample_filter.to(x.dtype) if self.resample_filter is not None else None
         w_pad = w.shape[-1] // 2 if w is not None else 0
@@ -131,7 +138,9 @@ class UNetBlock(torch.nn.Module):
         in_channels, out_channels, emb_channels, up=False, down=False, attention=False,
         num_heads=None, channels_per_head=64, dropout=0, skip_scale=1, eps=1e-5,
         resample_filter=[1,1], resample_proj=False, adaptive_scale=True,
-        init=dict(), init_zero=dict(init_weight=0), init_attn=None,
+        init=dict(), init_zero=dict(init_weight=0), init_attn=None, use_hypnns=False, version=None,
+        ffwrd=None, lightweight=False, affine_mode=False, ffwrd_a=None,
+        medium_ffwrd=False
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -141,12 +150,41 @@ class UNetBlock(torch.nn.Module):
         self.dropout = dropout
         self.skip_scale = skip_scale
         self.adaptive_scale = adaptive_scale
+        self.lightweight = lightweight
+        self.use_hypnns = use_hypnns
+        self.affine_mode = affine_mode
+        self.medium_ffwrd = medium_ffwrd
 
         self.norm0 = GroupNorm(num_channels=in_channels, eps=eps)
         self.conv0 = Conv2d(in_channels=in_channels, out_channels=out_channels, kernel=3, up=up, down=down, resample_filter=resample_filter, **init)
         self.affine = Linear(in_features=emb_channels, out_features=out_channels*(2 if adaptive_scale else 1), **init)
         self.norm1 = GroupNorm(num_channels=out_channels, eps=eps)
         self.conv1 = Conv2d(in_channels=out_channels, out_channels=out_channels, kernel=3, **init_zero)
+
+        if use_hypnns:
+            if ffwrd is not None:
+                self.ffwrd0 = ffwrd
+                self.ffwrd1 = ffwrd
+            elif medium_ffwrd:
+                self.ffwrd0 = FeedForward(emb_channels, 64, in_channels*3*3, version=version)
+                self.ffwrd1 = FeedForward(emb_channels, 64, out_channels*3*3, version=version)
+            elif lightweight:
+                self.ffwrd0 = FeedForward(emb_channels, 64, 3*3, version=version)
+                self.ffwrd1 = FeedForward(emb_channels, 64, 3*3, version=version)
+            else:
+                self.ffwrd0 = FeedForward(emb_channels, 64, in_channels*out_channels*3*3, version=version)
+                self.ffwrd1 = FeedForward(emb_channels, 64, out_channels*out_channels*3*3, version=version)
+
+            if affine_mode:
+                if ffwrd_a is not None:
+                    self.ffwrd_a0 = ffwrd_a
+                    self.ffwrd_a1 = ffwrd_a
+                elif medium_ffwrd:
+                    self.ffwrd_a0 = FeedForward(emb_channels, 64, in_channels*9*9, version=version)
+                    self.ffwrd_a1 = FeedForward(emb_channels, 64, out_channels*9*9, version=version)
+                else:
+                    self.ffwrd_a0 = FeedForward(emb_channels, 64, 9*9, version=version)
+                    self.ffwrd_a1 = FeedForward(emb_channels, 64, 9*9, version=version)
 
         self.skip = None
         if out_channels != in_channels or up or down:
@@ -159,17 +197,42 @@ class UNetBlock(torch.nn.Module):
             self.proj = Conv2d(in_channels=out_channels, out_channels=out_channels, kernel=1, **init_zero)
 
     def forward(self, x, emb):
-        orig = x
-        x = self.conv0(silu(self.norm0(x)))
+        params = self.affine(emb)
+        params = params.repeat(x.shape[0]).view(x.shape[0], -1).unsqueeze(2).unsqueeze(3).to(x.dtype)
+        if self.use_hypnns:
+            b0 = self.ffwrd0(emb)
+            b1 = self.ffwrd1(emb)
+            if self.medium_ffwrd:
+                b0 = b0.repeat([self.out_channels])
+                b1 = b1.repeat([self.out_channels])
+            elif self.lightweight:
+                b0 = b0.repeat([self.in_channels*self.out_channels])
+                b1 = b1.repeat([self.out_channels*self.out_channels])
 
-        params = self.affine(emb).unsqueeze(2).unsqueeze(3).to(x.dtype)
+            if self.affine_mode:
+                a0 = self.ffwrd_a0(emb)
+                a1 = self.ffwrd_a1(emb)
+                if self.medium_ffwrd:
+                    a0 = a0.reshape(self.in_channels, 3, 3, 3, 3)
+                    a1 = a1.reshape(self.out_channels, 3, 3, 3, 3)
+                else:
+                    a0 = a0.reshape(3, 3, 3, 3)
+                    a1 = a1.reshape(3, 3, 3, 3)
+            else:
+                a0, a1 = None, None
+        else:
+            b0, b1, a0, a1 = None, None, None, None
+
+        orig = x
+        x = self.conv0(silu(self.norm0(x)), hyper_a=a0, hyper_b=b0)
+
         if self.adaptive_scale:
             scale, shift = params.chunk(chunks=2, dim=1)
             x = silu(torch.addcmul(shift, self.norm1(x), scale + 1))
         else:
             x = silu(self.norm1(x.add_(params)))
 
-        x = self.conv1(torch.nn.functional.dropout(x, p=self.dropout, training=self.training))
+        x = self.conv1(torch.nn.functional.dropout(x, p=self.dropout, training=self.training), hyper_a=a1, hyper_b=b1)
         x = x.add_(self.skip(orig) if self.skip is not None else orig)
         x = x * self.skip_scale
 
@@ -180,3 +243,23 @@ class UNetBlock(torch.nn.Module):
             x = self.proj(a.reshape(*x.shape)).add_(x)
             x = x * self.skip_scale
         return x
+
+class FeedForward(torch.nn.Module):
+    def __init__(self, in_channels, hidden_layer, out_channels, version=None):
+        super().__init__()
+        self.version = version
+        
+        if version == 1:
+            self.lin1 = torch.nn.Linear(in_features=in_channels, out_features=out_channels)
+        if version == 2:
+            self.lin1 = torch.nn.Linear(in_features=in_channels, out_features=hidden_layer)
+            self.lin2 = torch.nn.Linear(in_features=hidden_layer, out_features=out_channels)
+    
+    def forward(self, x):
+        if self.version == 1:
+            out = self.lin1(x)
+        if self.version == 2:
+            x = self.lin1(x)
+            x = torch.nn.functional.relu(x)
+            out = self.lin2(x)
+        return out
