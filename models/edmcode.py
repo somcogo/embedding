@@ -62,10 +62,15 @@ class Conv2d(torch.nn.Module):
         f = f.ger(f).unsqueeze(0).unsqueeze(1) / f.sum().square()
         self.register_buffer('resample_filter', f if up or down else None)
 
-    def forward(self, x, extra_w=None):
+    def forward(self, x, hyper_a=None, hyper_b=None):
         w = self.weight.to(x.dtype) if self.weight is not None else None
-        if extra_w is not None:
-            w = w + torch.reshape(extra_w, w.shape).to(x.dtype)
+        if hyper_a is not None:
+            if len(hyper_a.shape) == 4:
+                w = torch.einsum('klmn,ijmn->ijkl', hyper_a, w)
+            else:
+                w = torch.einsum('jklmn,ijmn->ijkl', hyper_a, w)
+        if hyper_b is not None:
+            w = w + torch.reshape(hyper_b, w.shape).to(x.dtype)
         b = self.bias.to(x.dtype) if self.bias is not None else None
         f = self.resample_filter.to(x.dtype) if self.resample_filter is not None else None
         w_pad = w.shape[-1] // 2 if w is not None else 0
@@ -134,7 +139,8 @@ class UNetBlock(torch.nn.Module):
         num_heads=None, channels_per_head=64, dropout=0, skip_scale=1, eps=1e-5,
         resample_filter=[1,1], resample_proj=False, adaptive_scale=True,
         init=dict(), init_zero=dict(init_weight=0), init_attn=None, use_hypnns=False, version=None,
-        ffwrd=None, lightweight=None
+        ffwrd=None, lightweight=False, affine_mode=False, ffwrd_a=None,
+        medium_ffwrd=False
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -146,6 +152,8 @@ class UNetBlock(torch.nn.Module):
         self.adaptive_scale = adaptive_scale
         self.lightweight = lightweight
         self.use_hypnns = use_hypnns
+        self.affine_mode = affine_mode
+        self.medium_ffwrd = medium_ffwrd
 
         self.norm0 = GroupNorm(num_channels=in_channels, eps=eps)
         self.conv0 = Conv2d(in_channels=in_channels, out_channels=out_channels, kernel=3, up=up, down=down, resample_filter=resample_filter, **init)
@@ -154,11 +162,29 @@ class UNetBlock(torch.nn.Module):
         self.conv1 = Conv2d(in_channels=out_channels, out_channels=out_channels, kernel=3, **init_zero)
 
         if use_hypnns:
-            if lightweight:
-                self.ffwrd = ffwrd
+            if ffwrd is not None:
+                self.ffwrd0 = ffwrd
+                self.ffwrd1 = ffwrd
+            elif medium_ffwrd:
+                self.ffwrd0 = FeedForward(emb_channels, 64, in_channels*3*3, version=version)
+                self.ffwrd1 = FeedForward(emb_channels, 64, out_channels*3*3, version=version)
+            elif lightweight:
+                self.ffwrd0 = FeedForward(emb_channels, 64, 3*3, version=version)
+                self.ffwrd1 = FeedForward(emb_channels, 64, 3*3, version=version)
             else:
-                self.ffwrd_w0 = FeedForward(emb_channels, 64, in_channels*out_channels*3*3, version=version)
-                self.ffwrd_w1 = FeedForward(emb_channels, 64, out_channels*out_channels*3*3, version=version)
+                self.ffwrd0 = FeedForward(emb_channels, 64, in_channels*out_channels*3*3, version=version)
+                self.ffwrd1 = FeedForward(emb_channels, 64, out_channels*out_channels*3*3, version=version)
+
+            if affine_mode:
+                if ffwrd_a is not None:
+                    self.ffwrd_a0 = ffwrd_a
+                    self.ffwrd_a1 = ffwrd_a
+                elif medium_ffwrd:
+                    self.ffwrd_a0 = FeedForward(emb_channels, 64, in_channels*9*9, version=version)
+                    self.ffwrd_a1 = FeedForward(emb_channels, 64, out_channels*9*9, version=version)
+                else:
+                    self.ffwrd_a0 = FeedForward(emb_channels, 64, 9*9, version=version)
+                    self.ffwrd_a1 = FeedForward(emb_channels, 64, 9*9, version=version)
 
         self.skip = None
         if out_channels != in_channels or up or down:
@@ -174,19 +200,31 @@ class UNetBlock(torch.nn.Module):
         params = self.affine(emb)
         params = params.repeat(x.shape[0]).view(x.shape[0], -1).unsqueeze(2).unsqueeze(3).to(x.dtype)
         if self.use_hypnns:
-            if self.lightweight:
-                w = self.ffwrd(emb)
-                w0 = w.repeat([self.in_channels*self.out_channels])
-                w1 = w.repeat([self.out_channels*self.out_channels])
+            b0 = self.ffwrd0(emb)
+            b1 = self.ffwrd1(emb)
+            if self.medium_ffwrd:
+                b0 = b0.repeat([self.out_channels])
+                b1 = b1.repeat([self.out_channels])
+            elif self.lightweight:
+                b0 = b0.repeat([self.in_channels*self.out_channels])
+                b1 = b1.repeat([self.out_channels*self.out_channels])
+
+            if self.affine_mode:
+                a0 = self.ffwrd_a0(emb)
+                a1 = self.ffwrd_a1(emb)
+                if self.medium_ffwrd:
+                    a0 = a0.reshape(self.in_channels, 3, 3, 3, 3)
+                    a1 = a1.reshape(self.out_channels, 3, 3, 3, 3)
+                else:
+                    a0 = a0.reshape(3, 3, 3, 3)
+                    a1 = a1.reshape(3, 3, 3, 3)
             else:
-                w0 = self.ffwrd_w0(emb)
-                w1 = self.ffwrd_w1(emb)
+                a0, a1 = None, None
         else:
-            w0 = None
-            w1 = None
+            b0, b1, a0, a1 = None, None, None, None
 
         orig = x
-        x = self.conv0(silu(self.norm0(x)), w0)
+        x = self.conv0(silu(self.norm0(x)), hyper_a=a0, hyper_b=b0)
 
         if self.adaptive_scale:
             scale, shift = params.chunk(chunks=2, dim=1)
@@ -194,7 +232,7 @@ class UNetBlock(torch.nn.Module):
         else:
             x = silu(self.norm1(x.add_(params)))
 
-        x = self.conv1(torch.nn.functional.dropout(x, p=self.dropout, training=self.training), w1)
+        x = self.conv1(torch.nn.functional.dropout(x, p=self.dropout, training=self.training), hyper_a=a1, hyper_b=b1)
         x = x.add_(self.skip(orig) if self.skip is not None else orig)
         x = x * self.skip_scale
 

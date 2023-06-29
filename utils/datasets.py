@@ -1,6 +1,6 @@
 import numpy as np
 from torch.utils.data import Dataset
-from torchvision.datasets import CIFAR10, CIFAR100
+from torchvision.datasets import CIFAR10, CIFAR100, MNIST
 from torchvision.transforms import Compose, ToTensor, Normalize
 
 class TruncatedDataset(Dataset):
@@ -54,5 +54,19 @@ def get_cifar100_datasets(data_dir):
     dataset.targets = np.array(dataset.targets)
     val_dataset = CIFAR100(root=data_dir, train=False, download=True, transform=val_transform)
     val_dataset.targets = np.array(val_dataset.targets)
+
+    return dataset, val_dataset
+
+def get_mnist_datasets(data_dir):
+    mean = 0.1307
+    std = 0.3081
+    transforms = Compose([ToTensor(), Normalize(mean, std)])
+
+    dataset = MNIST(root=data_dir, train=True, download=True, transform=transforms)
+    dataset.targets = np.array(dataset.targets)
+    dataset.data = dataset.data.unsqueeze(dim=1).permute((0, 2, 3, 1))
+    val_dataset = MNIST(root=data_dir, train=False, transform=transforms)
+    val_dataset.targets = np.array(val_dataset.targets)
+    val_dataset.data = val_dataset.data.unsqueeze(dim=1).permute((0, 2, 3 ,1))
 
     return dataset, val_dataset

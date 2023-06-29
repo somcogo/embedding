@@ -21,10 +21,10 @@ from utils.merge_strategies import get_layer_list
 log = logging.getLogger(__name__)
 # log.setLevel(logging.WARN)
 log.setLevel(logging.INFO)
-# log.setLevel(logging.DEBUG)
+log.setLevel(logging.DEBUG)
 
 class LayerPersonalisationTrainingApp:
-    def __init__(self, sys_argv=None, epochs=None, batch_size=None, logdir=None, lr=None, comment=None, dataset='cifar10', site_number=None, model_name=None, optimizer_type=None, scheduler_mode=None, label_smoothing=None, T_max=None, pretrained=None, aug_mode=None, save_model=None, partition=None, alpha=None, strategy=None, model_path=None, finetuning=False, embed_dim=None, also_last_layer=None):
+    def __init__(self, sys_argv=None, epochs=None, batch_size=None, logdir=None, lr=None, comment=None, dataset='cifar10', site_number=None, model_name=None, optimizer_type=None, scheduler_mode=None, label_smoothing=None, T_max=None, pretrained=None, aug_mode=None, save_model=None, partition=None, alpha=None, strategy=None, model_path=None, finetuning=False, embed_dim=None, also_last_layer=None, embedding_lr=None, ffwrd_lr=None):
         if sys_argv is None:
             sys_argv = sys.argv[1:]
 
@@ -122,7 +122,7 @@ class LayerPersonalisationTrainingApp:
 
         self.models = self.initModels()
         self.mergeModels(is_init=True, model_path=model_path)
-        self.optims = self.initOptimizers(finetuning, also_last_layer)
+        self.optims = self.initOptimizers(finetuning, also_last_layer, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
         trn_dls, val_dls = self.initDls()
         self.trn_dls = trn_dls
@@ -131,29 +131,43 @@ class LayerPersonalisationTrainingApp:
     def initModels(self):
         if self.args.dataset == 'cifar10':
             num_classes = 10
+            in_channels = 3
         elif self.args.dataset == 'cifar100':
             num_classes = 100
+            in_channels = 3
         elif self.args.dataset == 'pascalvoc':
             num_classes = 21
+            in_channels = 3
+        elif self.args.dataset == 'mnist':
+            num_classes = 10
+            in_channels = 1
         self.num_classes = num_classes
         models = []
         for _ in range(self.args.site_number):
             if self.args.model_name == 'resnet34emb':
-                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[3, 4, 6, 3], site_number=self.args.site_number, embed_dim=self.args.embed_dim)
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[3, 4, 6, 3], site_number=self.args.site_number, embed_dim=self.args.embed_dim)
             elif self.args.model_name == 'resnet18emb':
-                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim)
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim)
             elif self.args.model_name == 'resnet18embhypnn1':
-                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=1)
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=1)
             elif self.args.model_name == 'resnet18embhypnn2':
-                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=2)
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=2)
             elif self.args.model_name == 'resnet18lightweight1':
-                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=1, lightweight=True)
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=1, lightweight=True)
             elif self.args.model_name == 'resnet18lightweight2':
-                model = ResNetWithEmbeddings(num_classes=num_classes, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=2, lightweight=True)
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=2, lightweight=True)
+            elif self.args.model_name == 'resnet18affine1':
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=1, lightweight=True, affine=True)
+            elif self.args.model_name == 'resnet18affine2':
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=2, lightweight=True, affine=True)
+            elif self.args.model_name == 'resnet18medium1':
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=1, lightweight=True, affine=True, medium_ffwrd=True)
+            elif self.args.model_name == 'resnet18medium2':
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.args.site_number, embed_dim=self.args.embed_dim, use_hypnns=True, version=2, lightweight=True, affine=True, medium_ffwrd=True)
             elif self.args.model_name == 'resnet34':
-                model = ResNet34Model(num_classes=num_classes, pretrained=self.args.pretrained)
+                model = ResNet34Model(num_classes=num_classes, in_channels=in_channels, pretrained=self.args.pretrained)
             elif self.args.model_name == 'resnet18':
-                model = ResNet18Model(num_classes=num_classes, pretrained=self.args.pretrained)
+                model = ResNet18Model(num_classes=num_classes, in_channels=in_channels, pretrained=self.args.pretrained)
             models.append(model)
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
@@ -163,10 +177,10 @@ class LayerPersonalisationTrainingApp:
                 model = model.to(self.device)
         return models
 
-    def initOptimizers(self, finetuning, also_last_layer):
+    def initOptimizers(self, finetuning, also_last_layer, embedding_lr=None, ffwrd_lr=None):
         optims = []
-        if self.args.model_name == 'resnet18embhypnn1' or self.args.model_name == 'resnet18embhypnn2':
-            weight_decay = 0.1
+        if self.args.model_name == 'resnet18embhypnn1' or self.args.model_name == 'resnet18embhypnn2' or self.args.model_name == 'resnet18lightweight1' or self.args.model_name == 'resnet18lightweight2':
+            weight_decay = 1
         else:
             weight_decay = 0.0001
         for model in self.models:
@@ -182,10 +196,16 @@ class LayerPersonalisationTrainingApp:
                     else:
                         param.requires_grad = False
             else:
-                params_to_update = model.parameters()
+                all_names = [name for name, _ in model.named_parameters()]
+                embedding_names = [name for name in all_names if name.split('.')[0] == 'embedding'] if embedding_lr is not None else []
+                ffwrd_names = [name for name in all_names if 'ffwrd' in name] if ffwrd_lr is not None else []
+                params_to_update = []
+                params_to_update.append({'params':[param for name, param in model.named_parameters() if name in embedding_names], 'lr':embedding_lr})
+                params_to_update.append({'params':[param for name, param in model.named_parameters() if name in ffwrd_names], 'lr':ffwrd_lr})
+                params_to_update.append({'params':[param for name, param in model.named_parameters() if not name in embedding_names and not name in ffwrd_names]})
 
             if self.args.optimizer_type == 'adam':
-                optim = Adam(params=params_to_update, lr=self.args.lr)
+                optim = Adam(params=params_to_update, lr=self.args.lr, weight_decay=weight_decay)
             elif self.args.optimizer_type == 'adamw':
                 optim = AdamW(params=params_to_update, lr=self.args.lr, weight_decay=0.05)
             elif self.args.optimizer_type == 'sgd':
@@ -284,23 +304,39 @@ class LayerPersonalisationTrainingApp:
             local_trn_metrics = torch.zeros(2 + 2*self.num_classes, len(trn_dl), device=self.device)
 
             for batch_ndx, batch_tuple in enumerate(trn_dl):
-                with torch.autograd.detect_anomaly():
-                    def closure():
-                        self.optims[ndx].zero_grad()
-                        loss, _ = self.computeBatchLoss(
-                            batch_ndx,
-                            batch_tuple,
-                            self.models[ndx],
-                            local_trn_metrics,
-                            'trn',
-                            ndx)
-                        loss.backward()
-                        return loss
-                    if self.args.optimizer_type == 'lbfgs':
-                        self.optims[ndx].step(closure)
-                    else:
-                        loss = closure()
-                        self.optims[ndx].step()
+                # try:
+                #     with torch.autograd.detect_anomaly():
+                        def closure():
+                            self.optims[ndx].zero_grad()
+                            loss, _ = self.computeBatchLoss(
+                                batch_ndx,
+                                batch_tuple,
+                                self.models[ndx],
+                                local_trn_metrics,
+                                'trn',
+                                ndx)
+                            loss.backward()
+                            return loss
+                        if self.args.optimizer_type == 'lbfgs':
+                            self.optims[ndx].step(closure)
+                        else:
+                            loss = closure()
+                            self.optims[ndx].step()
+                # except:
+                #     print('epoch', epoch_ndx, 'batch', batch_ndx)
+                    # for name, param in self.models[ndx].named_parameters():
+                    #     if param.grad is None:
+                    #         print(name, 'None')
+                    #     elif param.grad.norm()>1000:
+                    #         print(name, param.grad.norm())
+                #     raise
+                # finally:
+                #     print('epoch', epoch_ndx, 'batch', batch_ndx)
+                #     for name, param in self.models[ndx].named_parameters():
+                #         if param is None:
+                #             print(name, 'None')
+                #         elif param.norm()>10000:
+                #             print(name, param.norm())
 
             loss += local_trn_metrics[-2].sum()
             correct += local_trn_metrics[-1].sum()
@@ -495,7 +531,8 @@ class LayerPersonalisationTrainingApp:
             for model in self.models:
                 model.load_state_dict(state_dict, strict=False)
         else:
-            layer_list = get_layer_list(model=self.args.model_name, strategy=self.args.strategy)
+            original_list = [name for name, _ in self.models[0].named_parameters()]
+            layer_list = get_layer_list(model=self.args.model_name, strategy=self.args.strategy, original_list=original_list)
             state_dicts = [model.state_dict() for model in self.models]
             param_dict = {layer: torch.zeros(state_dicts[0][layer].shape, device=self.device) for layer in layer_list}
 

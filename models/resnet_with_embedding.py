@@ -4,7 +4,7 @@ from torch import nn
 from .edmcode import UNetBlock, FeedForward
 
 class ResNetWithEmbeddings(nn.Module):
-    def __init__(self, num_classes, in_channels=3, embed_dim=2, layers=[3, 4, 6, 3], site_number=1, use_hypnns=False, version=None, lightweight=None):
+    def __init__(self, num_classes, in_channels=3, embed_dim=2, layers=[3, 4, 6, 3], site_number=1, use_hypnns=False, version=None, lightweight=False, affine=False, medium_ffwrd=False, extra_lightweight=False):
         super().__init__()
 
         self.embedding = nn.Embedding(site_number, embedding_dim=embed_dim)
@@ -14,26 +14,34 @@ class ResNetWithEmbeddings(nn.Module):
         self.relu = nn.ReLU()
         self.pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
-        self.ffwrd0 = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=3*3, version=version) if lightweight else None
-        self.ffwrd1 = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=3*3, version=version) if lightweight else None
-        self.ffwrd2 = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=3*3, version=version) if lightweight else None
-        self.ffwrd3 = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=3*3, version=version) if lightweight else None
+        self.ffwrd0 = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=9, version=version) if extra_lightweight else None
+        self.ffwrd1 = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=9, version=version) if extra_lightweight else None
+        self.ffwrd2 = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=9, version=version) if extra_lightweight else None
+        self.ffwrd3 = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=9, version=version) if extra_lightweight else None
 
-        self.layer0 = self._make_layer(layers[0], in_channels=64, out_channels=64, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd0)
-        self.layer1 = self._make_layer(layers[1], in_channels=64, out_channels=128, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd1)
-        self.layer2 = self._make_layer(layers[2], in_channels=128, out_channels=256, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd2)
-        self.layer3 = self._make_layer(layers[3], in_channels=256, out_channels=512, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd3)
+        self.ffwrd_a0 = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=9*9, version=version) if extra_lightweight else None
+        self.ffwrd_a1 = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=9*9, version=version) if extra_lightweight else None
+        self.ffwrd_a2 = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=9*9, version=version) if extra_lightweight else None
+        self.ffwrd_a3 = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=9*9, version=version) if extra_lightweight else None
+
+        self.layer0 = self._make_layer(layers[0], in_channels=64, out_channels=64,  embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd0, affine=affine, ffwrd_a=self.ffwrd_a0, medium_ffwrd=medium_ffwrd)
+
+        self.layer1 = self._make_layer(layers[1], in_channels=64, out_channels=128, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd1, affine=affine, ffwrd_a=self.ffwrd_a1, medium_ffwrd=medium_ffwrd)
+    
+        self.layer2 = self._make_layer(layers[2], in_channels=128, out_channels=256, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd2, affine=affine, ffwrd_a=self.ffwrd_a2, medium_ffwrd=medium_ffwrd)
+
+        self.layer3 = self._make_layer(layers[3], in_channels=256, out_channels=512, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd3, affine=affine, ffwrd_a=self.ffwrd_a3, medium_ffwrd=medium_ffwrd)
 
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
         self.fc = nn.Linear(512, num_classes)
 
-    def _make_layer(self, depth, in_channels, out_channels, embed_dim, use_hypnns=False, version=None, lightweight=None, ffwrd=None):
+    def _make_layer(self, depth, in_channels, out_channels, embed_dim, use_hypnns=False, version=None, lightweight=None, ffwrd=None, affine=None, ffwrd_a=None, medium_ffwrd=False):
         
         blocks = nn.ModuleList()
-        blocks.append(UNetBlock(in_channels=in_channels, out_channels=out_channels, emb_channels=embed_dim, use_hypnns=use_hypnns, version=version, ffwrd=ffwrd, lightweight=lightweight))
+        blocks.append(UNetBlock(in_channels=in_channels, out_channels=out_channels, emb_channels=embed_dim, use_hypnns=use_hypnns, version=version, ffwrd=ffwrd, lightweight=lightweight, affine_mode=affine, ffwrd_a=ffwrd_a, medium_ffwrd=medium_ffwrd))
 
         for _ in range(1, depth):
-            blocks.append(UNetBlock(in_channels=out_channels, out_channels=out_channels, emb_channels=embed_dim, use_hypnns=use_hypnns, version=version, ffwrd=ffwrd, lightweight=lightweight))
+            blocks.append(UNetBlock(in_channels=out_channels, out_channels=out_channels, emb_channels=embed_dim, use_hypnns=use_hypnns, version=version, ffwrd=ffwrd, lightweight=lightweight, affine_mode=affine, ffwrd_a=ffwrd_a, medium_ffwrd=medium_ffwrd))
 
         return blocks
 
