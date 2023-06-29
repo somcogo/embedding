@@ -62,9 +62,7 @@ class LayerPersonalisationTrainingApp:
         self.mergeModels(is_init=True, model_path=model_path)
         self.optims = self.initOptimizers(lr, finetuning, also_last_layer, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
-        trn_dls, val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha)
-        self.trn_dls = trn_dls
-        self.val_dls = val_dls
+        self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha)
 
     def initModels(self, embed_dim):
         if self.dataset == 'cifar10':
@@ -120,14 +118,14 @@ class LayerPersonalisationTrainingApp:
         # if self.model_name == 'resnet18embhypnn1' or self.model_name == 'resnet18embhypnn2' or self.model_name == 'resnet18lightweight1' or self.model_name == 'resnet18lightweight2':
         #     weight_decay = 1
         # else:
-        weight_decay = 0.0001
+        weight_decay = 0.
         for model in self.models:
+            params_to_update = []
             if finetuning:
                 if self.model_name == 'resnet18emb' and also_last_layer:
                     layer_list = get_layer_list(self.model_name, strategy='finetuning2')
                 else:
                     layer_list = get_layer_list(self.model_name, strategy='finetuning')
-                params_to_update = []
                 for name, param in model.named_parameters():
                     if name in layer_list:
                         params_to_update.append(param)
@@ -135,7 +133,6 @@ class LayerPersonalisationTrainingApp:
                         param.requires_grad = False
             else:
                 all_names = [name for name, _ in model.named_parameters()]
-                params_to_update = []
                 if embedding_lr is not None:
                     embedding_names = [name for name in all_names if name.split('.')[0] == 'embedding']
                     params_to_update.append({'params':[param for name, param in model.named_parameters() if name in embedding_names], 'lr':embedding_lr})
@@ -147,7 +144,6 @@ class LayerPersonalisationTrainingApp:
                 else:
                     ffwrd_names = []
                 params_to_update.append({'params':[param for name, param in model.named_parameters() if not name in embedding_names and not name in ffwrd_names]})
-                # params_to_update = model.parameters()
 
             if self.optimizer_type == 'adam':
                 optim = Adam(params=params_to_update, lr=lr, weight_decay=weight_decay)
