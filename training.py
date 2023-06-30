@@ -200,15 +200,23 @@ class LayerPersonalisationTrainingApp:
                         param.requires_grad = False
             else:
                 all_names = [name for name, _ in model.named_parameters()]
-                embedding_names = [name for name in all_names if name.split('.')[0] == 'embedding'] if embedding_lr is not None else []
-                ffwrd_names = [name for name in all_names if 'ffwrd' in name] if ffwrd_lr is not None else []
                 params_to_update = []
-                params_to_update.append({'params':[param for name, param in model.named_parameters() if name in embedding_names], 'lr':embedding_lr})
-                params_to_update.append({'params':[param for name, param in model.named_parameters() if name in ffwrd_names], 'lr':ffwrd_lr})
+                if embedding_lr is not None:
+                    embedding_names = [name for name in all_names if name.split('.')[0] == 'embedding'] if embedding_lr is not None else []
+                    params_to_update.append({'params':[param for name, param in model.named_parameters() if name in embedding_names], 'lr':embedding_lr})
+                else:
+                    embedding_names = []
+                if ffwrd_lr is not None:
+                    ffwrd_names = [name for name in all_names if 'ffwrd' in name] if ffwrd_lr is not None else []
+                    params_to_update.append({'params':[param for name, param in model.named_parameters() if name in ffwrd_names], 'lr':ffwrd_lr})
+                else:
+                    ffwrd_names = []
                 params_to_update.append({'params':[param for name, param in model.named_parameters() if not name in embedding_names and not name in ffwrd_names]})
 
             if self.args.optimizer_type == 'adam':
                 optim = Adam(params=params_to_update, lr=self.args.lr, weight_decay=weight_decay)
+            elif self.args.optimizer_type == 'newadam':
+                optim = Adam(params=params_to_update, lr=self.args.lr, weight_decay=weight_decay, betas=(0.5, 0.9))
             elif self.args.optimizer_type == 'adamw':
                 optim = AdamW(params=params_to_update, lr=self.args.lr, weight_decay=0.05)
             elif self.args.optimizer_type == 'sgd':
