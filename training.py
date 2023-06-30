@@ -21,7 +21,7 @@ from utils.merge_strategies import get_layer_list
 log = logging.getLogger(__name__)
 # log.setLevel(logging.WARN)
 log.setLevel(logging.INFO)
-log.setLevel(logging.DEBUG)
+# log.setLevel(logging.DEBUG)
 
 class LayerPersonalisationTrainingApp:
     def __init__(self, sys_argv=None, epochs=None, batch_size=None, logdir=None, lr=None, comment=None, dataset='cifar10', site_number=None, model_name=None, optimizer_type=None, scheduler_mode=None, label_smoothing=None, T_max=None, pretrained=None, aug_mode=None, save_model=None, partition=None, alpha=None, strategy=None, model_path=None, finetuning=False, embed_dim=None, also_last_layer=None, embedding_lr=None, ffwrd_lr=None):
@@ -141,6 +141,9 @@ class LayerPersonalisationTrainingApp:
         elif self.args.dataset == 'mnist':
             num_classes = 10
             in_channels = 1
+        elif self.args.dataset == 'imagenet':
+            num_classes = 200
+            in_channels = 3
         self.num_classes = num_classes
         models = []
         for _ in range(self.args.site_number):

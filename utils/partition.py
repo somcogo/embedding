@@ -3,7 +3,7 @@ import random
 
 import numpy as np
 
-from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets
+from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, get_image_net_dataset
 
 def partition(data_dir, dataset, partition, n_sites, alpha=None):
 
@@ -29,6 +29,9 @@ def partition_by_class(data_dir, dataset, n_sites):
         num = K // n_sites
     elif dataset == 'pascalvoc':
         K = 20
+        num = K // n_sites
+    elif dataset == 'imagenet':
+        K = 200
         num = K // n_sites
 
     # -------------------------------------------#
@@ -109,6 +112,8 @@ def partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha):
         train_ds, test_ds = get_cifar100_datasets(data_dir)
     if dataset == 'mnist':
         train_ds, test_ds = get_mnist_datasets(data_dir)
+    if dataset == 'imagenet':
+        train_ds, test_ds = get_image_net_dataset(data_dir)
     y_train = train_ds.targets
     y_test = test_ds.targets
 
@@ -122,6 +127,8 @@ def partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha):
         K = 20
     elif dataset == 'mnist':
         K = 10
+    elif dataset == 'imagenet':
+        K = 200
 
     N_train = len(y_train)
     net_dataidx_map_train = {}
