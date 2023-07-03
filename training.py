@@ -182,10 +182,10 @@ class LayerPersonalisationTrainingApp:
 
     def initOptimizers(self, finetuning, also_last_layer, embedding_lr=None, ffwrd_lr=None):
         optims = []
-        if self.args.model_name == 'resnet18embhypnn1' or self.args.model_name == 'resnet18embhypnn2' or self.args.model_name == 'resnet18lightweight1' or self.args.model_name == 'resnet18lightweight2':
-            weight_decay = 1
-        else:
-            weight_decay = 0.0001
+        # if self.args.model_name == 'resnet18embhypnn1' or self.args.model_name == 'resnet18embhypnn2' or self.args.model_name == 'resnet18lightweight1' or self.args.model_name == 'resnet18lightweight2':
+        #     weight_decay = 1
+        # else:
+        weight_decay = 0.0001
         for model in self.models:
             if finetuning:
                 if self.args.model_name == 'resnet18emb' and also_last_layer:
@@ -418,8 +418,7 @@ class LayerPersonalisationTrainingApp:
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
 
         if mode == 'trn':
-            assert self.args.aug_mode in ['classification', 'segmentation']
-            batch = aug_image(batch)
+            batch = aug_image(batch, self.args.dataset)
 
         if not self.args.model_name == 'resnet34' and not self.args.model_name == 'resnet18':
             pred = model(batch, torch.tensor(site_id, device=self.device, dtype=torch.int))
