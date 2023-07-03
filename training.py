@@ -16,7 +16,7 @@ from utils.merge_strategies import get_layer_list
 log = logging.getLogger(__name__)
 # log.setLevel(logging.WARN)
 log.setLevel(logging.INFO)
-# log.setLevel(logging.DEBUG)
+# # log.setLevel(logging.DEBUG)
 
 class LayerPersonalisationTrainingApp:
     def __init__(self, epochs=2, batch_size=128, logdir='test', lr=1e-4,
@@ -160,7 +160,7 @@ class LayerPersonalisationTrainingApp:
         return schedulers
 
     def initDls(self, batch_size, partition, alpha):
-        index_dict = torch.load('models/saved_index_maps') if partition == 'given' else None
+        index_dict = torch.load('models/{}_saved_index_maps.pt'.format(self.args.dataset)) if self.args.partition == 'given' else None
         trn_idx_map = index_dict[self.site_number][alpha]['trn'] if index_dict is not None else None
         val_idx_map = index_dict[self.site_number][alpha]['val'] if index_dict is not None else None
         trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map)
@@ -208,7 +208,8 @@ class LayerPersonalisationTrainingApp:
                 if self.save_model and (accuracy==saving_criterion or self.finetuning):
                     self.saveModel(epoch_ndx, val_metrics, trn_dls, val_dls)
 
-                log.info('Epoch {} of {}, accuracy/miou {}, val loss {}'.format(epoch_ndx, self.epochs, accuracy, loss))
+                if epoch_ndx < 501 or epoch_ndx % 100 == 0:
+                    log.info('Epoch {} of {}, accuracy/miou {}, val loss {}'.format(epoch_ndx, self.args.epochs, accuracy, loss))
             
             if self.scheduler_mode == 'cosine':
                 for scheduler in self.schedulers:

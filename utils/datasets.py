@@ -1,7 +1,11 @@
+import os
+
 import numpy as np
+import torch
 from torch.utils.data import Dataset
 from torchvision.datasets import CIFAR10, CIFAR100, MNIST
 from torchvision.transforms import Compose, ToTensor, Normalize
+import h5py
 
 class TruncatedDataset(Dataset):
     def __init__(self, dataset, dataset_name, indices=None):
@@ -26,6 +30,21 @@ class TruncatedDataset(Dataset):
         img = self.data[index]
         label = self.labels[index]
         return img, label
+
+class ImageNetDataSet(Dataset):
+    def __init__(self, data_dir, mode):
+        super().__init__()
+        h5_file = h5py.File(os.path.join(data_dir, 'tiny_imagenet_{}.hdf5'.format(mode)), 'r')
+        self.data = np.array(h5_file['data'])
+        self.targets = np.array(h5_file['labels'])
+
+    def __len__(self):
+        return self.data.shape[0]
+    
+    def __getitem__(self, index):
+        img = torch.from_numpy(self.data[index]).permute(2, 0, 1)
+        target = self.targets[index]
+        return img, target
 
 def get_cifar10_datasets(data_dir):
     train_mean = [0.4914, 0.4822, 0.4465]
@@ -69,4 +88,9 @@ def get_mnist_datasets(data_dir):
     val_dataset.targets = np.array(val_dataset.targets)
     val_dataset.data = val_dataset.data.unsqueeze(dim=1).permute((0, 2, 3 ,1))
 
+    return dataset, val_dataset
+
+def get_image_net_dataset(data_dir):
+    dataset = ImageNetDataSet(data_dir=data_dir, mode='trn')
+    val_dataset = ImageNetDataSet(data_dir=data_dir, mode='val')
     return dataset, val_dataset

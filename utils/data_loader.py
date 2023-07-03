@@ -1,6 +1,6 @@
 from torch.utils.data import DataLoader
 
-from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, TruncatedDataset
+from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, get_image_net_dataset, TruncatedDataset
 from .partition import partition_by_class, partition_with_dirichlet_distribution
 
 data_path = 'data/'
@@ -12,6 +12,8 @@ def get_datasets(data_dir, dataset):
         trn_dataset, val_dataset = get_cifar100_datasets(data_dir=data_dir)
     elif dataset == 'mnist':
         trn_dataset, val_dataset = get_mnist_datasets(data_dir=data_dir)
+    elif dataset == 'imagenet':
+        trn_dataset, val_dataset = get_image_net_dataset(data_dir=data_dir)
     return trn_dataset, val_dataset
 
 def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, use_hdf5=True, net_dataidx_map_train=None, net_dataidx_map_test=None):
