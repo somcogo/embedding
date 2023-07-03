@@ -1,12 +1,7 @@
-import sys
-import argparse
 import os
 import datetime
-import shutil
-import random
 
 import torch
-from torch import autograd
 import torch.nn as nn
 from torch.optim import Adam, AdamW, SGD, LBFGS
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -14,7 +9,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from models.model import ResNetWithEmbeddings, ResNet34Model, ResNet18Model
 from utils.logconf import logging
-from utils.data_loader import get_cifar10_dl, get_cifar100_dl, get_dl_lists
+from utils.data_loader import get_dl_lists
 from utils.ops import aug_image
 from utils.merge_strategies import get_layer_list
 
@@ -30,8 +25,7 @@ class LayerPersonalisationTrainingApp:
                  scheduler_mode=None, pretrained=False, T_max=500,
                  label_smoothing=0.0, save_model=False, partition='regular',
                  alpha=None, strategy='all', finetuning=False, embed_dim=2,
-                 model_path=None, also_last_layer=False, embedding_lr=None,
-                 ffwrd_lr=None):
+                 model_path=None, embedding_lr=None, ffwrd_lr=None):
 
         self.epochs = epochs
         self.logdir_name = logdir
@@ -60,7 +54,7 @@ class LayerPersonalisationTrainingApp:
 
         self.models = self.initModels(embed_dim=embed_dim)
         self.mergeModels(is_init=True, model_path=model_path)
-        self.optims = self.initOptimizers(lr, finetuning, also_last_layer, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
+        self.optims = self.initOptimizers(lr, finetuning, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
         self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha)
 
@@ -77,6 +71,9 @@ class LayerPersonalisationTrainingApp:
         elif self.dataset == 'mnist':
             num_classes = 10
             in_channels = 1
+        elif self.dataset == 'imagenet':
+            num_classes = 200
+            in_channels = 3
         self.num_classes = num_classes
         models = []
         for _ in range(self.site_number):
@@ -113,19 +110,13 @@ class LayerPersonalisationTrainingApp:
                 model = model.to(self.device)
         return models
 
-    def initOptimizers(self, lr, finetuning, also_last_layer, embedding_lr=None, ffwrd_lr=None):
+    def initOptimizers(self, lr, finetuning, embedding_lr=None, ffwrd_lr=None):
         optims = []
-        # if self.model_name == 'resnet18embhypnn1' or self.model_name == 'resnet18embhypnn2' or self.model_name == 'resnet18lightweight1' or self.model_name == 'resnet18lightweight2':
-        #     weight_decay = 1
-        # else:
         weight_decay = 0.
         for model in self.models:
             params_to_update = []
             if finetuning:
-                if self.model_name == 'resnet18emb' and also_last_layer:
-                    layer_list = get_layer_list(self.model_name, strategy='finetuning2')
-                else:
-                    layer_list = get_layer_list(self.model_name, strategy='finetuning')
+                layer_list = get_layer_list(self.model_name, strategy='finetuning')
                 for name, param in model.named_parameters():
                     if name in layer_list:
                         params_to_update.append(param)
@@ -133,16 +124,14 @@ class LayerPersonalisationTrainingApp:
                         param.requires_grad = False
             else:
                 all_names = [name for name, _ in model.named_parameters()]
+                embedding_names = []
+                ffwrd_names = []
                 if embedding_lr is not None:
                     embedding_names = [name for name in all_names if name.split('.')[0] == 'embedding']
                     params_to_update.append({'params':[param for name, param in model.named_parameters() if name in embedding_names], 'lr':embedding_lr})
-                else:
-                    embedding_names = []
                 if ffwrd_lr is not None:
                     ffwrd_names = [name for name in all_names if 'ffwrd' in name]
                     params_to_update.append({'params':[param for name, param in model.named_parameters() if name in ffwrd_names], 'lr':ffwrd_lr})
-                else:
-                    ffwrd_names = []
                 params_to_update.append({'params':[param for name, param in model.named_parameters() if not name in embedding_names and not name in ffwrd_names]})
 
             if self.optimizer_type == 'adam':
