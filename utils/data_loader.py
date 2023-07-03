@@ -5,23 +5,7 @@ from .partition import partition_by_class, partition_with_dirichlet_distribution
 
 data_path = 'data/'
 
-def get_cifar10_dl(partition, n_sites, batch_size):
-    if partition == 'regular':
-        dataset, val_dataset = get_cifar10_datasets(data_path)
-
-    train_dl = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, drop_last=False)
-    val_dl = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=False, drop_last=False)
-    return train_dl, val_dl
-
-def get_cifar100_dl(partition, n_sites, batch_size):
-    if partition == 'regular':
-        dataset, val_dataset = get_cifar100_datasets(data_path)
-
-    train_dl = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, drop_last=False)
-    val_dl = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=False, drop_last=False)
-    return train_dl, val_dl
-
-def get_datasets(data_dir, dataset, use_hdf5=None):
+def get_datasets(data_dir, dataset):
     if dataset == 'cifar10':
         trn_dataset, val_dataset = get_cifar10_datasets(data_dir=data_dir)
     elif dataset == 'cifar100':
