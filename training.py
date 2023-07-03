@@ -287,7 +287,8 @@ class LayerPersonalisationTrainingApp:
                 if self.args.save_model and (accuracy==saving_criterion or self.args.finetuning):
                     self.saveModel(epoch_ndx, val_metrics, trn_dls, val_dls)
 
-                log.info('Epoch {} of {}, accuracy/miou {}, val loss {}'.format(epoch_ndx, self.args.epochs, accuracy, loss))
+                if epoch_ndx < 501 or epoch_ndx % 100 == 0:
+                    log.info('Epoch {} of {}, accuracy/miou {}, val loss {}'.format(epoch_ndx, self.args.epochs, accuracy, loss))
             
             if self.args.scheduler_mode == 'cosine':
                 for scheduler in self.schedulers:
