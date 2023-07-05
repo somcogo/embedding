@@ -235,13 +235,7 @@ class UNetBlock(torch.nn.Module):
         x = self.conv1(torch.nn.functional.dropout(x, p=self.dropout, training=self.training), hyper_a=a1, hyper_b=b1)
         x = x.add_(self.skip(orig) if self.skip is not None else orig)
         x = x * self.skip_scale
-
-        if self.num_heads:
-            q, k, v = self.qkv(self.norm2(x)).reshape(x.shape[0] * self.num_heads, x.shape[1] // self.num_heads, 3, -1).unbind(2)
-            w = AttentionOp.apply(q, k)
-            a = torch.einsum('nqk,nck->ncq', w, v)
-            x = self.proj(a.reshape(*x.shape)).add_(x)
-            x = x * self.skip_scale
+        
         return x
 
 class FeedForward(torch.nn.Module):

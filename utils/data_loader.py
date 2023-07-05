@@ -16,8 +16,8 @@ def get_datasets(data_dir, dataset):
         trn_dataset, val_dataset = get_image_net_dataset(data_dir=data_dir)
     return trn_dataset, val_dataset
 
-def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, use_hdf5=True, net_dataidx_map_train=None, net_dataidx_map_test=None):
-    trn_dataset, val_dataset = get_datasets(data_dir=data_path, dataset=dataset, use_hdf5=use_hdf5)
+def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, net_dataidx_map_train=None, net_dataidx_map_test=None):
+    trn_dataset, val_dataset = get_datasets(data_dir=data_path, dataset=dataset)
 
     if partition == 'regular':
         trn_ds_list = [TruncatedDataset(trn_dataset, dataset) for _ in range(n_site)]
