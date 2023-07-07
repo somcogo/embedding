@@ -262,7 +262,7 @@ class GaussianMixture(torch.nn.Module):
             mu = self.mu
             var = self.var
 
-            precision = torch.inverse(var)
+            precision = torch.inverse(var).to(device=x.device)
             d = x.shape[-1]
 
             log_2pi = d * np.log(2. * pi)
@@ -313,7 +313,6 @@ class GaussianMixture(torch.nn.Module):
             log_resp:       torch.Tensor (n, k, 1)
         """
         x = self.check_size(x)
-
         weighted_log_prob = self._estimate_log_prob(x) + torch.log(self.pi)
 
         log_prob_norm = torch.logsumexp(weighted_log_prob, dim=1, keepdim=True)

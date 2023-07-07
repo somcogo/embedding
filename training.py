@@ -462,21 +462,23 @@ class LayerPersonalisationTrainingApp:
     
     def fitGMM(self, epoch_ndx):
         trn_vectors, val_vectors = self.extractEmbeddingVectors()
+        trn_vectors = trn_vectors.to(device=self.device)
+        val_vectors = val_vectors.to(device=self.device)
         trn_img_indices, val_img_indices = self.getImageIndicesBySite()
 
         state = {'trn':{}, 'val':{}}
         for i, indices in enumerate(trn_img_indices):
-            self.trn_gmms[i].fit(trn_vectors[indices])
+            self.trn_gmms[i].fit(trn_vectors[indices], warm_start=True)
             state['trn'][i] = {'vectors':trn_vectors[indices],
                                'pred':self.trn_gmms[i].predict(trn_vectors),
-                               'mu':self.trn_gmms[i].mu,
-                               'var':self.trn_gmms[i].var}
+                               'mu':self.trn_gmms[i].mu.detach().cpu(),
+                               'var':self.trn_gmms[i].var.detach().cpu()}
         for i, indices in enumerate(val_img_indices):
-            self.val_gmms[i].fit(val_vectors[indices])
+            self.val_gmms[i].fit(val_vectors[indices], warm_start=True)
             state['val'][i] = {'vectors':val_vectors[indices],
                                'pred':self.val_gmms[i].predict(val_vectors),
-                               'mu':self.val_gmms[i].mu,
-                               'var':self.val_gmms[i].var}
+                               'mu':self.val_gmms[i].mu.detach().cpu(),
+                               'var':self.val_gmms[i].var.detach().cpu()}
         save_path = os.path.join(
             'gmm_data',
             self.logdir_name,
