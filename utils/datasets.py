@@ -29,7 +29,8 @@ class TruncatedDataset(Dataset):
     def __getitem__(self, index):
         img = self.data[index]
         label = self.labels[index]
-        return img, label
+        img_id = self.indices[index]
+        return img, label, img_id
 
 class ImageNetDataSet(Dataset):
     def __init__(self, data_dir, mode):

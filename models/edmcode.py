@@ -198,7 +198,10 @@ class UNetBlock(torch.nn.Module):
 
     def forward(self, x, emb):
         params = self.affine(emb)
-        params = params.repeat(x.shape[0]).view(x.shape[0], -1).unsqueeze(2).unsqueeze(3).to(x.dtype)
+        if len(emb.shape) == 1:
+            params = params.repeat(x.shape[0]).view(x.shape[0], -1).unsqueeze(2).unsqueeze(3).to(x.dtype)
+        else:
+            params = params.unsqueeze(2).unsqueeze(3).to(x.dtype)
         if self.use_hypnns:
             b0 = self.ffwrd0(emb)
             b1 = self.ffwrd1(emb)
