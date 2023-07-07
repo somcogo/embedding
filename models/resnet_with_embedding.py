@@ -48,6 +48,8 @@ class ResNetWithEmbeddings(nn.Module):
     def forward(self, x, site_id):
 
         latent_vector = self.embedding(site_id)
+        if len(latent_vector.shape) == 1:
+            latent_vector = latent_vector.repeat(x.shape[0]).view(x.shape[0], -1)
 
         x = self.pool(self.relu(self.norm1(self.conv1(x))))
         # latent_vector = latent_vector.repeat(x.shape[0]).view(x.shape[0], -1)

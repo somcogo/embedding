@@ -64,6 +64,7 @@ class LayerPersonalisationTrainingApp:
         self.schedulers = self.initSchedulers()
         self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha)
         self.trn_vector_model, self.val_vector_model, self.trn_vector_optim, self.val_vector_optim = self.initEmbeddingVector()
+        self.trn_gmms, self.val_gmms = self.initGMMs()
 
     def initModels(self, embed_dim):
         if self.dataset == 'cifar10':
@@ -212,8 +213,13 @@ class LayerPersonalisationTrainingApp:
 
         return trn_vector_model, val_vector_model, trn_vector_optim, val_vector_optim
     
-    def initGMM(self):
-        return
+    def initGMMs(self):
+        trn_gmms = []
+        val_gmms = []
+        for _ in range(self.site_number):
+            trn_gmms.append(GaussianMixture(n_components=1, n_features=self.embed_dim).cuda())
+            val_gmms.append(GaussianMixture(n_components=1, n_features=self.embed_dim).cuda())
+        return trn_gmms, val_gmms
 
     def main(self):
         log.info("Starting {}".format(type(self).__name__))
@@ -456,23 +462,21 @@ class LayerPersonalisationTrainingApp:
     
     def fitGMM(self, epoch_ndx):
         trn_vectors, val_vectors = self.extractEmbeddingVectors()
+        trn_img_indices, val_img_indices = self.getImageIndicesBySite()
 
-        trn_gmm_model = GaussianMixture(n_components=10, n_features=self.embed_dim).cuda()
-        val_gmm_model = GaussianMixture(n_components=10, n_features=self.embed_dim).cuda()
-        trn_gmm_model.fit(trn_vectors)
-        trn_mu, trn_var = trn_gmm_model.mu, trn_gmm_model.var
-        trn_pred = trn_gmm_model.predict(trn_vectors)
-        val_gmm_model.fit(val_vectors)
-        val_mu, val_var = val_gmm_model.mu, val_gmm_model.var
-        val_pred = val_gmm_model.predict(val_vectors)
-        state = {'trn_vectors':trn_var,
-                 'trn_pred':trn_pred,
-                 'trn_mu':trn_mu,
-                 'trn_var':trn_var,
-                 'val_vectors':val_var,
-                 'val_pred':val_pred,
-                 'val_mu':val_mu,
-                 'val_var':val_var}
+        state = {'trn':{}, 'val':{}}
+        for i, indices in enumerate(trn_img_indices):
+            self.trn_gmms[i].fit(trn_vectors[indices])
+            state['trn'][i] = {'vectors':trn_vectors[indices],
+                               'pred':self.trn_gmms[i].predict(trn_vectors),
+                               'mu':self.trn_gmms[i].mu,
+                               'var':self.trn_gmms[i].var}
+        for i, indices in enumerate(val_img_indices):
+            self.val_gmms[i].fit(val_vectors[indices])
+            state['val'][i] = {'vectors':val_vectors[indices],
+                               'pred':self.val_gmms[i].predict(val_vectors),
+                               'mu':self.val_gmms[i].mu,
+                               'var':self.val_gmms[i].var}
         save_path = os.path.join(
             'gmm_data',
             self.logdir_name,
@@ -606,6 +610,15 @@ class LayerPersonalisationTrainingApp:
         trn_state_dict = self.trn_vector_model.state_dict()
         val_state_dict = self.val_vector_model.state_dict()
         return trn_state_dict['embedding.weight'], val_state_dict['embedding.weight']
+    
+    def getImageIndicesBySite(self):
+        trn_img_indices = []
+        val_img_indices = []
+        for trn_dl in self.trn_dls:
+            trn_img_indices.append(trn_dl.dataset.indices)
+        for val_dl in self.val_dls:
+            val_img_indices.append(val_dl.dataset.indices)
+        return trn_img_indices, val_img_indices
 
 
 if __name__ == '__main__':
