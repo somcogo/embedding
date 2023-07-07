@@ -17,7 +17,7 @@ from models.gmm import GaussianMixture
 log = logging.getLogger(__name__)
 # log.setLevel(logging.WARN)
 log.setLevel(logging.INFO)
-log.setLevel(logging.DEBUG)
+# log.setLevel(logging.DEBUG)
 
 class LayerPersonalisationTrainingApp:
     def __init__(self, epochs=2, batch_size=128, logdir='test', lr=1e-4,
@@ -413,6 +413,7 @@ class LayerPersonalisationTrainingApp:
     
     def updateEmbeddingVectors(self, trn_dls, val_dls):
         self.copyModelToVectorModel()
+        trn_vectors, val_vectors = self.extractEmbeddingVectors()
 
         for i in range(self.site_number):
             for batch_tup in trn_dls[i]:
