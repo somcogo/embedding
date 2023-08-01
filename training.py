@@ -240,9 +240,10 @@ class LayerPersonalisationTrainingApp:
         trn_init_vectors = torch.empty(trn_size, self.embed_dim, dtype=torch.float)
         val_init_vectors = torch.empty(val_size, self.embed_dim, dtype=torch.float)
         for i in range(self.site_number):
-            v = torch.from_numpy(np.random.multivariate_normal(self.mu_init[i], [[0.1,0], [0, 0.1]], size=len(trn_idx_map[i])))
+            cov_matrix = np.eye(self.embed_dim)*0.1
+            v = torch.from_numpy(np.random.multivariate_normal(self.mu_init[i], cov_matrix, size=len(trn_idx_map[i])))
             trn_init_vectors[trn_idx_map[i]] = v.to(dtype=torch.float)
-            v = torch.from_numpy(np.random.multivariate_normal(self.mu_init[i], [[0.1,0], [0, 0.1]], size=len(val_idx_map[i])))
+            v = torch.from_numpy(np.random.multivariate_normal(self.mu_init[i], cov_matrix, size=len(val_idx_map[i])))
             val_init_vectors[val_idx_map[i]] = v.to(dtype=torch.float)
 
         trn_vector_model = self.initModels(self.embed_dim, layer_number=layer_number)[0]
