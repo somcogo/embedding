@@ -127,8 +127,11 @@ class LayerPersonalisationTrainingApp:
             models.append(model)
 
         if hasattr(model, 'embedding'):
-            mu_init = np.exp((2 * np.pi * 1j/ self.site_number)*np.arange(0,self.site_number))
-            self.mu_init = np.stack([np.real(mu_init), np.imag(mu_init)], axis=1)
+            if embed_dim > 2 and embed_dim > self.site_number:
+                self.mu_init = np.eye(self.site_number, embed_dim)
+            else:
+                mu_init = np.exp((2 * np.pi * 1j/ self.site_number)*np.arange(0,self.site_number))
+                self.mu_init = np.stack([np.real(mu_init), np.imag(mu_init)], axis=1)
             for i, model in enumerate(models):
                 init_weight = torch.from_numpy(self.mu_init[i]).repeat(self.site_number).reshape(self.site_number, embed_dim)
                 model.embedding.weight = nn.Parameter(init_weight)
