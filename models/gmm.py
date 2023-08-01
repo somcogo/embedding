@@ -15,7 +15,7 @@ class GaussianMixture(torch.nn.Module):
     probabilities are shaped (n, k, 1) if they relate to an individual sample,
     or (1, k, 1) if they assign membership probabilities to one of the mixture components.
     """
-    def __init__(self, n_components, n_features, covariance_type="full", eps=1.e-6, init_params="kmeans", mu_init=None, var_init=None):
+    def __init__(self, n_components, n_features, covariance_type="full", eps=1.e-6, init_params="kmeans", mu_init=None, var_init=None, regularise=False):
         """
         Initializes the model and brings all tensors into their required shape.
         The class expects data to be fed as a flat tensor in (n, d).
@@ -53,6 +53,8 @@ class GaussianMixture(torch.nn.Module):
 
         self.covariance_type = covariance_type
         self.init_params = init_params
+
+        self.regularise = regularise
 
         assert self.covariance_type in ["full", "diag"]
         assert self.init_params in ["kmeans", "random"]
@@ -147,7 +149,11 @@ class GaussianMixture(torch.nn.Module):
             var_old = self.var
 
             self.__em(x)
-            self.log_likelihood = self.__score(x)
+            try:
+                self.log_likelihood = self.__score(x)
+            except:
+                print(self.var)
+                raise
 
             if torch.isinf(self.log_likelihood.abs()) or torch.isnan(self.log_likelihood):
                 device = self.mu.device
@@ -334,15 +340,39 @@ class GaussianMixture(torch.nn.Module):
         """
         x = self.check_size(x)
 
+        old_mu = self.mu
+        old_var = self.var
+        lambda1 = 0.1
+        lambda2 = 0.01
+
+        n, k, d = x.shape[0], old_mu.shape[1], x.shape[2]
+        broadcasted_x = x.repeat(1, k, 1).reshape(n, k, d)
+        broadcasted_mu = old_mu.repeat(n, 1, 1).reshape(n, k, d)
+        l2norm = torch.linalg.norm(broadcasted_x - broadcasted_mu, dim=2, keepdim=True)
+        sigma_hat = (x - old_mu).unsqueeze(-1).matmul((x - old_mu).unsqueeze(-2))
+        broadcasted_var = old_var.repeat(n, 1, 1, 1).reshape(n, k, d, d)
+        frobnorm = torch.linalg.norm(broadcasted_var - sigma_hat, dim=(2, 3), keepdim=True).squeeze(2)
+
+        log_resp_reg = log_resp -  lambda2*frobnorm
+        resp_reg = torch.exp(log_resp_reg)
         resp = torch.exp(log_resp)
 
-        pi = torch.sum(resp, dim=0, keepdim=True) + self.eps
-        mu = torch.sum(resp * x, dim=0, keepdim=True) / pi
+        if self.regularise:
+            pi = torch.sum(resp_reg, dim=0, keepdim=True) + self.eps
+            mu = torch.sum(resp_reg * x, dim=0, keepdim=True) / pi
+            mu = (lambda1*old_mu + mu)/(1 + lambda1)
+        else:
+            pi = torch.sum(resp, dim=0, keepdim=True) + self.eps
+            mu = torch.sum(resp * x, dim=0, keepdim=True) / pi
 
         if self.covariance_type == "full":
             eps = (torch.eye(self.n_features) * self.eps).to(x.device)
-            var = torch.sum((x - mu).unsqueeze(-1).matmul((x - mu).unsqueeze(-2)) * resp.unsqueeze(-1), dim=0,
-                            keepdim=True) / torch.sum(resp, dim=0, keepdim=True).unsqueeze(-1) + eps
+            if self.regularise:
+                var = torch.sum((x - mu).unsqueeze(-1).matmul((x - mu).unsqueeze(-2)) * resp_reg.unsqueeze(-1), dim=0,
+                                keepdim=True) / torch.sum(resp_reg, dim=0, keepdim=True).unsqueeze(-1) + eps
+            else:
+                var = torch.sum((x - mu).unsqueeze(-1).matmul((x - mu).unsqueeze(-2)) * resp.unsqueeze(-1), dim=0,
+                                keepdim=True) / torch.sum(resp, dim=0, keepdim=True).unsqueeze(-1) + eps
 
         elif self.covariance_type == "diag":
             x2 = (resp * x * x).sum(0, keepdim=True) / pi

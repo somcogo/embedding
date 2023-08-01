@@ -1,11 +1,15 @@
 import os
 import datetime
+import math
 
 import torch
+from torchvision.transforms import Resize
 import torch.nn as nn
 from torch.optim import Adam, AdamW, SGD, LBFGS
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
+from sklearn.mixture import GaussianMixture as SkGMM
+import numpy as np
 
 from models.model import ResNetWithEmbeddings, ResNet34Model, ResNet18Model
 from utils.logconf import logging
@@ -13,6 +17,8 @@ from utils.data_loader import get_dl_lists
 from utils.ops import aug_image
 from utils.merge_strategies import get_layer_list
 from models.gmm import GaussianMixture
+from models.maxvitemb import MaxViTEmb
+from models.maxvit import MaxViT, max_vit_tiny_224
 
 log = logging.getLogger(__name__)
 # log.setLevel(logging.WARN)
@@ -26,8 +32,9 @@ class LayerPersonalisationTrainingApp:
                  scheduler_mode=None, pretrained=False, T_max=500,
                  label_smoothing=0.0, save_model=False, partition='regular',
                  alpha=None, strategy='all', finetuning=False, embed_dim=2,
-                 model_path=None, embedding_lr=None, ffwrd_lr=None, gmm=False,
-                 quick_gmm=False):
+                 model_path=None, embedding_lr=None, ffwrd_lr=None, gmm_components=None,
+                 single_vector_update=False, vector_update_batch=128, vector_update_lr=1e-3,
+                 layer_number=4, gmm_reg=False, sklearngmm=False):
 
         log.info(locals())
         self.epochs = epochs
@@ -46,8 +53,11 @@ class LayerPersonalisationTrainingApp:
         self.finetuning = finetuning
         self.embed_dim = embed_dim
         self.model_path = model_path
-        self.gmm = gmm
-        self.quick_gmm = quick_gmm
+        self.gmm_components = gmm_components
+        self.single_vector_update = single_vector_update
+        self.vector_update_batch = vector_update_batch
+        self.vector_update_lr = vector_update_lr
+        self.sklearngmm = sklearngmm
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
@@ -58,15 +68,16 @@ class LayerPersonalisationTrainingApp:
         self.val_writer = None
         self.totalTrainingSamples_count = 0
 
-        self.models = self.initModels(embed_dim=embed_dim)
+        self.models = self.initModels(embed_dim=embed_dim, layer_number=layer_number)
         self.mergeModels(is_init=True, model_path=model_path)
         self.optims = self.initOptimizers(lr, finetuning, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
         self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha)
-        self.trn_vector_model, self.val_vector_model, self.trn_vector_optim, self.val_vector_optim = self.initEmbeddingVector()
-        self.trn_gmms, self.val_gmms = self.initGMMs()
+        if gmm_components is not None:
+            self.trn_gmms, self.val_gmms = self.initGMMs(gmm_reg=gmm_reg)
+            self.trn_vector_model, self.val_vector_model, self.trn_vector_optim, self.val_vector_optim = self.initEmbeddingVector(layer_number=layer_number)
 
-    def initModels(self, embed_dim):
+    def initModels(self, embed_dim, layer_number):
         if self.dataset == 'cifar10':
             num_classes = 10
             in_channels = 3
@@ -86,33 +97,45 @@ class LayerPersonalisationTrainingApp:
         models = []
         for _ in range(self.site_number):
             if self.model_name == 'resnet34emb':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[3, 4, 6, 3], site_number=self.site_number, embed_dim=embed_dim)
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[3, 4, 6, 3], site_number=self.site_number, embed_dim=embed_dim, layer_number=layer_number)
             elif self.model_name == 'resnet18emb':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim)
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, layer_number=layer_number)
             elif self.model_name == 'resnet18embhypnn1':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=1)
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=1, layer_number=layer_number)
             elif self.model_name == 'resnet18embhypnn2':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=2)
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=2, layer_number=layer_number)
             elif self.model_name == 'resnet18lightweight1':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True)
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, layer_number=layer_number)
             elif self.model_name == 'resnet18lightweight2':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True)
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, layer_number=layer_number)
             elif self.model_name == 'resnet18affine1':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, affine=True)
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, affine=True, layer_number=layer_number)
             elif self.model_name == 'resnet18affine2':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, affine=True)
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, affine=True, layer_number=layer_number)
             elif self.model_name == 'resnet18medium1':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, affine=True, medium_ffwrd=True)
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, affine=True, medium_ffwrd=True, layer_number=layer_number)
             elif self.model_name == 'resnet18medium2':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, affine=True, medium_ffwrd=True)
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, affine=True, medium_ffwrd=True, layer_number=layer_number)
             elif self.model_name == 'resnet34':
                 model = ResNet34Model(num_classes=num_classes, in_channels=in_channels, pretrained=self.pretrained)
             elif self.model_name == 'resnet18':
                 model = ResNet18Model(num_classes=num_classes, in_channels=in_channels, pretrained=self.pretrained)
+            elif self.model_name == 'maxvitembv1':
+                model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(64, 128, 256), site_number=self.site_number)
+            elif self.model_name == 'maxvitv1':
+                model = MaxViT(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(64, 128, 256))
             models.append(model)
+
+        if hasattr(model, 'embedding'):
+            mu_init = np.exp((2 * np.pi * 1j/ self.site_number)*np.arange(0,self.site_number))
+            self.mu_init = np.stack([np.real(mu_init), np.imag(mu_init)], axis=1)
+            for i, model in enumerate(models):
+                init_weight = torch.from_numpy(self.mu_init[i]).repeat(self.site_number).reshape(self.site_number, embed_dim)
+                model.embedding.weight = nn.Parameter(init_weight)
+
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
-            for model in models:
+            for i, model in enumerate(models):
                 if torch.cuda.device_count() > 1:
                     model = nn.DataParallel(model)
                 model = model.to(self.device)
@@ -181,7 +204,15 @@ class LayerPersonalisationTrainingApp:
             self.val_writer = SummaryWriter(
                 log_dir=self.logdir + '/val-' + self.comment)
             
-    def initEmbeddingVector(self):
+    def initGMMs(self, gmm_reg=False):
+        trn_gmms = []
+        val_gmms = []
+        for i in range(self.site_number):
+            trn_gmms.append(SkGMM(n_components=self.gmm_components, warm_start=True, means_init=[self.mu_init[i]]*self.gmm_components))
+            val_gmms.append(SkGMM(n_components=self.gmm_components, warm_start=True, means_init=[self.mu_init[i]]*self.gmm_components))
+        return trn_gmms, val_gmms
+            
+    def initEmbeddingVector(self, layer_number):
         if self.dataset == 'mnist':
             trn_size = 60000
             val_size = 10000
@@ -195,31 +226,47 @@ class LayerPersonalisationTrainingApp:
             trn_size = 100000
             val_size = 10000
 
-        trn_vector_model = self.initModels(self.embed_dim)[0]
-        trn_vector_model.embedding = nn.Embedding(trn_size, embedding_dim=self.embed_dim, device=self.device)
+        trn_idx_map, val_idx_map = {}, {}
+        for i in range(self.site_number):
+            trn_idx_map[i] = self.trn_dls[i].dataset.indices
+            val_idx_map[i] = self.val_dls[i].dataset.indices
+        
+        trn_dls_emb_vector, val_dls_emb_vector = get_dl_lists(dataset=self.dataset, batch_size=self.vector_update_batch, partition='given', n_site=self.site_number, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, shuffle=False)
+        self.vector_trn_dls, self.vector_val_dls = trn_dls_emb_vector, val_dls_emb_vector
+
+        trn_init_vectors = torch.empty(trn_size, self.embed_dim, dtype=torch.float)
+        val_init_vectors = torch.empty(val_size, self.embed_dim, dtype=torch.float)
+        for i in range(self.site_number):
+            v = torch.from_numpy(np.random.multivariate_normal(self.mu_init[i], [[0.1,0], [0, 0.1]], size=len(trn_idx_map[i])))
+            trn_init_vectors[trn_idx_map[i]] = v.to(dtype=torch.float)
+            v = torch.from_numpy(np.random.multivariate_normal(self.mu_init[i], [[0.1,0], [0, 0.1]], size=len(val_idx_map[i])))
+            val_init_vectors[val_idx_map[i]] = v.to(dtype=torch.float)
+
+        trn_vector_model = self.initModels(self.embed_dim, layer_number=layer_number)[0]
+        if self.single_vector_update:
+            trn_vector_model.embedding = nn.Embedding(int(trn_size/self.vector_update_batch), embedding_dim=self.embed_dim, device=self.device)
+        else:
+            trn_vector_model.embedding = nn.Embedding(trn_size, embedding_dim=self.embed_dim, device=self.device)
+            trn_vector_model.embedding.weight = nn.Parameter(trn_init_vectors.to(device=self.device))
         for name, param in trn_vector_model.named_parameters():
             if name != 'embedding.weight':
                 param.requires_grad = False
 
-        trn_vector_optim = Adam([trn_vector_model.embedding.weight], lr=0.001, betas=(.5,.9))
+        trn_vector_optim = Adam([trn_vector_model.embedding.weight], lr=self.vector_update_lr, betas=(.5,.9))
         
-        val_vector_model = self.initModels(self.embed_dim)[0]
-        val_vector_model.embedding = nn.Embedding(val_size, embedding_dim=self.embed_dim, device=self.device)
+        val_vector_model = self.initModels(self.embed_dim, layer_number=layer_number)[0]
+        if self.single_vector_update:
+            val_vector_model.embedding = nn.Embedding(int(val_size/self.vector_update_batch), embedding_dim=self.embed_dim, device=self.device)
+        else:
+            val_vector_model.embedding = nn.Embedding(val_size, embedding_dim=self.embed_dim, device=self.device)
+            val_vector_model.embedding.weight = nn.Parameter(val_init_vectors.to(device=self.device))
         for name, param in val_vector_model.named_parameters():
             if name != 'embedding.weight':
                 param.requires_grad = False
 
-        val_vector_optim = Adam([val_vector_model.embedding.weight], lr=0.001, betas=(.5,.9))
+        val_vector_optim = Adam([val_vector_model.embedding.weight], lr=self.vector_update_lr, betas=(.5,.9))
 
         return trn_vector_model, val_vector_model, trn_vector_optim, val_vector_optim
-    
-    def initGMMs(self):
-        trn_gmms = []
-        val_gmms = []
-        for _ in range(self.site_number):
-            trn_gmms.append(GaussianMixture(n_components=1, n_features=self.embed_dim).cuda())
-            val_gmms.append(GaussianMixture(n_components=1, n_features=self.embed_dim).cuda())
-        return trn_gmms, val_gmms
 
     def main(self):
         log.info("Starting {}".format(type(self).__name__))
@@ -259,7 +306,7 @@ class LayerPersonalisationTrainingApp:
                 if epoch_ndx < 501 or epoch_ndx % 100 == 0:
                     log.info('Epoch {} of {}, accuracy/miou {}, val loss {}'.format(epoch_ndx, self.epochs, accuracy, loss))
 
-            if self.gmm:
+            if self.gmm_components is not None:
                 self.updateEmbeddingVectors(trn_dls, val_dls)
                 self.fitGMM(epoch_ndx)
             
@@ -391,8 +438,11 @@ class LayerPersonalisationTrainingApp:
 
         if mode == 'trn':
             batch = aug_image(batch, self.dataset)
+        if self.model_name == 'maxvitv1' or self.model_name == 'maxvitembv1':
+            resize = Resize(224, antialias=True)
+            batch = resize(batch)
 
-        if not self.model_name == 'resnet34' and not self.model_name == 'resnet18':
+        if not self.model_name == 'resnet34' and not self.model_name == 'resnet18' and not self.model_name == 'maxvitv1':
             pred = model(batch, torch.tensor(site_id, device=self.device, dtype=torch.int))
         else:
             pred = model(batch)
@@ -419,70 +469,90 @@ class LayerPersonalisationTrainingApp:
     
     def updateEmbeddingVectors(self, trn_dls, val_dls):
         self.copyModelToVectorModel()
-        trn_vectors, val_vectors = self.extractEmbeddingVectors()
 
         for i in range(self.site_number):
-            for batch_tup in trn_dls[i]:
+            for batch_ndx, batch_tup in enumerate(self.vector_trn_dls[i]):
                 self.trn_vector_optim.zero_grad()
                 imgs, labels, img_ids = batch_tup
                 imgs = imgs.to(device=self.device).float().permute(0, 3, 1, 2)
+                if self.model_name == 'maxvitv1' or self.model_name == 'maxvitembv1':
+                    resize = Resize(224, antialias=True)
+                    imgs = resize(imgs)
                 labels = labels.to(device=self.device).to(dtype=torch.long)
                 img_ids = img_ids.to(device=self.device).to(dtype=torch.long)
                 preds = torch.zeros(imgs.shape[0], 10, device=self.device)
-                if self.quick_gmm:
-                    preds = self.trn_vector_model(imgs, img_ids)
+                if self.single_vector_update:
+                    preds = self.trn_vector_model(imgs, torch.tensor(batch_ndx, device=self.device))
                 else:
-                    for j in range(imgs.shape[0]):
-                        preds[j] = self.trn_vector_model(imgs[j].unsqueeze(0), img_ids[j])
+                    preds = self.trn_vector_model(imgs, img_ids)
                 loss_fn = nn.CrossEntropyLoss()
                 loss = loss_fn(preds, labels)
                 loss.backward()
+                self.trn_vector_optim.step()
             log.debug('done with trn-site {}'.format(i))
 
         for i in range(self.site_number):
-            for batch_tup in val_dls[i]:
+            for batch_ndx, batch_tup in enumerate(self.vector_val_dls[i]):
                 self.val_vector_optim.zero_grad()
                 imgs, labels, img_ids = batch_tup
                 imgs = imgs.to(device=self.device).float().permute(0, 3, 1, 2)
                 labels = labels.to(device=self.device).to(dtype=torch.long)
                 img_ids = img_ids.to(device=self.device).to(dtype=torch.long)
                 preds = torch.zeros(imgs.shape[0], 10, device=self.device)
-                if self.quick_gmm:
-                    preds = self.val_vector_model(imgs, img_ids)
+                if self.single_vector_update:
+                    preds = self.val_vector_model(imgs, torch.tensor(batch_ndx, device=self.device))
                 else:
-                    for j in range(imgs.shape[0]):
-                        preds[j] = self.val_vector_model(imgs[j].unsqueeze(0), img_ids[j])
+                    preds = self.val_vector_model(imgs, img_ids)
                 loss_fn = nn.CrossEntropyLoss()
                 loss = loss_fn(preds, labels)
                 loss.backward()
+                self.val_vector_optim.step()
             log.debug('done with val-site {}'.format(i))
-        self.trn_vector_optim.step()
-        self.val_vector_optim.step()
         log.debug('completed vector update')
     
     def fitGMM(self, epoch_ndx):
         trn_vectors, val_vectors = self.extractEmbeddingVectors()
-        trn_vectors = trn_vectors.to(device=self.device)
-        val_vectors = val_vectors.to(device=self.device)
+        if not self.sklearngmm:
+            trn_vectors = trn_vectors.to(device=self.device)
+            val_vectors = val_vectors.to(device=self.device)
+        else:
+            trn_vectors = trn_vectors.to(device='cpu')
+            val_vectors = val_vectors.to(device='cpu')
         trn_img_indices, val_img_indices = self.getImageIndicesBySite()
-
-        state = {'trn':{}, 'val':{}}
-        for i, indices in enumerate(trn_img_indices):
-            self.trn_gmms[i].fit(trn_vectors[indices], warm_start=True)
-            state['trn'][i] = {'vectors':trn_vectors[indices],
-                               'pred':self.trn_gmms[i].predict(trn_vectors),
-                               'mu':self.trn_gmms[i].mu.detach().cpu(),
-                               'var':self.trn_gmms[i].var.detach().cpu()}
-        for i, indices in enumerate(val_img_indices):
-            self.val_gmms[i].fit(val_vectors[indices], warm_start=True)
-            state['val'][i] = {'vectors':val_vectors[indices],
-                               'pred':self.val_gmms[i].predict(val_vectors),
-                               'mu':self.val_gmms[i].mu.detach().cpu(),
-                               'var':self.val_gmms[i].var.detach().cpu()}
         save_path = os.path.join(
             'gmm_data',
             self.logdir_name,
-            '{}_{}_{}.pt'.format(self.time_str, self.comment, epoch_ndx))
+            '{}_{}.pt'.format(self.time_str, self.comment))
+        
+        if epoch_ndx == 1:
+            state = {}
+        else:
+            state = torch.load(save_path)
+        state[epoch_ndx] = {'trn':{}, 'val':{}}
+        for i, indices in enumerate(trn_img_indices):
+            if self.sklearngmm:
+                self.trn_gmms[i].fit(trn_vectors[indices])
+            else:
+                self.trn_gmms[i].fit(trn_vectors[indices], warm_start=True)
+            mu = self.trn_gmms[i].means_ if self.sklearngmm else self.trn_gmms[i].mu
+            var = self.trn_gmms[i].covariances_ if self.sklearngmm else self.trn_gmms[i].var
+            pred = self.trn_gmms[i].predict(trn_vectors[indices])
+            state[epoch_ndx]['trn'][i] = {'vectors':trn_vectors[indices],
+                               'pred':torch.tensor(pred, device='cpu'),
+                               'mu':torch.tensor(mu, device='cpu'),
+                               'var':torch.tensor(var, device='cpu')}
+        for i, indices in enumerate(val_img_indices):
+            if self.sklearngmm:
+                self.val_gmms[i].fit(val_vectors[indices])
+            else:
+                self.val_gmms[i].fit(val_vectors[indices], warm_start=True)
+            mu = self.val_gmms[i].means_ if self.sklearngmm else self.val_gmms[i].mu
+            var = self.val_gmms[i].covariances_ if self.sklearngmm else self.val_gmms[i].var
+            pred = self.val_gmms[i].predict(trn_vectors[indices])
+            state[epoch_ndx]['val'][i] = {'vectors':val_vectors[indices],
+                               'pred':torch.tensor(pred, device='cpu'),
+                               'mu':torch.tensor(mu, device='cpu'),
+                               'var':torch.tensor(var, device='cpu')}
         os.makedirs(os.path.dirname(save_path), mode=0o755, exist_ok=True)
         torch.save(state, save_path)
         log.debug('fit gmm and saved data')

@@ -4,8 +4,9 @@ from torch import nn
 from .edmcode import UNetBlock, FeedForward
 
 class ResNetWithEmbeddings(nn.Module):
-    def __init__(self, num_classes, in_channels=3, embed_dim=2, layers=[3, 4, 6, 3], site_number=1, use_hypnns=False, version=None, lightweight=False, affine=False, medium_ffwrd=False, extra_lightweight=False):
+    def __init__(self, num_classes, in_channels=3, embed_dim=2, layers=[3, 4, 6, 3], site_number=1, use_hypnns=False, version=None, lightweight=False, affine=False, medium_ffwrd=False, extra_lightweight=False, layer_number=4):
         super().__init__()
+        self.layer_number = layer_number
 
         self.embedding = nn.Embedding(site_number, embedding_dim=embed_dim)
 
@@ -28,12 +29,14 @@ class ResNetWithEmbeddings(nn.Module):
 
         self.layer1 = self._make_layer(layers[1], in_channels=64, out_channels=128, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd1, affine=affine, ffwrd_a=self.ffwrd_a1, medium_ffwrd=medium_ffwrd)
     
-        self.layer2 = self._make_layer(layers[2], in_channels=128, out_channels=256, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd2, affine=affine, ffwrd_a=self.ffwrd_a2, medium_ffwrd=medium_ffwrd)
+        if layer_number > 2:
+            self.layer2 = self._make_layer(layers[2], in_channels=128, out_channels=256, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd2, affine=affine, ffwrd_a=self.ffwrd_a2, medium_ffwrd=medium_ffwrd)
 
-        self.layer3 = self._make_layer(layers[3], in_channels=256, out_channels=512, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd3, affine=affine, ffwrd_a=self.ffwrd_a3, medium_ffwrd=medium_ffwrd)
+        if layer_number > 3:
+            self.layer3 = self._make_layer(layers[3], in_channels=256, out_channels=512, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd3, affine=affine, ffwrd_a=self.ffwrd_a3, medium_ffwrd=medium_ffwrd)
 
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
-        self.fc = nn.Linear(512, num_classes)
+        self.fc = nn.Linear(32*(2**layer_number), num_classes)
 
     def _make_layer(self, depth, in_channels, out_channels, embed_dim, use_hypnns=False, version=None, lightweight=None, ffwrd=None, affine=None, ffwrd_a=None, medium_ffwrd=False):
         
@@ -57,12 +60,14 @@ class ResNetWithEmbeddings(nn.Module):
             x = block(x, latent_vector)
         for block in self.layer1:
             x = block(x, latent_vector)
-        for block in self.layer2:
-            x = block(x, latent_vector)
-        for block in self.layer3:
-            x = block(x, latent_vector)
-
-        out = self.fc(self.avgpool(x).reshape(-1, 512))
+        if self.layer_number > 2:
+            for block in self.layer2:
+                x = block(x, latent_vector)
+        if self.layer_number > 3:
+            for block in self.layer3:
+                x = block(x, latent_vector)
+        avgpooled = self.avgpool(x)
+        out = self.fc(avgpooled.reshape(-1, 32*(2**self.layer_number)))
         return out
     
 class UNetWithEmbedding(nn.Module):

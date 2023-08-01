@@ -104,8 +104,12 @@ class GroupNorm(torch.nn.Module):
         self.weight = torch.nn.Parameter(torch.ones(num_channels))
         self.bias = torch.nn.Parameter(torch.zeros(num_channels))
 
-    def forward(self, x):
-        x = torch.nn.functional.group_norm(x, num_groups=self.num_groups, weight=self.weight.to(x.dtype), bias=self.bias.to(x.dtype), eps=self.eps)
+    def forward(self, x, weight=None, bias=None):
+        if weight is None:
+            weight = self.weight
+        if bias is None:
+            bias = self.bias
+        x = torch.nn.functional.group_norm(x, num_groups=self.num_groups, weight=weight.to(x.dtype), bias=bias.to(x.dtype), eps=self.eps)
         return x
 
 #----------------------------------------------------------------------------
@@ -158,6 +162,7 @@ class UNetBlock(torch.nn.Module):
         self.norm0 = GroupNorm(num_channels=in_channels, eps=eps)
         self.conv0 = Conv2d(in_channels=in_channels, out_channels=out_channels, kernel=3, up=up, down=down, resample_filter=resample_filter, **init)
         self.affine = Linear(in_features=emb_channels, out_features=out_channels*(2 if adaptive_scale else 1), **init)
+        self.affine2 = Linear(in_features=emb_channels, out_features=4*32)
         self.norm1 = GroupNorm(num_channels=out_channels, eps=eps)
         self.conv1 = Conv2d(in_channels=out_channels, out_channels=out_channels, kernel=3, **init_zero)
 
@@ -198,6 +203,11 @@ class UNetBlock(torch.nn.Module):
 
     def forward(self, x, emb):
         params = self.affine(emb)
+        if len(emb.shape) == 1:
+            norm_params = self.affine2(emb).reshape(4, 32)
+        else:
+            norm_params = self.affine2(emb).reshape(4, emb.shape[0], 32)
+        gamma0, beta0, gamma1, beta1 = norm_params.unbind(0)
         if len(emb.shape) == 1:
             params = params.repeat(x.shape[0]).view(x.shape[0], -1).unsqueeze(2).unsqueeze(3).to(x.dtype)
         else:
