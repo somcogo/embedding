@@ -22,7 +22,7 @@ def calc_multivar_normal_distr(X, Y, mu, sigma):
 def draw_on_axes(ax: Axes, vectors: torch.Tensor, var: torch.Tensor = None, mu: torch.Tensor = None, comps: int = 2, bins=100, cmap1=matplotlib.cm.hot, cmap2=matplotlib.cm.YlGn):
     ax.set_xlim(-5, 5)
     ax.set_ylim(-5, 5)
-    ax.hist2d([vector[1] for vector in vectors], [vector[0] for vector in vectors], bins=bins, cmap=cmap1)
+    ax.hist2d(vectors[:,1], vectors[:,0], bins=bins, cmap=cmap1)
     if mu is not None:
         x = np.linspace(-5, 5, bins)
         y = np.linspace(-5, 5, bins)
