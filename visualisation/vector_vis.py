@@ -27,7 +27,7 @@ def draw_on_axes(ax: Axes, vectors: torch.Tensor, var: torch.Tensor = None, mu: 
         x = np.linspace(-5, 5, bins)
         y = np.linspace(-5, 5, bins)
         z = torch.zeros(bins, bins)
-        for comp_id in range(comps):
+        for comp_id in range(mu.shape[0]):
             z += calc_multivar_normal_distr(x, y, mu[comp_id], var[comp_id])
         xv, yv = np.meshgrid(x, y)
         ax.contour(xv, yv, z, levels=4, cmap=matplotlib.cm.YlGn, alpha=0.6)
