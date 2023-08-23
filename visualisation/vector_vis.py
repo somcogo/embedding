@@ -20,13 +20,11 @@ def calc_multivar_normal_distr(X, Y, mu, sigma):
     return z / z.sum()
 
 def draw_on_axes(ax: Axes, vectors: torch.Tensor, var: torch.Tensor = None, mu: torch.Tensor = None, comps: int = 2, bins=100, cmap1=matplotlib.cm.hot, cmap2=matplotlib.cm.YlGn):
-    ax.set_xlim(-5, 5)
-    ax.set_ylim(-5, 5)
     ax.hist2d(vectors[:,1], vectors[:,0], bins=bins, cmap=cmap1)
     if mu is not None:
-        x = np.linspace(-5, 5, bins)
-        y = np.linspace(-5, 5, bins)
-        z = torch.zeros(bins, bins)
+        x = bins[0]
+        y = bins[1]
+        z = torch.zeros(len(bins[0]), len(bins[1]))
         for comp_id in range(mu.shape[0]):
             z += calc_multivar_normal_distr(x, y, mu[comp_id], var[comp_id])
         xv, yv = np.meshgrid(x, y)
