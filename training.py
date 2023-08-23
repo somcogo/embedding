@@ -150,7 +150,7 @@ class LayerPersonalisationTrainingApp:
         for model in self.models:
             params_to_update = []
             if finetuning:
-                layer_list = get_layer_list(self.model_name, strategy='finetuning')
+                layer_list = get_layer_list(self.model_name, strategy='finetuning', original_list=model.state_dict().keys())
                 for name, param in model.named_parameters():
                     if name in layer_list:
                         params_to_update.append(param)
@@ -182,7 +182,7 @@ class LayerPersonalisationTrainingApp:
         return optims
     
     def initSchedulers(self):
-        if self.scheduler_mode is None:
+        if self.scheduler_mode is None or self.finetuning:
             schedulers = None
         else:
             schedulers = []
@@ -304,7 +304,7 @@ class LayerPersonalisationTrainingApp:
                 self.logMetrics(epoch_ndx, 'val', val_metrics)
                 saving_criterion = max(accuracy, saving_criterion)
 
-                if self.save_model and (accuracy==saving_criterion or self.finetuning):
+                if self.save_model and accuracy==saving_criterion:
                     self.saveModel(epoch_ndx, val_metrics, trn_dls, val_dls)
 
                 if epoch_ndx < 501 or epoch_ndx % 100 == 0:
