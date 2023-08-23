@@ -188,7 +188,7 @@ class LayerPersonalisationTrainingApp:
             schedulers = []
             for optim in self.optims:
                 if self.scheduler_mode == 'cosine':
-                    scheduler = CosineAnnealingLR(optim, T_max=self.T_max)
+                    scheduler = CosineAnnealingLR(optim, T_max=self.T_max, eta_min=1e-6)
                 schedulers.append(scheduler)
             
         return schedulers
