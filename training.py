@@ -150,7 +150,7 @@ class LayerPersonalisationTrainingApp:
         for model in self.models:
             params_to_update = []
             if finetuning:
-                layer_list = get_layer_list(self.model_name, strategy=self.strategy)
+                layer_list = get_layer_list(self.model_name, strategy='finetuning')
                 for name, param in model.named_parameters():
                     if name in layer_list:
                         params_to_update.append(param)
@@ -311,7 +311,7 @@ class LayerPersonalisationTrainingApp:
                     log.info('Epoch {} of {}, accuracy/miou {}, val loss {}'.format(epoch_ndx, self.epochs, accuracy, loss))
 
             if self.gmm_components is not None:
-                self.updateEmbeddingVectors(trn_dls, val_dls)
+                self.updateEmbeddingVectors()
                 self.fitGMM(epoch_ndx)
             
             
@@ -446,7 +446,7 @@ class LayerPersonalisationTrainingApp:
             resize = Resize(224, antialias=True)
             batch = resize(batch)
 
-        if not self.model_name == 'resnet34' and not self.model_name == 'resnet18' and not self.model_name == 'maxvitv1':
+        if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
             pred = model(batch, torch.tensor(site_id, device=self.device, dtype=torch.int))
         else:
             pred = model(batch)
@@ -471,7 +471,7 @@ class LayerPersonalisationTrainingApp:
 
         return loss.mean(), accuracy
     
-    def updateEmbeddingVectors(self, trn_dls, val_dls):
+    def updateEmbeddingVectors(self):
         self.copyModelToVectorModel()
 
         for i in range(self.site_number):
@@ -615,29 +615,18 @@ class LayerPersonalisationTrainingApp:
         for ndx, model in enumerate(self.models):
             if isinstance(model, torch.nn.DataParallel):
                 model = model.module
-            if self.finetuning:
-                state[ndx] = {
-                    'model_state': model.state_dict(),
-                    'trn_labels': trn_dls[ndx].dataset.labels,
-                    'val_labels': val_dls[ndx].dataset.labels,
-                    'trn_indices': trn_dls[ndx].dataset.indices,
-                    'val_indices': val_dls[ndx].dataset.indices
+            state[ndx] = {
+                'model_state': model.state_dict(),
+                'model_name': type(model).__name__,
+                'optimizer_state': self.optims[ndx].state_dict(),
+                'optimizer_name': type(self.optims[ndx]).__name__,
+                'trn_labels': trn_dls[ndx].dataset.labels,
+                'val_labels': val_dls[ndx].dataset.labels,
+                'trn_indices': trn_dls[ndx].dataset.indices,
+                'val_indices': val_dls[ndx].dataset.indices,
                 }
-                if self.model_name == 'resnet18emb':
-                    state[ndx]['emb_vector'] = model.state_dict()['embedding.weight'][ndx]
-                else:
-                    state[ndx]['model_state'] = model.state_dict()
-            else:
-                state[ndx] = {
-                    'model_state': model.state_dict(),
-                    'model_name': type(model).__name__,
-                    'optimizer_state': self.optims[ndx].state_dict(),
-                    'optimizer_name': type(self.optims[ndx]).__name__,
-                    'trn_labels': trn_dls[ndx].dataset.labels,
-                    'val_labels': val_dls[ndx].dataset.labels,
-                    'trn_indices': trn_dls[ndx].dataset.indices,
-                    'val_indices': val_dls[ndx].dataset.indices
-                }
+            if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
+                state[ndx]['emb_vector'] = model.state_dict()['embedding.weight'][ndx]
 
         torch.save(state, file_path)
         log.debug("Saved model params to {}".format(file_path))
@@ -652,7 +641,7 @@ class LayerPersonalisationTrainingApp:
                     state_dict = loaded_dict[0]['model_state']
             else:
                 state_dict = self.models[0].state_dict()
-            if 'embedding.weight' in state_dict:
+            if 'embedding.weight' in '\t'.join(state_dict.keys()):
                 state_dict['embedding.weight'] = state_dict['embedding.weight'][0].unsqueeze(0).repeat(self.site_number, 1)
             for model in self.models:
                 model.load_state_dict(state_dict, strict=False)
