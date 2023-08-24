@@ -126,8 +126,8 @@ class LayerPersonalisationTrainingApp:
                 model = MaxViT(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(64, 128, 256))
             models.append(model)
 
-        if hasattr(model, 'embedding'):
-            if embed_dim > 2 and embed_dim > self.site_number:
+        if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
+            if embed_dim > 2:
                 self.mu_init = np.eye(self.site_number, embed_dim)
             else:
                 mu_init = np.exp((2 * np.pi * 1j/ self.site_number)*np.arange(0,self.site_number))
@@ -194,7 +194,10 @@ class LayerPersonalisationTrainingApp:
         return schedulers
 
     def initDls(self, batch_size, partition, alpha):
-        index_dict = torch.load('models/{}_saved_index_maps.pt'.format(self.dataset)) if partition == 'given' else None
+        if not self.finetuning:
+            index_dict = torch.load('models/{}_saved_index_maps.pt'.format(self.dataset)) if partition == 'given' else None
+        else:
+            index_dict = torch.load('models/{}_finetune.pt'.format(self.dataset)) if partition == 'given' else None
         trn_idx_map = index_dict[self.site_number][alpha]['trn'] if index_dict is not None else None
         val_idx_map = index_dict[self.site_number][alpha]['val'] if index_dict is not None else None
         trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map)
