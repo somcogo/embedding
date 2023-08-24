@@ -63,9 +63,9 @@ def get_layer_list(model, strategy, original_list):
     if strategy == 'all':
         layer_list = original_list
     elif strategy == 'noembed':
-        layer_list = [name for name in original_list if not ('embedding' in name.split('.')[0] or 'fc' in name.split('.')[0])]
+        layer_list = [name for name in original_list if not ('embedding' in name.split('.') or 'fc' in name.split('.'))]
     elif strategy == 'nomerge':
         layer_list = []
     elif strategy == 'finetuning':
-        layer_list = [name for name in original_list if 'embedding' in name.split('.')[0] or 'fc' in name.split('.')[0]]
+        layer_list = [name for name in original_list if 'embedding' in name.split('.') or 'fc' in name.split('.')]
     return layer_list
