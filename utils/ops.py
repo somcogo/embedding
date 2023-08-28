@@ -15,7 +15,7 @@ def aug_image(batch: torch.Tensor, dataset):
     return batch
 
 def aug_crop_rotate_flip_erase(batch, dataset):
-    if dataset == 'mnist':
+    if dataset in ['mnist', 'cifar10', 'cifar100']:
         trans = Compose([
             Pad(4),
             RandomCrop(32),
