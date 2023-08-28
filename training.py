@@ -310,7 +310,7 @@ class LayerPersonalisationTrainingApp:
                 if self.save_model and accuracy==saving_criterion:
                     self.saveModel(epoch_ndx, val_metrics, trn_dls, val_dls)
 
-                if epoch_ndx < 501 or epoch_ndx % 100 == 0:
+                if epoch_ndx < 101 or epoch_ndx % 100 == 0:
                     log.info('Epoch {} of {}, accuracy/miou {}, val loss {}'.format(epoch_ndx, self.epochs, accuracy, loss))
 
             if self.gmm_components is not None:
