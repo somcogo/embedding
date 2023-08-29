@@ -31,6 +31,21 @@ class TruncatedDataset(Dataset):
         label = self.labels[index]
         img_id = self.indices[index]
         return img, label, img_id
+    
+class MergedDataset(Dataset):
+    def __init__(self, dataset1, dataset2, dataset_name):
+        super().__init__()
+        if dataset_name == 'mnist':
+            self.data = torch.cat([dataset1.data, dataset2.data], dim=0)
+        else:
+            self.data = np.concatenate([dataset1.data, dataset2.data], axis=0)
+        self.targets = np.concatenate([dataset1.targets, dataset2.targets], axis=0)
+
+    def __len__(self):
+        return len(self.targets)
+    
+    def __getitem__(self, index):
+        return self.data[index], self.targets[index]
 
 class ImageNetDataSet(Dataset):
     def __init__(self, data_dir, mode):
