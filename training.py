@@ -256,7 +256,7 @@ class LayerPersonalisationTrainingApp:
             trn_vector_model.embedding = nn.Embedding(trn_size, embedding_dim=self.embed_dim, device=self.device)
             trn_vector_model.embedding.weight = nn.Parameter(trn_init_vectors.to(device=self.device))
         for name, param in trn_vector_model.named_parameters():
-            if name != 'embedding.weight':
+            if 'embedding.weight' not in name:
                 param.requires_grad = False
 
         trn_vector_optim = Adam([trn_vector_model.embedding.weight], lr=self.vector_update_lr, betas=(.5,.9))
@@ -268,7 +268,7 @@ class LayerPersonalisationTrainingApp:
             val_vector_model.embedding = nn.Embedding(val_size, embedding_dim=self.embed_dim, device=self.device)
             val_vector_model.embedding.weight = nn.Parameter(val_init_vectors.to(device=self.device))
         for name, param in val_vector_model.named_parameters():
-            if name != 'embedding.weight':
+            if 'embedding.weight' not in name:
                 param.requires_grad = False
 
         val_vector_optim = Adam([val_vector_model.embedding.weight], lr=self.vector_update_lr, betas=(.5,.9))
