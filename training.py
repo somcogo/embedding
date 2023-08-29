@@ -34,7 +34,7 @@ class LayerPersonalisationTrainingApp:
                  alpha=None, strategy='all', finetuning=False, embed_dim=2,
                  model_path=None, embedding_lr=None, ffwrd_lr=None, gmm_components=None,
                  single_vector_update=False, vector_update_batch=128, vector_update_lr=1e-3,
-                 layer_number=4, gmm_reg=False, sklearngmm=False):
+                 layer_number=4, gmm_reg=False, sklearngmm=False, k_fold_val_id=None):
 
         log.info(locals())
         self.epochs = epochs
@@ -72,7 +72,7 @@ class LayerPersonalisationTrainingApp:
         self.mergeModels(is_init=True, model_path=model_path)
         self.optims = self.initOptimizers(lr, finetuning, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
-        self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha)
+        self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id)
         if gmm_components is not None:
             self.trn_gmms, self.val_gmms = self.initGMMs(gmm_reg=gmm_reg)
             self.trn_vector_model, self.val_vector_model, self.trn_vector_optim, self.val_vector_optim = self.initEmbeddingVector(layer_number=layer_number)
@@ -193,14 +193,14 @@ class LayerPersonalisationTrainingApp:
             
         return schedulers
 
-    def initDls(self, batch_size, partition, alpha):
+    def initDls(self, batch_size, partition, alpha, k_fold_val_id):
         if not self.finetuning:
-            index_dict = torch.load('models/{}_saved_index_maps.pt'.format(self.dataset)) if partition == 'given' else None
+            index_dict = torch.load('models/{}_saved_index_maps.pt'.format(self.dataset)) if partition in ['given', '5foldval'] else None
         else:
-            index_dict = torch.load('models/{}_finetune.pt'.format(self.dataset)) if partition == 'given' else None
+            index_dict = torch.load('models/{}_finetune.pt'.format(self.dataset)) if partition in ['given', '5foldval'] else None
         trn_idx_map = index_dict[self.site_number][alpha]['trn'] if index_dict is not None else None
         val_idx_map = index_dict[self.site_number][alpha]['val'] if index_dict is not None else None
-        trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map)
+        trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, k_fold_val_id=k_fold_val_id)
         return trn_dls, val_dls
 
     def initTensorboardWriters(self):
