@@ -39,7 +39,7 @@ class MergedDataset(Dataset):
             self.data = torch.cat([dataset1.data, dataset2.data], dim=0)
         else:
             self.data = np.concatenate([dataset1.data, dataset2.data], axis=0)
-        self.targets = np.concatenate([dataset1.targets, dataset2.targets], axis=0)
+        self.targets = np.concatenate([dataset1.labels, dataset2.labels], axis=0)
 
     def __len__(self):
         return len(self.targets)

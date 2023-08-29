@@ -37,12 +37,12 @@ def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, n
     elif partition == '5foldval':
         trn_ds_list = [TruncatedDataset(trn_dataset, dataset, idx_map) for idx_map in net_dataidx_map_train.values()]
         val_ds_list = [TruncatedDataset(val_dataset, dataset, idx_map) for idx_map in net_dataidx_map_test.values()]
-        merged_ds_list = [MergedDataset(trn_dataset[i], val_dataset[i], dataset) for i in range(len(trn_ds_list))]
-        kfold = KFold(5, True, 1)
+        merged_ds_list = [MergedDataset(trn_ds_list[i], val_ds_list[i], dataset) for i in range(len(trn_ds_list))]
+        kfold = KFold(n_splits=5, shuffle=True, random_state=1)
         splits = [list(kfold.split(range(len(merged_ds)))) for merged_ds in merged_ds_list]
-        trn_indices, val_indices = [split[k_fold_val_id] for split in splits]
-        trn_dl_list = [TruncatedDataset(merged_ds_list, dataset, idx_map) for idx_map in trn_indices]
-        val_dl_list = [TruncatedDataset(merged_ds_list, dataset, idx_map) for idx_map in val_indices]
+        indices = [split[k_fold_val_id] for split in splits]
+        trn_ds_list = [TruncatedDataset(merged_ds_list[i], dataset, idx_map[0]) for i, idx_map in enumerate(indices)]
+        val_ds_list = [TruncatedDataset(merged_ds_list[i], dataset, idx_map[1]) for i, idx_map in enumerate(indices)]
 
     trn_dl_list = [DataLoader(dataset=trn_ds, batch_size=batch_size, shuffle=shuffle, drop_last=True) for trn_ds in trn_ds_list]
     val_dl_list = [DataLoader(dataset=val_ds, batch_size=batch_size, shuffle=False, drop_last=True) for val_ds in val_ds_list]
