@@ -26,7 +26,7 @@ def draw_on_axes(ax: Axes, vectors: torch.Tensor, var: torch.Tensor = None, mu: 
         ax.set_xlim(bins[0][0], bins[0][-1])
         ax.set_ylim(bins[1][0], bins[1][-1])
         cmap = matplotlib.cm.plasma
-        ax.scatter(vectors[:,1], vectors[:,0], edgecolors='none', alpha=0.5, c=c, s=s, label=c)
+        ax.scatter(vectors[:,1], vectors[:,0], edgecolors='none', alpha=1, c=c, s=s, label=c)
     if mu is not None:
         x = bins[0]
         y = bins[1]
