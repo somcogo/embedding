@@ -70,9 +70,9 @@ def get_cifar10_datasets(data_dir):
     val_std = [0.2467, 0.2429, 0.2616]
     val_transform = Compose([ToTensor(), Normalize(val_mean, val_std)])
 
-    dataset = CIFAR10(root=data_dir, train=True, download=True, transform=train_transform)
+    dataset = CIFAR10(root=data_dir, train=True, download=False, transform=train_transform)
     dataset.targets = np.array(dataset.targets)
-    val_dataset = CIFAR10(root=data_dir, train=False, download=True, transform=val_transform)
+    val_dataset = CIFAR10(root=data_dir, train=False, download=False, transform=val_transform)
     val_dataset.targets = np.array(val_dataset.targets)
 
     return dataset, val_dataset

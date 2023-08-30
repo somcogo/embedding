@@ -17,18 +17,18 @@ def get_datasets(data_dir, dataset):
         trn_dataset, val_dataset = get_image_net_dataset(data_dir=data_dir)
     return trn_dataset, val_dataset
 
-def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, net_dataidx_map_train=None, net_dataidx_map_test=None, shuffle=True, k_fold_val_id=None):
+def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, net_dataidx_map_train=None, net_dataidx_map_test=None, shuffle=True, k_fold_val_id=None, seed=None):
     trn_dataset, val_dataset = get_datasets(data_dir=data_path, dataset=dataset)
 
     if partition == 'regular':
         trn_ds_list = [TruncatedDataset(trn_dataset, dataset) for _ in range(n_site)]
         val_ds_list = [TruncatedDataset(val_dataset, dataset) for _ in range(n_site)]
     elif partition == 'by_class':
-        (net_dataidx_map_train, net_dataidx_map_test) = partition_by_class(data_dir=data_path, dataset=dataset, n_sites=n_site)
+        (net_dataidx_map_train, net_dataidx_map_test) = partition_by_class(data_dir=data_path, dataset=dataset, n_sites=n_site, seed=seed)
         trn_ds_list = [TruncatedDataset(trn_dataset, dataset, idx_map) for idx_map in net_dataidx_map_train.values()]
         val_ds_list = [TruncatedDataset(val_dataset, dataset, idx_map) for idx_map in net_dataidx_map_test.values()]
     elif partition == 'dirichlet':
-        (net_dataidx_map_train, net_dataidx_map_test) = partition_with_dirichlet_distribution(data_dir=data_path, dataset=dataset, n_sites=n_site, alpha=alpha)
+        (net_dataidx_map_train, net_dataidx_map_test) = partition_with_dirichlet_distribution(data_dir=data_path, dataset=dataset, n_sites=n_site, alpha=alpha, seed=seed)
         trn_ds_list = [TruncatedDataset(trn_dataset, dataset, idx_map) for idx_map in net_dataidx_map_train.values()]
         val_ds_list = [TruncatedDataset(val_dataset, dataset, idx_map) for idx_map in net_dataidx_map_test.values()]
     elif partition == 'given':
