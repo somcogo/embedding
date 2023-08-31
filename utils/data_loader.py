@@ -17,7 +17,7 @@ def get_datasets(data_dir, dataset):
         trn_dataset, val_dataset = get_image_net_dataset(data_dir=data_dir)
     return trn_dataset, val_dataset
 
-def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, net_dataidx_map_train=None, net_dataidx_map_test=None, shuffle=True, k_fold_val_id=None, seed=None):
+def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, net_dataidx_map_train=None, net_dataidx_map_test=None, shuffle=True, k_fold_val_id=None, seed=None, site_indices=None):
     trn_dataset, val_dataset = get_datasets(data_dir=data_path, dataset=dataset)
 
     if partition == 'regular':
@@ -46,4 +46,7 @@ def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, n
 
     trn_dl_list = [DataLoader(dataset=trn_ds, batch_size=batch_size, shuffle=shuffle, drop_last=True) for trn_ds in trn_ds_list]
     val_dl_list = [DataLoader(dataset=val_ds, batch_size=batch_size, shuffle=False, drop_last=True) for val_ds in val_ds_list]
+    if site_indices is not None:
+        trn_dl_list = [trn_dl_list[i] for i in site_indices]
+        val_dl_list = [val_dl_list[i] for i in site_indices]
     return trn_dl_list, val_dl_list
