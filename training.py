@@ -33,8 +33,9 @@ class LayerPersonalisationTrainingApp:
                  label_smoothing=0.0, save_model=False, partition='regular',
                  alpha=None, strategy='all', finetuning=False, embed_dim=2,
                  model_path=None, embedding_lr=None, ffwrd_lr=None, gmm_components=None,
-                 single_vector_update=False, vector_update_batch=128, vector_update_lr=1e-3,
-                 layer_number=4, gmm_reg=False, sklearngmm=False, k_fold_val_id=None, seed=None):
+                 single_vector_update=False, vector_update_batch=1000, vector_update_lr=1,
+                 layer_number=4, gmm_reg=False, sklearngmm=True, k_fold_val_id=None,
+                 seed=None, site_indices=None):
 
         log.info(locals())
         self.epochs = epochs
@@ -58,6 +59,8 @@ class LayerPersonalisationTrainingApp:
         self.vector_update_batch = vector_update_batch
         self.vector_update_lr = vector_update_lr
         self.sklearngmm = sklearngmm
+        if site_indices is None:
+            site_indices = range(site_number)
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
@@ -68,14 +71,16 @@ class LayerPersonalisationTrainingApp:
         self.val_writer = None
         self.totalTrainingSamples_count = 0
 
+        self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
+        self.site_number = len(site_indices)
         self.models = self.initModels(embed_dim=embed_dim, layer_number=layer_number)
         self.mergeModels(is_init=True, model_path=model_path)
         self.optims = self.initOptimizers(lr, finetuning, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
-        self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed)
         if gmm_components is not None:
             self.trn_gmms, self.val_gmms = self.initGMMs(gmm_reg=gmm_reg)
-            self.trn_vector_model, self.val_vector_model, self.trn_vector_optim, self.val_vector_optim = self.initEmbeddingVector(layer_number=layer_number, seed=seed)
+            self.trn_vector_model, self.val_vector_model, self.trn_vector_optim, self.val_vector_optim = self.initEmbeddingVector(layer_number=layer_number)
+        assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
     def initModels(self, embed_dim, layer_number):
         if self.dataset == 'cifar10':
@@ -193,14 +198,14 @@ class LayerPersonalisationTrainingApp:
             
         return schedulers
 
-    def initDls(self, batch_size, partition, alpha, k_fold_val_id, seed):
+    def initDls(self, batch_size, partition, alpha, k_fold_val_id, seed, site_indices):
         if not self.finetuning:
             index_dict = torch.load('models/{}_saved_index_maps.pt'.format(self.dataset)) if partition in ['given', '5foldval'] else None
         else:
             index_dict = torch.load('models/{}_finetune.pt'.format(self.dataset)) if partition in ['given', '5foldval'] else None
         trn_idx_map = index_dict[self.site_number][alpha]['trn'] if index_dict is not None else None
         val_idx_map = index_dict[self.site_number][alpha]['val'] if index_dict is not None else None
-        trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, k_fold_val_id=k_fold_val_id, seed=seed)
+        trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
         return trn_dls, val_dls
 
     def initTensorboardWriters(self):
@@ -218,7 +223,7 @@ class LayerPersonalisationTrainingApp:
             val_gmms.append(SkGMM(n_components=self.gmm_components, warm_start=True, means_init=[self.mu_init[i]]*self.gmm_components))
         return trn_gmms, val_gmms
             
-    def initEmbeddingVector(self, layer_number, seed):
+    def initEmbeddingVector(self, layer_number):
         if self.dataset == 'mnist':
             trn_size = 60000
             val_size = 10000
@@ -237,7 +242,7 @@ class LayerPersonalisationTrainingApp:
             trn_idx_map[i] = self.trn_dls[i].dataset.indices
             val_idx_map[i] = self.val_dls[i].dataset.indices
         
-        trn_dls_emb_vector, val_dls_emb_vector = get_dl_lists(dataset=self.dataset, batch_size=self.vector_update_batch, partition='given', n_site=self.site_number, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, shuffle=False, seed=seed)
+        trn_dls_emb_vector, val_dls_emb_vector = get_dl_lists(dataset=self.dataset, batch_size=self.vector_update_batch, partition='given', n_site=self.site_number, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, shuffle=False)
         self.vector_trn_dls, self.vector_val_dls = trn_dls_emb_vector, val_dls_emb_vector
 
         trn_init_vectors = torch.empty(trn_size, self.embed_dim, dtype=torch.float)
