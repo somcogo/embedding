@@ -34,7 +34,7 @@ class LayerPersonalisationTrainingApp:
                  alpha=None, strategy='all', finetuning=False, embed_dim=2,
                  model_path=None, embedding_lr=None, ffwrd_lr=None, gmm_components=None,
                  single_vector_update=False, vector_update_batch=128, vector_update_lr=1e-3,
-                 layer_number=4, gmm_reg=False, sklearngmm=False, k_fold_val_id=None):
+                 layer_number=4, gmm_reg=False, sklearngmm=False, k_fold_val_id=None, seed=None):
 
         log.info(locals())
         self.epochs = epochs
@@ -72,10 +72,10 @@ class LayerPersonalisationTrainingApp:
         self.mergeModels(is_init=True, model_path=model_path)
         self.optims = self.initOptimizers(lr, finetuning, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
-        self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id)
+        self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed)
         if gmm_components is not None:
             self.trn_gmms, self.val_gmms = self.initGMMs(gmm_reg=gmm_reg)
-            self.trn_vector_model, self.val_vector_model, self.trn_vector_optim, self.val_vector_optim = self.initEmbeddingVector(layer_number=layer_number)
+            self.trn_vector_model, self.val_vector_model, self.trn_vector_optim, self.val_vector_optim = self.initEmbeddingVector(layer_number=layer_number, seed=seed)
 
     def initModels(self, embed_dim, layer_number):
         if self.dataset == 'cifar10':
@@ -193,14 +193,14 @@ class LayerPersonalisationTrainingApp:
             
         return schedulers
 
-    def initDls(self, batch_size, partition, alpha, k_fold_val_id):
+    def initDls(self, batch_size, partition, alpha, k_fold_val_id, seed):
         if not self.finetuning:
             index_dict = torch.load('models/{}_saved_index_maps.pt'.format(self.dataset)) if partition in ['given', '5foldval'] else None
         else:
             index_dict = torch.load('models/{}_finetune.pt'.format(self.dataset)) if partition in ['given', '5foldval'] else None
         trn_idx_map = index_dict[self.site_number][alpha]['trn'] if index_dict is not None else None
         val_idx_map = index_dict[self.site_number][alpha]['val'] if index_dict is not None else None
-        trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, k_fold_val_id=k_fold_val_id)
+        trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, k_fold_val_id=k_fold_val_id, seed=seed)
         return trn_dls, val_dls
 
     def initTensorboardWriters(self):
@@ -218,7 +218,7 @@ class LayerPersonalisationTrainingApp:
             val_gmms.append(SkGMM(n_components=self.gmm_components, warm_start=True, means_init=[self.mu_init[i]]*self.gmm_components))
         return trn_gmms, val_gmms
             
-    def initEmbeddingVector(self, layer_number):
+    def initEmbeddingVector(self, layer_number, seed):
         if self.dataset == 'mnist':
             trn_size = 60000
             val_size = 10000
@@ -237,7 +237,7 @@ class LayerPersonalisationTrainingApp:
             trn_idx_map[i] = self.trn_dls[i].dataset.indices
             val_idx_map[i] = self.val_dls[i].dataset.indices
         
-        trn_dls_emb_vector, val_dls_emb_vector = get_dl_lists(dataset=self.dataset, batch_size=self.vector_update_batch, partition='given', n_site=self.site_number, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, shuffle=False)
+        trn_dls_emb_vector, val_dls_emb_vector = get_dl_lists(dataset=self.dataset, batch_size=self.vector_update_batch, partition='given', n_site=self.site_number, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, shuffle=False, seed=seed)
         self.vector_trn_dls, self.vector_val_dls = trn_dls_emb_vector, val_dls_emb_vector
 
         trn_init_vectors = torch.empty(trn_size, self.embed_dim, dtype=torch.float)
@@ -345,7 +345,7 @@ class LayerPersonalisationTrainingApp:
 
             for batch_ndx, batch_tuple in enumerate(trn_dl):
                 # try:
-                #     with torch.autograd.detect_anomaly():
+                    # with torch.autograd.detect_anomaly():
                         def closure():
                             self.optims[ndx].zero_grad()
                             loss, _ = self.computeBatchLoss(
@@ -364,11 +364,11 @@ class LayerPersonalisationTrainingApp:
                             self.optims[ndx].step()
                 # except:
                 #     print('epoch', epoch_ndx, 'batch', batch_ndx)
-                    # for name, param in self.models[ndx].named_parameters():
-                    #     if param.grad is None:
-                    #         print(name, 'None')
-                    #     elif param.grad.norm()>1000:
-                    #         print(name, param.grad.norm())
+                #     for name, param in self.models[ndx].named_parameters():
+                #         if param.grad is None:
+                #             print(name, 'None')
+                #         elif param.grad.norm()>1000:
+                #             print(name, param.grad.norm())
                 #     raise
                 # finally:
                 #     print('epoch', epoch_ndx, 'batch', batch_ndx)
@@ -413,14 +413,15 @@ class LayerPersonalisationTrainingApp:
                 local_val_metrics = torch.zeros(2 + 2*self.num_classes, len(val_dl), device=self.device)
 
                 for batch_ndx, batch_tuple in enumerate(val_dl):
-                    _, accuracy = self.computeBatchLoss(
-                        batch_ndx,
-                        batch_tuple,
-                        self.models[ndx],
-                        local_val_metrics,
-                        'val',
-                        ndx
-                    )
+                    # with torch.autograd.detect_anomaly():
+                        _, accuracy = self.computeBatchLoss(
+                            batch_ndx,
+                            batch_tuple,
+                            self.models[ndx],
+                            local_val_metrics,
+                            'val',
+                            ndx
+                        )
                 
                 loss += local_val_metrics[-2].sum()
                 correct += local_val_metrics[-1].sum()
