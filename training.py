@@ -155,7 +155,8 @@ class LayerPersonalisationTrainingApp:
         for model in self.models:
             params_to_update = []
             if finetuning:
-                layer_list = get_layer_list(self.model_name, strategy='finetuning', original_list=model.state_dict().keys())
+                assert self.strategy == 'finetuning' or self.strategy == 'affinetoo'
+                layer_list = get_layer_list(self.model_name, strategy=self.strategy, original_list=model.state_dict().keys())
                 for name, param in model.named_parameters():
                     if name in layer_list:
                         params_to_update.append(param)
@@ -323,7 +324,7 @@ class LayerPersonalisationTrainingApp:
                 self.fitGMM(epoch_ndx)
             
             
-            if self.scheduler_mode == 'cosine':
+            if self.scheduler_mode == 'cosine' and not self.finetuning:
                 for scheduler in self.schedulers:
                     scheduler.step()
                     # log.debug(self.scheduler.get_last_lr())
