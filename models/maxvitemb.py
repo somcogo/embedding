@@ -240,6 +240,7 @@ class RelativeSelfAttention(nn.Module):
         grid_window_size (Tuple[int, int], optional): Grid/Window size to be utilized. Default (7, 7)
         attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
         drop (float, optional): Dropout ratio of output. Default: 0.0
+        latent_dim (int, optional): Dimension of the latent space: Default 2
     """
 
     def __init__(
@@ -248,7 +249,8 @@ class RelativeSelfAttention(nn.Module):
             num_heads: int = 32,
             grid_window_size: Tuple[int, int] = (7, 7),
             attn_drop: float = 0.,
-            drop: float = 0.
+            drop: float = 0.,
+            latent_dim: int = 2
     ) -> None:
         """ Constructor method """
         # Call super constructor
@@ -268,7 +270,7 @@ class RelativeSelfAttention(nn.Module):
         bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
         nn.init.uniform_(self.qkv_bias, -bound, bound)
 
-        self.affine = nn.Linear(in_features=2, out_features=(in_channels + 1)*(3 * in_channels), bias=True)
+        self.affine = nn.Linear(in_features=latent_dim, out_features=(in_channels + 1)*(3 * in_channels), bias=True)
         self.attn_drop = nn.Dropout(p=attn_drop)
         self.proj = nn.Linear(in_features=in_channels, out_features=in_channels, bias=True)
         self.proj_drop = nn.Dropout(p=drop)
@@ -312,14 +314,6 @@ class RelativeSelfAttention(nn.Module):
         # Get shape of input
         B_, N, C = input.shape
         # Perform query key value mapping
-        # qkv = self.qkv_mapping(input)
-        # if len(emb.shape) == 1:
-        #     params = self.affine(emb).repeat(B_).reshape(B_, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
-        # else:
-        #     params = self.affine(emb)
-        #     params = params.repeat(B_ // emb.shape[0], 1).reshape(B_, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
-        # qkv = qkv.reshape(B_, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
-        # q, k, v = (qkv + params).unbind(0)
         if len(emb.shape) == 1:
             emb = emb.unsqueeze(0)
         params = self.affine(emb)
@@ -369,6 +363,7 @@ class MaxViTTransformerBlock(nn.Module):
         mlp_ratio (float, optional): Ratio of mlp hidden dim to embedding dim. Default: 4.0
         act_layer (Type[nn.Module], optional): Type of activation layer to be utilized. Default: nn.GELU
         norm_layer (Type[nn.Module], optional): Type of normalization layer to be utilized. Default: nn.BatchNorm2d
+        latent_dim (int, optional): Dimension of the latent space: Default 2
     """
 
     def __init__(
@@ -384,6 +379,7 @@ class MaxViTTransformerBlock(nn.Module):
             mlp_ratio: float = 4.,
             act_layer: Type[nn.Module] = nn.GELU,
             norm_layer: Type[nn.Module] = nn.LayerNorm,
+            latent_dim: int = 2
     ) -> None:
         """ Constructor method """
         super(MaxViTTransformerBlock, self).__init__()
@@ -398,7 +394,8 @@ class MaxViTTransformerBlock(nn.Module):
             num_heads=num_heads,
             grid_window_size=grid_window_size,
             attn_drop=attn_drop,
-            drop=drop
+            drop=drop,
+            latent_dim=latent_dim
         )
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm_2 = norm_layer(in_channels)
@@ -448,6 +445,7 @@ class MaxViTBlock(nn.Module):
         act_layer (Type[nn.Module], optional): Type of activation layer to be utilized. Default: nn.GELU
         norm_layer (Type[nn.Module], optional): Type of normalization layer to be utilized. Default: nn.BatchNorm2d
         norm_layer_transformer (Type[nn.Module], optional): Normalization layer in Transformer. Default: nn.LayerNorm
+        latent_dim (int, optional): Dimension of the latent space: Default 2
     """
 
     def __init__(
@@ -463,7 +461,8 @@ class MaxViTBlock(nn.Module):
             mlp_ratio: float = 4.,
             act_layer: Type[nn.Module] = nn.GELU,
             norm_layer: Type[nn.Module] = nn.BatchNorm2d,
-            norm_layer_transformer: Type[nn.Module] = nn.LayerNorm
+            norm_layer_transformer: Type[nn.Module] = nn.LayerNorm,
+            latent_dim: int = 2
     ) -> None:
         """ Constructor method """
         # Call super constructor
@@ -489,7 +488,8 @@ class MaxViTBlock(nn.Module):
             drop_path=drop_path,
             mlp_ratio=mlp_ratio,
             act_layer=act_layer,
-            norm_layer=norm_layer_transformer
+            norm_layer=norm_layer_transformer,
+            latent_dim=latent_dim
         )
         self.grid_transformer = MaxViTTransformerBlock(
             in_channels=out_channels,
@@ -502,7 +502,8 @@ class MaxViTBlock(nn.Module):
             drop_path=drop_path,
             mlp_ratio=mlp_ratio,
             act_layer=act_layer,
-            norm_layer=norm_layer_transformer
+            norm_layer=norm_layer_transformer,
+            latent_dim=latent_dim
         )
 
     def forward(self, tuple) -> torch.Tensor:
@@ -535,6 +536,7 @@ class MaxViTStage(nn.Module):
         act_layer (Type[nn.Module], optional): Type of activation layer to be utilized. Default: nn.GELU
         norm_layer (Type[nn.Module], optional): Type of normalization layer to be utilized. Default: nn.BatchNorm2d
         norm_layer_transformer (Type[nn.Module], optional): Normalization layer in Transformer. Default: nn.LayerNorm
+        latent_dim (int, optional): Dimension of the latent space: Default 2
     """
 
     def __init__(
@@ -550,7 +552,8 @@ class MaxViTStage(nn.Module):
             mlp_ratio: float = 4.,
             act_layer: Type[nn.Module] = nn.GELU,
             norm_layer: Type[nn.Module] = nn.BatchNorm2d,
-            norm_layer_transformer: Type[nn.Module] = nn.LayerNorm
+            norm_layer_transformer: Type[nn.Module] = nn.LayerNorm,
+            latent_dim: int = 2
     ) -> None:
         """ Constructor method """
         # Call super constructor
@@ -569,7 +572,8 @@ class MaxViTStage(nn.Module):
                 mlp_ratio=mlp_ratio,
                 act_layer=act_layer,
                 norm_layer=norm_layer,
-                norm_layer_transformer=norm_layer_transformer
+                norm_layer_transformer=norm_layer_transformer,
+                latent_dim=latent_dim
             )
             for index in range(depth)
         ])
@@ -596,6 +600,7 @@ class MaxViTEmb(nn.Module):
         depths (Tuple[int, ...], optional): Depth of each network stage. Default (2, 2, 5, 2)
         channels (Tuple[int, ...], optional): Number of channels in each network stage. Default (64, 128, 256, 512)
         num_classes (int, optional): Number of classes to be predicted. Default 1000
+        latent_dim (int, optional): Dimension of the latent space. Default 2
         embed_dim (int, optional): Embedding dimension of the convolutional stem. Default 64
         num_heads (int, optional): Number of attention heads. Default 32
         grid_window_size (Tuple[int, int], optional): Grid/Window size to be utilized. Default (7, 7)
@@ -615,6 +620,7 @@ class MaxViTEmb(nn.Module):
             depths: Tuple[int, ...] = (2, 2, 5, 2),
             channels: Tuple[int, ...] = (64, 128, 256, 512),
             num_classes: int = 1000,
+            latent_dim: int = 2,
             embed_dim: int = 64,
             num_heads: int = 32,
             grid_window_size: Tuple[int, int] = (7, 7),
@@ -637,7 +643,7 @@ class MaxViTEmb(nn.Module):
         # Save parameters
         self.num_classes: int = num_classes
 
-        self.embedding = nn.Embedding(site_number, embedding_dim=2)
+        self.embedding = nn.Embedding(site_number, embedding_dim=latent_dim)
         # Init convolutional stem
         self.stem = nn.Sequential(
             nn.Conv2d(in_channels=in_channels, out_channels=embed_dim, kernel_size=(3, 3), stride=(2, 2),
@@ -664,7 +670,8 @@ class MaxViTEmb(nn.Module):
                     mlp_ratio=mlp_ratio,
                     act_layer=act_layer,
                     norm_layer=norm_layer,
-                    norm_layer_transformer=norm_layer_transformer
+                    norm_layer_transformer=norm_layer_transformer,
+                    latent_dim=latent_dim
                 )
             )
         self.stages = nn.ModuleList(stages)
