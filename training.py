@@ -16,9 +16,8 @@ from utils.logconf import logging
 from utils.data_loader import get_dl_lists
 from utils.ops import aug_image
 from utils.merge_strategies import get_layer_list
-from models.gmm import GaussianMixture
 from models.maxvitemb import MaxViTEmb
-from models.maxvit import MaxViT, max_vit_tiny_224
+from models.maxvit import MaxViT
 
 log = logging.getLogger(__name__)
 # log.setLevel(logging.WARN)
@@ -26,10 +25,10 @@ log.setLevel(logging.INFO)
 # log.setLevel(logging.DEBUG)
 
 class LayerPersonalisationTrainingApp:
-    def __init__(self, epochs=2, batch_size=128, logdir='test', lr=1e-4,
+    def __init__(self, epochs=500, batch_size=128, logdir='test', lr=1e-3,
                  comment='dwlpt', dataset='cifar10', site_number=1,
-                 model_name='resnet18emb', optimizer_type='sgd',
-                 scheduler_mode=None, pretrained=False, T_max=500,
+                 model_name='resnet18emb', optimizer_type='newadam',
+                 scheduler_mode='cosine', pretrained=False, T_max=500,
                  label_smoothing=0.0, save_model=False, partition='regular',
                  alpha=None, strategy='all', finetuning=False, embed_dim=2,
                  model_path=None, embedding_lr=None, ffwrd_lr=None, gmm_components=None,
@@ -562,7 +561,7 @@ class LayerPersonalisationTrainingApp:
                 self.val_gmms[i].fit(val_vectors[indices], warm_start=True)
             mu = self.val_gmms[i].means_ if self.sklearngmm else self.val_gmms[i].mu
             var = self.val_gmms[i].covariances_ if self.sklearngmm else self.val_gmms[i].var
-            pred = self.val_gmms[i].predict(trn_vectors[indices])
+            pred = self.val_gmms[i].predict(val_vectors[indices])
             state[epoch_ndx]['val'][i] = {'vectors':val_vectors[indices],
                                'pred':torch.tensor(pred, device='cpu'),
                                'mu':torch.tensor(mu, device='cpu'),
