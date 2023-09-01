@@ -125,9 +125,13 @@ class LayerPersonalisationTrainingApp:
             elif self.model_name == 'resnet18':
                 model = ResNet18Model(num_classes=num_classes, in_channels=in_channels, pretrained=self.pretrained)
             elif self.model_name == 'maxvitembv1':
-                model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(64, 128, 256), site_number=self.site_number)
+                model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(64, 128, 256), site_number=self.site_number, latent_dim=embed_dim)
             elif self.model_name == 'maxvitv1':
                 model = MaxViT(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(64, 128, 256))
+            elif self.model_name == 'maxvitembv2':
+                model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(32, 64, 128), site_number=self.site_number, latent_dim=embed_dim)
+            elif self.model_name == 'maxvitv2':
+                model = MaxViT(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(32, 64, 128))
             models.append(model)
 
         if 'embedding.weight' in '\t'.join(model.state_dict().keys()):

@@ -262,7 +262,7 @@ class RelativeSelfAttention(nn.Module):
         self.scale: float = num_heads ** -0.5
         self.attn_area: int = grid_window_size[0] * grid_window_size[1]
         # Init layers
-        self.qkv_mapping = nn.Linear(in_features=in_channels, out_features=3 * in_channels, bias=True)
+        # self.qkv_mapping = nn.Linear(in_features=in_channels, out_features=3 * in_channels, bias=True)
         self.qkv_weight = nn.Parameter(torch.empty((3 * in_channels, in_channels)))
         self.qkv_bias = nn.Parameter(torch.empty(3 * in_channels))
         nn.init.kaiming_uniform_(self.qkv_weight, a=math.sqrt(5))
