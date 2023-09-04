@@ -70,4 +70,6 @@ def get_layer_list(model, strategy, original_list):
         layer_list = [name for name in original_list if 'embedding' in name.split('.') or 'fc' in name.split('.')]
     elif strategy == 'affinetoo':
         layer_list = [name for name in original_list if 'embedding' in name.split('.') or 'fc' in name.split('.') or 'affine' in name.split('.')]
+    elif strategy == 'onlyfc':
+        layer_list = [name for name in original_list if 'fc' in name.split('.')]
     return layer_list
