@@ -455,7 +455,7 @@ class LayerPersonalisationTrainingApp:
 
         if mode == 'trn':
             batch = aug_image(batch, self.dataset)
-        if self.model_name == 'maxvitv1' or self.model_name == 'maxvitembv1':
+        if self.model_name == 'maxvitv1' or self.model_name == 'maxvitembv1' or self.model_name == 'maxvitv2' or self.model_name == 'maxvitembv2':
             resize = Resize(224, antialias=True)
             batch = resize(batch)
 
@@ -492,7 +492,7 @@ class LayerPersonalisationTrainingApp:
                 self.trn_vector_optim.zero_grad()
                 imgs, labels, img_ids = batch_tup
                 imgs = imgs.to(device=self.device).float().permute(0, 3, 1, 2)
-                if self.model_name == 'maxvitv1' or self.model_name == 'maxvitembv1':
+                if self.model_name == 'maxvitembv1' or self.model_name == 'maxvitembv2':
                     resize = Resize(224, antialias=True)
                     imgs = resize(imgs)
                 labels = labels.to(device=self.device).to(dtype=torch.long)
@@ -513,6 +513,9 @@ class LayerPersonalisationTrainingApp:
                 self.val_vector_optim.zero_grad()
                 imgs, labels, img_ids = batch_tup
                 imgs = imgs.to(device=self.device).float().permute(0, 3, 1, 2)
+                if self.model_name == 'maxvitembv1' or self.model_name == 'maxvitembv2':
+                    resize = Resize(224, antialias=True)
+                    imgs = resize(imgs)
                 labels = labels.to(device=self.device).to(dtype=torch.long)
                 img_ids = img_ids.to(device=self.device).to(dtype=torch.long)
                 preds = torch.zeros(imgs.shape[0], 10, device=self.device)
