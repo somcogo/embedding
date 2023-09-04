@@ -263,6 +263,7 @@ class FeedForward(torch.nn.Module):
             self.lin2 = torch.nn.Linear(in_features=hidden_layer, out_features=out_channels)
     
     def forward(self, x):
+        x = x.to(torch.float)
         if self.version == 1:
             out = self.lin1(x)
         if self.version == 2:
