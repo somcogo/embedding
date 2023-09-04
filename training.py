@@ -158,7 +158,7 @@ class LayerPersonalisationTrainingApp:
         for model in self.models:
             params_to_update = []
             if finetuning:
-                assert self.strategy == 'finetuning' or self.strategy == 'affinetoo'
+                assert self.strategy == 'finetuning' or self.strategy == 'affinetoo' or self.strategy == 'onlyfc'
                 layer_list = get_layer_list(self.model_name, strategy=self.strategy, original_list=model.state_dict().keys())
                 for name, param in model.named_parameters():
                     if name in layer_list:
