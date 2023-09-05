@@ -16,6 +16,7 @@ from utils.logconf import logging
 from utils.data_loader import get_dl_lists
 from utils.ops import aug_image
 from utils.merge_strategies import get_layer_list
+from utils.get_model import get_model
 from models.maxvitemb import MaxViTEmb
 from models.maxvit import MaxViT
 
@@ -33,8 +34,8 @@ class LayerPersonalisationTrainingApp:
                  alpha=None, strategy='all', finetuning=False, embed_dim=2,
                  model_path=None, embedding_lr=None, ffwrd_lr=None, gmm_components=None,
                  single_vector_update=False, vector_update_batch=1000, vector_update_lr=1,
-                 layer_number=4, gmm_reg=False, sklearngmm=True, k_fold_val_id=None,
-                 seed=None, site_indices=None):
+                 layer_number=4, gmm_reg=False, k_fold_val_id=None, seed=None,
+                 site_indices=None):
 
         log.info(locals())
         self.epochs = epochs
@@ -57,7 +58,6 @@ class LayerPersonalisationTrainingApp:
         self.single_vector_update = single_vector_update
         self.vector_update_batch = vector_update_batch
         self.vector_update_lr = vector_update_lr
-        self.sklearngmm = sklearngmm
         if site_indices is None:
             site_indices = range(site_number)
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
@@ -82,57 +82,7 @@ class LayerPersonalisationTrainingApp:
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
     def initModels(self, embed_dim, layer_number):
-        if self.dataset == 'cifar10':
-            num_classes = 10
-            in_channels = 3
-        elif self.dataset == 'cifar100':
-            num_classes = 100
-            in_channels = 3
-        elif self.dataset == 'pascalvoc':
-            num_classes = 21
-            in_channels = 3
-        elif self.dataset == 'mnist':
-            num_classes = 10
-            in_channels = 1
-        elif self.dataset == 'imagenet':
-            num_classes = 200
-            in_channels = 3
-        self.num_classes = num_classes
-        models = []
-        for _ in range(self.site_number):
-            if self.model_name == 'resnet34emb':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[3, 4, 6, 3], site_number=self.site_number, embed_dim=embed_dim, layer_number=layer_number)
-            elif self.model_name == 'resnet18emb':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, layer_number=layer_number)
-            elif self.model_name == 'resnet18embhypnn1':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=1, layer_number=layer_number)
-            elif self.model_name == 'resnet18embhypnn2':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=2, layer_number=layer_number)
-            elif self.model_name == 'resnet18lightweight1':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, layer_number=layer_number)
-            elif self.model_name == 'resnet18lightweight2':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, layer_number=layer_number)
-            elif self.model_name == 'resnet18affine1':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, affine=True, layer_number=layer_number)
-            elif self.model_name == 'resnet18affine2':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, affine=True, layer_number=layer_number)
-            elif self.model_name == 'resnet18medium1':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, affine=True, medium_ffwrd=True, layer_number=layer_number)
-            elif self.model_name == 'resnet18medium2':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, affine=True, medium_ffwrd=True, layer_number=layer_number)
-            elif self.model_name == 'resnet34':
-                model = ResNet34Model(num_classes=num_classes, in_channels=in_channels, pretrained=self.pretrained)
-            elif self.model_name == 'resnet18':
-                model = ResNet18Model(num_classes=num_classes, in_channels=in_channels, pretrained=self.pretrained)
-            elif self.model_name == 'maxvitembv1':
-                model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(64, 128, 256), site_number=self.site_number, latent_dim=embed_dim)
-            elif self.model_name == 'maxvitv1':
-                model = MaxViT(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(64, 128, 256))
-            elif self.model_name == 'maxvitembv2':
-                model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(32, 64, 128), site_number=self.site_number, latent_dim=embed_dim)
-            elif self.model_name == 'maxvitv2':
-                model = MaxViT(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(32, 64, 128))
-            models.append(model)
+        models = get_model(self.dataset, self.model_name, self.site_number, embed_dim, layer_number, self.pretrained)
 
         if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
             if embed_dim > 2:
@@ -191,7 +141,7 @@ class LayerPersonalisationTrainingApp:
         return optims
     
     def initSchedulers(self):
-        if self.scheduler_mode is None or self.finetuning:
+        if self.scheduler_mode is None:
             schedulers = None
         else:
             schedulers = []
@@ -353,39 +303,23 @@ class LayerPersonalisationTrainingApp:
             local_trn_metrics = torch.zeros(2 + 2*self.num_classes, len(trn_dl), device=self.device)
 
             for batch_ndx, batch_tuple in enumerate(trn_dl):
-                # try:
-                    # with torch.autograd.detect_anomaly():
-                        def closure():
-                            self.optims[ndx].zero_grad()
-                            loss, _ = self.computeBatchLoss(
-                                batch_ndx,
-                                batch_tuple,
-                                self.models[ndx],
-                                local_trn_metrics,
-                                'trn',
-                                ndx)
-                            loss.backward()
-                            return loss
-                        if self.optimizer_type == 'lbfgs':
-                            self.optims[ndx].step(closure)
-                        else:
-                            loss = closure()
-                            self.optims[ndx].step()
-                # except:
-                #     print('epoch', epoch_ndx, 'batch', batch_ndx)
-                #     for name, param in self.models[ndx].named_parameters():
-                #         if param.grad is None:
-                #             print(name, 'None')
-                #         elif param.grad.norm()>1000:
-                #             print(name, param.grad.norm())
-                #     raise
-                # finally:
-                #     print('epoch', epoch_ndx, 'batch', batch_ndx)
-                #     for name, param in self.models[ndx].named_parameters():
-                #         if param is None:
-                #             print(name, 'None')
-                #         elif param.norm()>10000:
-                #             print(name, param.norm())
+                # with torch.autograd.detect_anomaly():
+                    def closure():
+                        self.optims[ndx].zero_grad()
+                        loss, _ = self.computeBatchLoss(
+                            batch_ndx,
+                            batch_tuple,
+                            self.models[ndx],
+                            local_trn_metrics,
+                            'trn',
+                            ndx)
+                        loss.backward()
+                        return loss
+                    if self.optimizer_type == 'lbfgs':
+                        self.optims[ndx].step(closure)
+                    else:
+                        loss = closure()
+                        self.optims[ndx].step()
 
             loss += local_trn_metrics[-2].sum()
             correct += local_trn_metrics[-1].sum()
@@ -532,17 +466,13 @@ class LayerPersonalisationTrainingApp:
     
     def fitGMM(self, epoch_ndx):
         trn_vectors, val_vectors = self.extractEmbeddingVectors()
-        if not self.sklearngmm:
-            trn_vectors = trn_vectors.to(device=self.device)
-            val_vectors = val_vectors.to(device=self.device)
-        else:
-            trn_vectors = trn_vectors.to(device='cpu')
-            val_vectors = val_vectors.to(device='cpu')
+        trn_vectors = trn_vectors.to(device='cpu')
+        val_vectors = val_vectors.to(device='cpu')
         trn_img_indices, val_img_indices = self.getImageIndicesBySite()
         save_path = os.path.join(
             'gmm_data',
             self.logdir_name,
-            '{}_{}.pt'.format(self.time_str, self.comment))
+            '{}-{}.pt'.format(self.time_str, self.comment))
         
         if epoch_ndx == 1:
             state = {}
@@ -550,24 +480,18 @@ class LayerPersonalisationTrainingApp:
             state = torch.load(save_path)
         state[epoch_ndx] = {'trn':{}, 'val':{}}
         for i, indices in enumerate(trn_img_indices):
-            if self.sklearngmm:
-                self.trn_gmms[i].fit(trn_vectors[indices])
-            else:
-                self.trn_gmms[i].fit(trn_vectors[indices], warm_start=True)
-            mu = self.trn_gmms[i].means_ if self.sklearngmm else self.trn_gmms[i].mu
-            var = self.trn_gmms[i].covariances_ if self.sklearngmm else self.trn_gmms[i].var
+            self.trn_gmms[i].fit(trn_vectors[indices])
+            mu = self.trn_gmms[i].means_
+            var = self.trn_gmms[i].covariances_
             pred = self.trn_gmms[i].predict(trn_vectors[indices])
             state[epoch_ndx]['trn'][i] = {'vectors':trn_vectors[indices],
                                'pred':torch.tensor(pred, device='cpu'),
                                'mu':torch.tensor(mu, device='cpu'),
                                'var':torch.tensor(var, device='cpu')}
         for i, indices in enumerate(val_img_indices):
-            if self.sklearngmm:
-                self.val_gmms[i].fit(val_vectors[indices])
-            else:
-                self.val_gmms[i].fit(val_vectors[indices], warm_start=True)
-            mu = self.val_gmms[i].means_ if self.sklearngmm else self.val_gmms[i].mu
-            var = self.val_gmms[i].covariances_ if self.sklearngmm else self.val_gmms[i].var
+            self.val_gmms[i].fit(val_vectors[indices])
+            mu = self.val_gmms[i].means_
+            var = self.val_gmms[i].covariances_
             pred = self.val_gmms[i].predict(val_vectors[indices])
             state[epoch_ndx]['val'][i] = {'vectors':val_vectors[indices],
                                'pred':torch.tensor(pred, device='cpu'),
@@ -619,7 +543,7 @@ class LayerPersonalisationTrainingApp:
         file_path = os.path.join(
             'saved_models',
             self.logdir_name,
-            '{}_{}.state'.format(
+            '{}-{}.state'.format(
                 self.time_str,
                 self.comment
             )
