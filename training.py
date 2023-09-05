@@ -11,14 +11,11 @@ from torch.utils.tensorboard import SummaryWriter
 from sklearn.mixture import GaussianMixture as SkGMM
 import numpy as np
 
-from models.model import ResNetWithEmbeddings, ResNet34Model, ResNet18Model
 from utils.logconf import logging
 from utils.data_loader import get_dl_lists
 from utils.ops import aug_image
 from utils.merge_strategies import get_layer_list
 from utils.get_model import get_model
-from models.maxvitemb import MaxViTEmb
-from models.maxvit import MaxViT
 
 log = logging.getLogger(__name__)
 # log.setLevel(logging.WARN)
