@@ -1,6 +1,6 @@
-from ..models.model import ResNet18Model, ResNet34Model, ResNetWithEmbeddings
-from ..models.maxvit import MaxViT
-from ..models.maxvitemb import MaxViTEmb
+from models.model import ResNet18Model, ResNet34Model, ResNetWithEmbeddings
+from models.maxvit import MaxViT
+from models.maxvitemb import MaxViTEmb
 
 def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=None, pretrained=False):
     if dataset == 'cifar10':
