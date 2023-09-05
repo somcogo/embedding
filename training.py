@@ -82,9 +82,9 @@ class LayerPersonalisationTrainingApp:
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
     def initModels(self, embed_dim, layer_number):
-        models = get_model(self.dataset, self.model_name, self.site_number, embed_dim, layer_number, self.pretrained)
+        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, layer_number, self.pretrained)
 
-        if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
+        if 'embedding.weight' in '\t'.join(models[0].state_dict().keys()):
             if embed_dim > 2:
                 self.mu_init = np.eye(self.site_number, embed_dim)
             else:

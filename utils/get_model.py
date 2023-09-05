@@ -18,7 +18,6 @@ def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=Non
     elif dataset == 'imagenet':
         num_classes = 200
         in_channels = 3
-    num_classes = num_classes
     models = []
     for _ in range(site_number):
         if model_name == 'resnet34emb':
@@ -54,4 +53,4 @@ def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=Non
         elif model_name == 'maxvitv2':
             model = MaxViT(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(32, 64, 128))
         models.append(model)
-    return models
+    return models, num_classes
