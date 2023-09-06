@@ -286,6 +286,8 @@ class LayerPersonalisationTrainingApp:
             self.trn_writer.close()
             self.val_writer.close()
 
+        return saving_criterion
+
     def doTraining(self, epoch_ndx, trn_dls):
         for model in self.models:
             model.train()
