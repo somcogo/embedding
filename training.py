@@ -365,7 +365,7 @@ class LayerPersonalisationTrainingApp:
                 
                 loss += local_val_metrics[-2].sum()
                 correct += local_val_metrics[-1].sum()
-                total += len(val_dl.dataset)
+                total += local_val_metrics[self.num_classes: 2*self.num_classes].sum()
 
                 correct_by_class += local_val_metrics[:self.num_classes].sum(dim=1)
                 total_by_class += local_val_metrics[self.num_classes: 2*self.num_classes].sum(dim=1)
@@ -548,7 +548,7 @@ class LayerPersonalisationTrainingApp:
 
         os.makedirs(os.path.dirname(file_path), mode=0o755, exist_ok=True)
         state = {'valmetrics':val_metrics,
-                    'epoch': epoch_ndx}
+                 'epoch': epoch_ndx}
         for ndx, model in enumerate(self.models):
             if isinstance(model, torch.nn.DataParallel):
                 model = model.module
