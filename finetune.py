@@ -2,6 +2,7 @@ import glob
 import os
 
 from training import LayerPersonalisationTrainingApp
+import torch
 
 def finetune_and_evaluate(old_dir, **kwargs):
     old_comment = kwargs['comment']
@@ -26,5 +27,10 @@ def finetune_and_evaluate(old_dir, **kwargs):
         only_emb_finetuning = onlyemb_app.main()
     else:
         only_fc_finetuning, only_emb_finetuning = None, None
+
+    os.makedirs(os.path.join('data/tables', old_dir), exist_ok=True)
+    torch.save([as_is_validation, normal_finetuning, only_fc_finetuning, only_emb_finetuning], os.path.join('data/tables', old_dir, old_comment))
+    os.makedirs(os.path.join('data/tables', 'dict', old_dir), exist_ok=True)
+    torch.save({'as_is':as_is_validation, 'normal':normal_finetuning, 'onlyfc':only_fc_finetuning, 'onlyemb':only_emb_finetuning}, os.path.join('data/tables', 'dict', old_dir, old_comment))
 
     return as_is_validation, normal_finetuning, only_fc_finetuning, only_emb_finetuning
