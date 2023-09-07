@@ -52,5 +52,9 @@ def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=Non
             model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(32, 64, 128), site_number=site_number, latent_dim=embed_dim)
         elif model_name == 'maxvitv2':
             model = MaxViT(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(32, 64, 128))
+        elif model_name == 'maxvitembv3':
+            model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(1, 1, 2), channels=(64, 128, 256), site_number=site_number, latent_dim=embed_dim)
+        elif model_name == 'maxvitv3':
+            model = MaxViT(num_classes=num_classes, in_channels=in_channels, depths=(1, 1, 2), channels=(64, 128, 256))
         models.append(model)
     return models, num_classes
