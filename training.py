@@ -28,7 +28,7 @@ class LayerPersonalisationTrainingApp:
                  model_name='resnet18emb', optimizer_type='newadam',
                  scheduler_mode='cosine', pretrained=False, T_max=500,
                  label_smoothing=0.0, save_model=False, partition='regular',
-                 alpha=None, strategy='all', finetuning=False, embed_dim=2,
+                 alpha=None, strategy='noembed', finetuning=False, embed_dim=2,
                  model_path=None, embedding_lr=None, ffwrd_lr=None, gmm_components=None,
                  single_vector_update=False, vector_update_batch=1000, vector_update_lr=1,
                  layer_number=4, gmm_reg=False, k_fold_val_id=None, seed=None,
