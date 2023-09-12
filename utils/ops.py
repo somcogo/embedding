@@ -37,3 +37,8 @@ def aug_crop_rotate_flip_erase(batch, dataset):
         ])
     batch = trans(batch)
     return batch
+
+def perturb(batch, site_id):
+    if site_id == 0:
+        batch = batch
+    return batch

@@ -13,7 +13,7 @@ import numpy as np
 
 from utils.logconf import logging
 from utils.data_loader import get_dl_lists
-from utils.ops import aug_image
+from utils.ops import aug_image, perturb
 from utils.merge_strategies import get_layer_list
 from utils.get_model import get_model
 
@@ -32,7 +32,7 @@ class LayerPersonalisationTrainingApp:
                  model_path=None, embedding_lr=None, ffwrd_lr=None, gmm_components=None,
                  single_vector_update=False, vector_update_batch=1000, vector_update_lr=1,
                  layer_number=4, gmm_reg=False, k_fold_val_id=None, seed=None,
-                 site_indices=None):
+                 site_indices=None, per_site_perturbation=False):
 
         log.info(locals())
         self.epochs = epochs
@@ -55,8 +55,10 @@ class LayerPersonalisationTrainingApp:
         self.single_vector_update = single_vector_update
         self.vector_update_batch = vector_update_batch
         self.vector_update_lr = vector_update_lr
+        self.per_site_perturbation = per_site_perturbation
         if site_indices is None:
             site_indices = range(site_number)
+        self.site_indices = site_indices
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
@@ -391,6 +393,8 @@ class LayerPersonalisationTrainingApp:
         if self.model_name[:6] == 'maxvit':
             resize = Resize(224, antialias=True)
             batch = resize(batch)
+        if self.per_site_perturbation:
+            batch = perturb(batch, self.site_indices[site_id])
 
         if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
             pred = model(batch, torch.tensor(site_id, device=self.device, dtype=torch.int))
