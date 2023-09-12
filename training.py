@@ -44,7 +44,10 @@ class LayerPersonalisationTrainingApp:
         self.optimizer_type = optimizer_type
         self.scheduler_mode = scheduler_mode
         self.pretrained = pretrained
-        self.T_max = T_max
+        if epochs > T_max:
+            self.T_max = epochs
+        else:
+            self.T_max = T_max
         self.label_smoothing = label_smoothing
         self.save_model = save_model
         self.strategy = strategy
