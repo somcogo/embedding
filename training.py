@@ -32,7 +32,7 @@ class LayerPersonalisationTrainingApp:
                  model_path=None, embedding_lr=None, ffwrd_lr=None, gmm_components=None,
                  single_vector_update=False, vector_update_batch=1000, vector_update_lr=1,
                  layer_number=4, gmm_reg=False, k_fold_val_id=None, seed=None,
-                 site_indices=None, per_site_perturbation=False):
+                 site_indices=None, per_site_perturbation=False, use_hdf5=False):
 
         log.info(locals())
         self.epochs = epochs
@@ -59,6 +59,7 @@ class LayerPersonalisationTrainingApp:
         if site_indices is None:
             site_indices = range(site_number)
         self.site_indices = site_indices
+        self.use_hdf5 = use_hdf5
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
@@ -158,7 +159,7 @@ class LayerPersonalisationTrainingApp:
             index_dict = torch.load('utils/{}_finetune.pt'.format(self.dataset)) if partition in ['given', '5foldval'] else None
         trn_idx_map = index_dict[self.site_number][alpha]['trn'] if index_dict is not None else None
         val_idx_map = index_dict[self.site_number][alpha]['val'] if index_dict is not None else None
-        trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
+        trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices, use_hdf5=self.use_hdf5)
         return trn_dls, val_dls
 
     def initTensorboardWriters(self):
@@ -195,7 +196,7 @@ class LayerPersonalisationTrainingApp:
             trn_idx_map[i] = self.trn_dls[i].dataset.indices
             val_idx_map[i] = self.val_dls[i].dataset.indices
         
-        trn_dls_emb_vector, val_dls_emb_vector = get_dl_lists(dataset=self.dataset, batch_size=self.vector_update_batch, partition='given', n_site=self.site_number, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, shuffle=False)
+        trn_dls_emb_vector, val_dls_emb_vector = get_dl_lists(dataset=self.dataset, batch_size=self.vector_update_batch, partition='given', n_site=self.site_number, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, shuffle=False, use_hdf5=self.use_hdf5)
         self.vector_trn_dls, self.vector_val_dls = trn_dls_emb_vector, val_dls_emb_vector
 
         trn_init_vectors = torch.empty(trn_size, self.embed_dim, dtype=torch.float)

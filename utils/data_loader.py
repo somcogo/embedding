@@ -6,9 +6,9 @@ from .partition import partition_by_class, partition_with_dirichlet_distribution
 
 data_path = 'data/'
 
-def get_datasets(data_dir, dataset):
+def get_datasets(data_dir, dataset, use_hdf5=False):
     if dataset == 'cifar10':
-        trn_dataset, val_dataset = get_cifar10_datasets(data_dir=data_dir)
+        trn_dataset, val_dataset = get_cifar10_datasets(data_dir=data_dir, use_hdf5=use_hdf5)
     elif dataset == 'cifar100':
         trn_dataset, val_dataset = get_cifar100_datasets(data_dir=data_dir)
     elif dataset == 'mnist':
@@ -17,8 +17,8 @@ def get_datasets(data_dir, dataset):
         trn_dataset, val_dataset = get_image_net_dataset(data_dir=data_dir)
     return trn_dataset, val_dataset
 
-def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, net_dataidx_map_train=None, net_dataidx_map_test=None, shuffle=True, k_fold_val_id=None, seed=None, site_indices=None):
-    trn_dataset, val_dataset = get_datasets(data_dir=data_path, dataset=dataset)
+def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, net_dataidx_map_train=None, net_dataidx_map_test=None, shuffle=True, k_fold_val_id=None, seed=None, site_indices=None, use_hdf5=False):
+    trn_dataset, val_dataset = get_datasets(data_dir=data_path, dataset=dataset, use_hdf5=use_hdf5)
 
     if partition == 'regular':
         trn_ds_list = [TruncatedDataset(trn_dataset, dataset) for _ in range(n_site)]
