@@ -32,7 +32,7 @@ class LayerPersonalisationTrainingApp:
                  model_path=None, embedding_lr=None, ffwrd_lr=None, gmm_components=None,
                  single_vector_update=False, vector_update_batch=1000, vector_update_lr=1,
                  layer_number=4, gmm_reg=False, k_fold_val_id=None, seed=None,
-                 site_indices=None, per_site_perturbation=False, use_hdf5=False):
+                 site_indices=None, input_perturbation=False, use_hdf5=False):
 
         log.info(locals())
         self.epochs = epochs
@@ -58,7 +58,7 @@ class LayerPersonalisationTrainingApp:
         self.single_vector_update = single_vector_update
         self.vector_update_batch = vector_update_batch
         self.vector_update_lr = vector_update_lr
-        self.per_site_perturbation = per_site_perturbation
+        self.input_perturbation = input_perturbation
         if site_indices is None:
             site_indices = range(site_number)
         self.site_indices = site_indices
@@ -397,7 +397,7 @@ class LayerPersonalisationTrainingApp:
         if self.model_name[:6] == 'maxvit':
             resize = Resize(224, antialias=True)
             batch = resize(batch)
-        if self.per_site_perturbation:
+        if self.input_perturbation:
             batch = perturb(batch, self.site_indices[site_id])
 
         if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
