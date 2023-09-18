@@ -157,9 +157,9 @@ class LayerPersonalisationTrainingApp:
 
     def initDls(self, batch_size, partition, alpha, k_fold_val_id, seed, site_indices):
         if not self.finetuning:
-            index_dict = torch.load('utils/{}_saved_index_maps.pt'.format(self.dataset)) if partition in ['given', '5foldval'] else None
+            index_dict = torch.load('utils/index_maps_and_seeds/{}_saved_index_maps.pt'.format(self.dataset)) if partition in ['given', '5foldval'] else None
         else:
-            index_dict = torch.load('utils/{}_finetune.pt'.format(self.dataset)) if partition in ['given', '5foldval'] else None
+            index_dict = torch.load('utils/index_maps_and_seeds/{}_finetune.pt'.format(self.dataset)) if partition in ['given', '5foldval'] else None
         trn_idx_map = index_dict[self.site_number][alpha]['trn'] if index_dict is not None else None
         val_idx_map = index_dict[self.site_number][alpha]['val'] if index_dict is not None else None
         trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices, use_hdf5=self.use_hdf5)
@@ -392,13 +392,13 @@ class LayerPersonalisationTrainingApp:
         batch = batch.to(device=self.device, non_blocking=True).float().permute(0, 3, 1, 2)
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
 
+        if self.input_perturbation:
+            batch = perturb(batch, self.site_indices[site_id])
         if mode == 'trn':
             batch = aug_image(batch, self.dataset)
         if self.model_name[:6] == 'maxvit':
             resize = Resize(224, antialias=True)
             batch = resize(batch)
-        if self.input_perturbation:
-            batch = perturb(batch, self.site_indices[site_id])
 
         if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
             pred = model(batch, torch.tensor(site_id, device=self.device, dtype=torch.int))

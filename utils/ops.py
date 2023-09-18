@@ -47,7 +47,7 @@ def perturb(batch: torch.Tensor, site_id):
     rng = np.random.default_rng()
     if site_id == 0:
         mean = 0
-        var = 100
+        var = 0.01
         sigma = var**0.5
         gauss = rng.normal(mean, sigma, (B, C, H, W))
         batch = batch + gauss

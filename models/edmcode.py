@@ -199,7 +199,7 @@ class UNetBlock(torch.nn.Module):
         if len(emb.shape) == 1:
             norm_params = self.affine2(emb)
         else:
-            norm_params = self.affine2(emb).reshape(4, emb.shape[0], 32)
+            norm_params = self.affine2(emb)
         gamma0, beta0 = norm_params[:2*self.in_channels].reshape(2, -1)
         gamma1, beta1 = norm_params[2*self.in_channels:].reshape(2, -1)
         dontusegroupnormweights = False
