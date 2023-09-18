@@ -43,41 +43,35 @@ def aug_crop_rotate_flip_erase(batch, dataset):
     return batch
 
 def perturb(batch: torch.Tensor, site_id):
+    B, C, H, W = batch.shape
     rng = np.random.default_rng()
     if site_id == 0:
-        B, H, W, C = batch.shape
         mean = 0
-        var = 0.1
+        var = 100
         sigma = var**0.5
-        gauss = rng.normal(mean, sigma, (B, H, W, C))
+        gauss = rng.normal(mean, sigma, (B, C, H, W))
         batch = batch + gauss
         return batch
     elif site_id == 1:
-        B, H, W, C = batch.shape
-        p = 0.002
-        salt = rng.binomial(1, p, size=(B, H, W, C))
-        pepper = rng.binomial(1, p, size=(B, H, W, C))
-        b_min = torch.amin(batch, dim=(1, 2))
-        b_max = torch.amax(batch, dim=(1, 2))
-        batch[salt] = b_max
-        batch[pepper] = b_min
-        return batch
+        out = batch
+        p = 0.01
+        salt = rng.binomial(1, p, size=(B, C, H, W))
+        pepper = rng.binomial(1, p, size=(B, C, H, W))
+        salt = torch.tensor(salt, dtype=torch.bool)
+        pepper = torch.tensor(pepper, dtype=torch.bool)
+        b_min = torch.amin(batch, dim=(2, 3), keepdim=True)
+        b_max = torch.amax(batch, dim=(2, 3), keepdim=True)
+        out = (b_max - out)*salt + out
+        out = (b_min - out)*pepper + out
+        return out
     elif site_id == 2:
-        B, H, W, C = batch.shape
-        print(batch.shape)
-        b_max = torch.amax(batch, dim=(1, 2))
-        batch = b_max.reshape(B, C, H, W) - batch
-        return batch.reshape(B, H, W, C)
+        batch = F.invert(batch)
+        return batch
     elif site_id == 3:
-        B, H, W, C = batch.shape
-        batch = F.invert(batch.reshape(B, C, H, W))
-        return batch.reshape(B, H, W, C)
-    elif site_id == 4:
-        B, H, W, C = batch.shape
         g_scale = Grayscale(C)
-        batch = g_scale(batch.reshape(B, C, H, W))
-        return batch.reshape(B, H, W, C)
-    elif site_id == 5:
-        color_jitter = ColorJitter()
+        batch = g_scale(batch)
+        return batch
+    elif site_id == 4:
+        color_jitter = ColorJitter(0.5, 0.5, 0.5, 0.5)
         batch = color_jitter(batch)
         return batch
