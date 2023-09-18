@@ -11,6 +11,8 @@ class TruncatedDataset(Dataset):
     def __init__(self, dataset, dataset_name, indices=None):
         super().__init__()
         self.data = dataset.data
+        if dataset_name == 'mnist':
+            self.data = np.expand_dims(self.data, axis=3)
         if dataset_name == 'pascalvoc':
             self.labels = dataset.labels
         else:
@@ -88,7 +90,7 @@ class MNISTDataSet(Dataset):
         return self.data.shape[0]
     
     def __getitem__(self, index):
-        img = torch.from_numpy(self.data[index]).unsqueeze(0)
+        img = torch.from_numpy(self.data[index])
         target = self.targets[index]
         return img, target
 

@@ -75,7 +75,7 @@ class ResNetWithEmbeddings(nn.Module):
 
     def forward(self, x, site_id):
 
-        emb = self.embedding(site_id)
+        emb = self.embedding(site_id).float()
         # if len(emb.shape) == 1:
         #     emb = emb.repeat(x.shape[0]).view(x.shape[0], -1)
         # if len(emb.shape) == 1:
