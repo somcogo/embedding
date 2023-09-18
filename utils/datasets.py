@@ -77,6 +77,21 @@ class CIFAR10DataSet(Dataset):
         target = self.targets[index]
         return img, target
 
+class MNISTDataSet(Dataset):
+    def __init__(self, data_dir, mode):
+        super().__init__()
+        h5_file = h5py.File(os.path.join(data_dir, 'mnist_{}.hdf5'.format(mode)), 'r')
+        self.data = np.array(h5_file['data'])
+        self.targets = np.array(h5_file['targets'])
+
+    def __len__(self):
+        return self.data.shape[0]
+    
+    def __getitem__(self, index):
+        img = torch.from_numpy(self.data[index]).unsqueeze(0)
+        target = self.targets[index]
+        return img, target
+
 def get_cifar10_datasets(data_dir, use_hdf5=False):
     if use_hdf5:
         dataset = CIFAR10DataSet(data_dir, 'trn')
@@ -111,17 +126,21 @@ def get_cifar100_datasets(data_dir):
 
     return dataset, val_dataset
 
-def get_mnist_datasets(data_dir):
-    mean = 0.1307
-    std = 0.3081
-    transforms = Compose([ToTensor(), Normalize(mean, std)])
+def get_mnist_datasets(data_dir, use_hdf5=False):
+    if use_hdf5:
+        dataset = MNISTDataSet(data_dir, 'trn')
+        val_dataset = MNISTDataSet(data_dir, 'val')
+    else:
+        mean = 0.1307
+        std = 0.3081
+        transforms = Compose([ToTensor(), Normalize(mean, std)])
 
-    dataset = MNIST(root=data_dir, train=True, download=True, transform=transforms)
-    dataset.targets = np.array(dataset.targets)
-    dataset.data = dataset.data.unsqueeze(dim=1).permute((0, 2, 3, 1))
-    val_dataset = MNIST(root=data_dir, train=False, transform=transforms)
-    val_dataset.targets = np.array(val_dataset.targets)
-    val_dataset.data = val_dataset.data.unsqueeze(dim=1).permute((0, 2, 3 ,1))
+        dataset = MNIST(root=data_dir, train=True, download=True, transform=transforms)
+        dataset.targets = np.array(dataset.targets)
+        dataset.data = dataset.data.unsqueeze(dim=1).permute((0, 2, 3, 1))
+        val_dataset = MNIST(root=data_dir, train=False, transform=transforms)
+        val_dataset.targets = np.array(val_dataset.targets)
+        val_dataset.data = val_dataset.data.unsqueeze(dim=1).permute((0, 2, 3 ,1))
 
     return dataset, val_dataset
 

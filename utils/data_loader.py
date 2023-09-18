@@ -12,7 +12,7 @@ def get_datasets(data_dir, dataset, use_hdf5=False):
     elif dataset == 'cifar100':
         trn_dataset, val_dataset = get_cifar100_datasets(data_dir=data_dir)
     elif dataset == 'mnist':
-        trn_dataset, val_dataset = get_mnist_datasets(data_dir=data_dir)
+        trn_dataset, val_dataset = get_mnist_datasets(data_dir=data_dir, use_hdf5=use_hdf5)
     elif dataset == 'imagenet':
         trn_dataset, val_dataset = get_image_net_dataset(data_dir=data_dir)
     return trn_dataset, val_dataset
