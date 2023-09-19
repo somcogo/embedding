@@ -393,7 +393,7 @@ class LayerPersonalisationTrainingApp:
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
 
         if self.input_perturbation:
-            batch = perturb(batch, self.site_indices[site_id])
+            batch = perturb(batch, self.site_indices[site_id], self.device)
         if mode == 'trn':
             batch = aug_image(batch, self.dataset)
         if self.model_name[:6] == 'maxvit':

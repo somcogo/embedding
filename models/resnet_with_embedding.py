@@ -25,6 +25,7 @@ class ResNetWithEmbeddings(nn.Module):
             bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
             nn.init.uniform_(self.conv1_bias, -bound, bound)
         self.conv1_affine = nn.Linear(embed_dim, (in_channels*7*7 + 1)*64)
+        self.first_ffwrd = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=(in_channels*7*7 + 1)*64, version=version)
 
 
         self.norm1 = nn.BatchNorm2d(64)
@@ -62,6 +63,7 @@ class ResNetWithEmbeddings(nn.Module):
             bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
             nn.init.uniform_(self.fc_bias, -bound, bound)
         self.fc_affine = nn.Linear(embed_dim, num_classes*(1 + 2**(layer_number + 5)))
+        self.last_ffwrd = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=num_classes*(1 + 2**(layer_number + 5)), version=version)
 
     def _make_layer(self, depth, in_channels, out_channels, embed_dim, use_hypnns=False, version=None, lightweight=None, ffwrd=None, affine=None, ffwrd_a=None, medium_ffwrd=False):
         
@@ -81,7 +83,8 @@ class ResNetWithEmbeddings(nn.Module):
         # if len(emb.shape) == 1:
         #     emb = emb.unsqueeze(0)
 
-        conv1_params = self.conv1_affine(emb)
+        # conv1_params = self.conv1_affine(emb)
+        conv1_params = self.first_ffwrd(emb)
         conv1_weight = conv1_params[:self.in_channels*7*7*64]
         conv1_weight = conv1_weight.reshape(64, self.in_channels, 7, 7)
         conv1_bias = conv1_params[self.in_channels*7*7*64:]
@@ -104,7 +107,8 @@ class ResNetWithEmbeddings(nn.Module):
                 x = block(x, emb)
         x = self.avgpool(x).reshape(-1, 32*(2**self.layer_number))
 
-        fc_params = self.fc_affine(emb)
+        # fc_params = self.fc_affine(emb)
+        fc_params = self.last_ffwrd(emb)
         fc_weight = fc_params[:self.num_classes*2**(5 + self.layer_number)]
         fc_weight = fc_weight.reshape(self.num_classes, 2**(5 + self.layer_number))
         fc_bias = fc_params[self.num_classes*2**(5 + self.layer_number):]
