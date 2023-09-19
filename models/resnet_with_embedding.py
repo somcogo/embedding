@@ -18,7 +18,9 @@ class ResNetWithEmbeddings(nn.Module):
         self.embedding = nn.Embedding(site_number, embedding_dim=embed_dim)
 
         # self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=7, stride=2, padding=3, bias=False)
-        if conv1_residual:
+        if use_hypnns:
+            self.first_ffwrd = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=(in_channels*7*7 + 1)*64, version=version)
+        if (use_hypnns and conv1_residual) or not use_hypnns:
             self.conv1_weight = nn.Parameter(torch.empty((64, in_channels, 7, 7)))
             self.conv1_bias = nn.Parameter(torch.empty(64))
             nn.init.kaiming_uniform_(self.conv1_weight, a=math.sqrt(5))
@@ -26,7 +28,6 @@ class ResNetWithEmbeddings(nn.Module):
             bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
             nn.init.uniform_(self.conv1_bias, -bound, bound)
         # self.conv1_affine = nn.Linear(embed_dim, (in_channels*7*7 + 1)*64)
-        self.first_ffwrd = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=(in_channels*7*7 + 1)*64, version=version)
 
 
         self.norm1 = nn.BatchNorm2d(64)
@@ -56,7 +57,9 @@ class ResNetWithEmbeddings(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
 
         # self.fc = nn.Linear(2**(layer_number + 5), num_classes)
-        if fc_residual:
+        if use_hypnns:
+            self.last_ffwrd = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=num_classes*(1 + 2**(layer_number + 5)), version=version)
+        if (use_hypnns and fc_residual) or not use_hypnns:
             self.fc_weight = nn.Parameter(torch.empty((num_classes, 2**(layer_number + 5))))
             self.fc_bias = nn.Parameter(torch.empty(num_classes))
             nn.init.kaiming_uniform_(self.fc_weight, a=math.sqrt(5))
@@ -64,7 +67,6 @@ class ResNetWithEmbeddings(nn.Module):
             bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
             nn.init.uniform_(self.fc_bias, -bound, bound)
         # self.fc_affine = nn.Linear(embed_dim, num_classes*(1 + 2**(layer_number + 5)))
-        self.last_ffwrd = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=num_classes*(1 + 2**(layer_number + 5)), version=version)
 
     def _make_layer(self, depth, in_channels, out_channels, embed_dim, use_hypnns=False, version=None, lightweight=None, ffwrd=None, affine=None, ffwrd_a=None, medium_ffwrd=False):
         

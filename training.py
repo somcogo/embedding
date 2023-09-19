@@ -32,7 +32,8 @@ class LayerPersonalisationTrainingApp:
                  model_path=None, embedding_lr=None, ffwrd_lr=None, gmm_components=None,
                  single_vector_update=False, vector_update_batch=1000, vector_update_lr=1,
                  layer_number=4, gmm_reg=False, k_fold_val_id=None, seed=None,
-                 site_indices=None, input_perturbation=False, use_hdf5=False):
+                 site_indices=None, input_perturbation=False, use_hdf5=False,
+                 conv1_residual=True, fc_residual=True,):
 
         log.info(locals())
         self.epochs = epochs
@@ -63,6 +64,8 @@ class LayerPersonalisationTrainingApp:
             site_indices = range(site_number)
         self.site_indices = site_indices
         self.use_hdf5 = use_hdf5
+        self.conv1_residual = conv1_residual
+        self.fc_residual = fc_residual
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
@@ -85,7 +88,7 @@ class LayerPersonalisationTrainingApp:
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
     def initModels(self, embed_dim, layer_number):
-        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, layer_number, self.pretrained)
+        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, layer_number, self.pretrained, conv1_residual=self.conv1_residual, fc_residual=self.fc_residual)
 
         if 'embedding.weight' in '\t'.join(models[0].state_dict().keys()):
             if embed_dim > 2:

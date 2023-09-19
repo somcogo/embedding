@@ -2,7 +2,7 @@ from models.model import ResNet18Model, ResNet34Model, ResNetWithEmbeddings
 from models.maxvit import MaxViT
 from models.maxvitemb import MaxViTEmb
 
-def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=None, pretrained=False):
+def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=None, pretrained=False, conv1_residual=True, fc_residual=True):
     if dataset == 'cifar10':
         num_classes = 10
         in_channels = 3
@@ -21,25 +21,25 @@ def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=Non
     models = []
     for _ in range(site_number):
         if model_name == 'resnet34emb':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[3, 4, 6, 3], site_number=site_number, embed_dim=embed_dim, layer_number=layer_number)
+            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[3, 4, 6, 3], site_number=site_number, embed_dim=embed_dim, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
         elif model_name == 'resnet18emb':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, layer_number=layer_number)
+            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
         elif model_name == 'resnet18embhypnn1':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=1, layer_number=layer_number)
+            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=1, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
         elif model_name == 'resnet18embhypnn2':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=2, layer_number=layer_number)
+            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=2, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
         elif model_name == 'resnet18lightweight1':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, layer_number=layer_number)
+            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
         elif model_name == 'resnet18lightweight2':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, layer_number=layer_number)
+            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
         elif model_name == 'resnet18affine1':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, affine=True, layer_number=layer_number)
+            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, affine=True, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
         elif model_name == 'resnet18affine2':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, affine=True, layer_number=layer_number)
+            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, affine=True, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
         elif model_name == 'resnet18medium1':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, affine=True, medium_ffwrd=True, layer_number=layer_number)
+            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, affine=True, medium_ffwrd=True, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
         elif model_name == 'resnet18medium2':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, affine=True, medium_ffwrd=True, layer_number=layer_number)
+            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, affine=True, medium_ffwrd=True, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
         elif model_name == 'resnet34':
             model = ResNet34Model(num_classes=num_classes, in_channels=in_channels, pretrained=pretrained)
         elif model_name == 'resnet18':
