@@ -42,7 +42,7 @@ def aug_crop_rotate_flip_erase(batch, dataset):
     batch = trans(batch)
     return batch
 
-def perturb(batch: torch.Tensor, site_id):
+def perturb(batch: torch.Tensor, site_id, device):
     B, C, H, W = batch.shape
     rng = np.random.default_rng()
     if site_id == 0:
@@ -50,28 +50,29 @@ def perturb(batch: torch.Tensor, site_id):
         var = 0.01
         sigma = var**0.5
         gauss = rng.normal(mean, sigma, (B, C, H, W))
+        gauss = torch.tensor(gauss, device=device)
         batch = batch + gauss
-        return batch
+        return batch.float()
     elif site_id == 1:
         out = batch
         p = 0.01
         salt = rng.binomial(1, p, size=(B, C, H, W))
         pepper = rng.binomial(1, p, size=(B, C, H, W))
-        salt = torch.tensor(salt, dtype=torch.bool)
-        pepper = torch.tensor(pepper, dtype=torch.bool)
+        salt = torch.tensor(salt, dtype=torch.bool, device=device)
+        pepper = torch.tensor(pepper, dtype=torch.bool, device=device)
         b_min = torch.amin(batch, dim=(2, 3), keepdim=True)
         b_max = torch.amax(batch, dim=(2, 3), keepdim=True)
         out = (b_max - out)*salt + out
         out = (b_min - out)*pepper + out
-        return out
+        return out.float()
     elif site_id == 2:
         batch = F.invert(batch)
-        return batch
+        return batch.float()
     elif site_id == 3:
         g_scale = Grayscale(C)
         batch = g_scale(batch)
-        return batch
+        return batch.float()
     elif site_id == 4:
         color_jitter = ColorJitter(0.5, 0.5, 0.5, 0.5)
         batch = color_jitter(batch)
-        return batch
+        return batch.float()
