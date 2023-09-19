@@ -9,6 +9,7 @@ class ResNetWithEmbeddings(nn.Module):
     def __init__(self, num_classes, in_channels=3, embed_dim=2, layers=[3, 4, 6, 3], site_number=1, use_hypnns=False, version=None, lightweight=False, affine=False, medium_ffwrd=False, extra_lightweight=False, layer_number=4, conv1_residual=True, fc_residual=True):
         super().__init__()
         self.layer_number = layer_number
+        self.use_hypnns = use_hypnns
         self.conv1_residual = conv1_residual
         self.fc_residual = fc_residual
         self.in_channels = in_channels
@@ -24,7 +25,7 @@ class ResNetWithEmbeddings(nn.Module):
             fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.conv1_weight)
             bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
             nn.init.uniform_(self.conv1_bias, -bound, bound)
-        self.conv1_affine = nn.Linear(embed_dim, (in_channels*7*7 + 1)*64)
+        # self.conv1_affine = nn.Linear(embed_dim, (in_channels*7*7 + 1)*64)
         self.first_ffwrd = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=(in_channels*7*7 + 1)*64, version=version)
 
 
@@ -62,7 +63,7 @@ class ResNetWithEmbeddings(nn.Module):
             fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.fc_weight)
             bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
             nn.init.uniform_(self.fc_bias, -bound, bound)
-        self.fc_affine = nn.Linear(embed_dim, num_classes*(1 + 2**(layer_number + 5)))
+        # self.fc_affine = nn.Linear(embed_dim, num_classes*(1 + 2**(layer_number + 5)))
         self.last_ffwrd = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=num_classes*(1 + 2**(layer_number + 5)), version=version)
 
     def _make_layer(self, depth, in_channels, out_channels, embed_dim, use_hypnns=False, version=None, lightweight=None, ffwrd=None, affine=None, ffwrd_a=None, medium_ffwrd=False):
@@ -84,13 +85,17 @@ class ResNetWithEmbeddings(nn.Module):
         #     emb = emb.unsqueeze(0)
 
         # conv1_params = self.conv1_affine(emb)
-        conv1_params = self.first_ffwrd(emb)
-        conv1_weight = conv1_params[:self.in_channels*7*7*64]
-        conv1_weight = conv1_weight.reshape(64, self.in_channels, 7, 7)
-        conv1_bias = conv1_params[self.in_channels*7*7*64:]
-        if self.conv1_residual:
-            conv1_weight = conv1_weight + self.conv1_weight
-            conv1_bias = conv1_bias + self.conv1_bias
+        if self.use_hypnns:
+            conv1_params = self.first_ffwrd(emb)
+            conv1_weight = conv1_params[:self.in_channels*7*7*64]
+            conv1_weight = conv1_weight.reshape(64, self.in_channels, 7, 7)
+            conv1_bias = conv1_params[self.in_channels*7*7*64:]
+            if self.conv1_residual:
+                conv1_weight = conv1_weight + self.conv1_weight
+                conv1_bias = conv1_bias + self.conv1_bias
+        else:
+            conv1_weight = self.conv1_weight
+            conv1_bias = self.conv1_bias
         x = nn.functional.conv2d(x, conv1_weight, conv1_bias)
 
         x = self.pool(self.relu(self.norm1(x)))
@@ -108,13 +113,17 @@ class ResNetWithEmbeddings(nn.Module):
         x = self.avgpool(x).reshape(-1, 32*(2**self.layer_number))
 
         # fc_params = self.fc_affine(emb)
-        fc_params = self.last_ffwrd(emb)
-        fc_weight = fc_params[:self.num_classes*2**(5 + self.layer_number)]
-        fc_weight = fc_weight.reshape(self.num_classes, 2**(5 + self.layer_number))
-        fc_bias = fc_params[self.num_classes*2**(5 + self.layer_number):]
-        if self.fc_residual:
-            fc_weight = fc_weight + self.fc_weight
-            fc_bias = fc_bias + self.fc_bias
+        if self.use_hypnns:
+            fc_params = self.last_ffwrd(emb)
+            fc_weight = fc_params[:self.num_classes*2**(5 + self.layer_number)]
+            fc_weight = fc_weight.reshape(self.num_classes, 2**(5 + self.layer_number))
+            fc_bias = fc_params[self.num_classes*2**(5 + self.layer_number):]
+            if self.fc_residual:
+                fc_weight = fc_weight + self.fc_weight
+                fc_bias = fc_bias + self.fc_bias
+        else:
+            fc_weight = self.fc_weight
+            fc_bias = self.fc_bias
         out = nn.functional.linear(x, fc_weight, fc_bias)
         return out
     

@@ -11,8 +11,8 @@ class TruncatedDataset(Dataset):
     def __init__(self, dataset, dataset_name, indices=None):
         super().__init__()
         self.data = dataset.data
-        if dataset_name == 'mnist':
-            self.data = np.expand_dims(self.data, axis=3)
+        # if dataset_name == 'mnist':
+        #     self.data = np.expand_dims(self.data, axis=3)
         if dataset_name == 'pascalvoc':
             self.labels = dataset.labels
         else:
