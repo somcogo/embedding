@@ -35,7 +35,8 @@ class LayerPersonalisationTrainingApp:
                  site_indices=None, input_perturbation=False, use_hdf5=False,
                  conv1_residual=True, fc_residual=True,):
 
-        log.info(locals())
+        self.settings = locals()
+        log.info(self.settings)
         self.epochs = epochs
         self.logdir_name = logdir
         self.comment = comment
@@ -561,7 +562,8 @@ class LayerPersonalisationTrainingApp:
 
         os.makedirs(os.path.dirname(file_path), mode=0o755, exist_ok=True)
         state = {'valmetrics':val_metrics,
-                 'epoch': epoch_ndx}
+                 'epoch': epoch_ndx,
+                 'settings':self.settings}
         for ndx, model in enumerate(self.models):
             if isinstance(model, torch.nn.DataParallel):
                 model = model.module
