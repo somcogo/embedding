@@ -1,6 +1,7 @@
 import os
 import datetime
 import math
+import copy
 
 import torch
 from torchvision.transforms import Resize
@@ -35,7 +36,7 @@ class LayerPersonalisationTrainingApp:
                  site_indices=None, input_perturbation=False, use_hdf5=False,
                  conv1_residual=True, fc_residual=True,):
 
-        self.settings = locals()
+        self.settings = copy.deepcopy(locals())
         log.info(self.settings)
         self.epochs = epochs
         self.logdir_name = logdir
