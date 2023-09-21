@@ -37,6 +37,7 @@ class LayerPersonalisationTrainingApp:
                  conv1_residual=True, fc_residual=True,):
 
         self.settings = copy.deepcopy(locals())
+        del self.settings['self']
         log.info(self.settings)
         self.epochs = epochs
         self.logdir_name = logdir
@@ -277,7 +278,7 @@ class LayerPersonalisationTrainingApp:
                 if self.save_model and accuracy==saving_criterion:
                     self.saveModel(epoch_ndx, val_metrics, trn_dls, val_dls)
 
-                if epoch_ndx < 101 or epoch_ndx % 100 == 0:
+                if epoch_ndx < 51 or epoch_ndx % 100 == 0:
                     log.info('Epoch {} of {}, accuracy/miou {}, val loss {}'.format(epoch_ndx, self.epochs, accuracy, loss))
 
             if self.gmm_components is not None:

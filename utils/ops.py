@@ -73,6 +73,6 @@ def perturb(batch: torch.Tensor, site_id, device):
         batch = g_scale(batch)
         return batch.float()
     elif site_id == 4:
-        color_jitter = ColorJitter(0.5, 0.5, 0.5, 0.5)
+        color_jitter = ColorJitter((1.2, 1.2), (.7, .7),(2, 2),(.25, .25),)
         batch = color_jitter(batch)
         return batch.float()
