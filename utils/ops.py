@@ -42,7 +42,16 @@ def aug_crop_rotate_flip_erase(batch, dataset):
     batch = trans(batch)
     return batch
 
-def perturb(batch: torch.Tensor, site_id, device):
+def perturb_colorjitter(batch, site_id):
+    rng = np.random.default_rng(seed=site_id)
+    brightness = rng.random() + 0.5
+    contrast = rng.random() + 0.5
+    saturation = rng.random() + 0.5
+    hue = rng.random() - 0.5
+    color_jitter = ColorJitter((brightness, brightness), (contrast, contrast), (saturation, saturation), (hue, hue))
+    return color_jitter(batch)
+
+def perturb_default(batch: torch.Tensor, site_id, device):
     B, C, H, W = batch.shape
     rng = np.random.default_rng()
     if site_id == 0:
@@ -76,3 +85,9 @@ def perturb(batch: torch.Tensor, site_id, device):
         color_jitter = ColorJitter((1.2, 1.2), (.7, .7),(2, 2),(.25, .25),)
         batch = color_jitter(batch)
         return batch.float()
+    
+def perturb(batch, site_id, device, mode):
+    if mode == 'default':
+        return perturb_default(batch, site_id, device)
+    elif mode == 'colorjitter':
+        return perturb_colorjitter(batch, site_id)
