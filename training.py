@@ -34,7 +34,7 @@ class LayerPersonalisationTrainingApp:
                  single_vector_update=False, vector_update_batch=1000, vector_update_lr=1,
                  layer_number=4, gmm_reg=False, k_fold_val_id=None, seed=None,
                  site_indices=None, input_perturbation=False, use_hdf5=False,
-                 conv1_residual=True, fc_residual=True,):
+                 conv1_residual=True, fc_residual=True, colorjitter=False):
 
         self.settings = copy.deepcopy(locals())
         del self.settings['self']
@@ -69,6 +69,7 @@ class LayerPersonalisationTrainingApp:
         self.use_hdf5 = use_hdf5
         self.conv1_residual = conv1_residual
         self.fc_residual = fc_residual
+        self.colorjitter = colorjitter
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
@@ -399,7 +400,8 @@ class LayerPersonalisationTrainingApp:
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
 
         if self.input_perturbation:
-            batch = perturb(batch, self.site_indices[site_id], self.device)
+            perturb_mode = 'colorjitter' if self.colorjitter else 'default'
+            batch = perturb(batch, self.site_indices[site_id], self.device, perturb_mode)
         if mode == 'trn':
             batch = aug_image(batch, self.dataset)
         if self.model_name[:6] == 'maxvit':
