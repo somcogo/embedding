@@ -41,7 +41,7 @@ def finetune_and_evaluate(old_dir, **kwargs):
     return as_is_validation, normal_finetuning, only_fc_finetuning, only_emb_finetuning
 
 
-def input_variation(perm_seed, finetune_epochs=100, **inputs):
+def input_variation(perm_seed, trn_site_number=4, finetune_epochs=100, resnet18_too=True, **inputs):
     kwargs = {
         'epochs':500,
         'logdir':'mnist/inputvariation',
@@ -67,7 +67,8 @@ def input_variation(perm_seed, finetune_epochs=100, **inputs):
     for key in inputs.keys():
         kwargs[key] = inputs[key]
     rng = np.random.default_rng(perm_seed)
-    perm = rng.permutation(5)
+    perm = rng.permutation(kwargs['site_number'])
+    kwargs['site_indices'] = perm[:trn_site_number]
     print('***Training for permutation {}***'.format(perm))
 
     exp = LayerPersonalisationTrainingApp(**kwargs)
@@ -77,23 +78,24 @@ def input_variation(perm_seed, finetune_epochs=100, **inputs):
     old_epochs = kwargs['epochs']
     kwargs['logdir'] = os.path.join(old_dir, 'finetuning')
     kwargs['epochs'] = finetune_epochs
-    kwargs['site_indices'] = perm[4:]
+    kwargs['site_indices'] = perm[trn_site_number:]
     results = finetune_and_evaluate(old_dir=old_dir, **kwargs)
 
-    kwargs['comment'] = kwargs['comment'].replace(kwargs['model_name'], 'resnet18')
-    kwargs['model_name'] = 'resnet18'
-    kwargs['logdir'] = old_dir
-    kwargs['epochs'] = old_epochs
-    kwargs['site_indices'] = perm[:4]
-    kwargs['embed_dim'] = None
+    if resnet18_too:
+        kwargs['comment'] = kwargs['comment'].replace(kwargs['model_name'], 'resnet18')
+        kwargs['model_name'] = 'resnet18'
+        kwargs['logdir'] = old_dir
+        kwargs['epochs'] = old_epochs
+        kwargs['site_indices'] = perm[:trn_site_number]
+        kwargs['embed_dim'] = None
 
-    exp = LayerPersonalisationTrainingApp(**kwargs)
-    exp.main()
+        exp = LayerPersonalisationTrainingApp(**kwargs)
+        exp.main()
 
-    kwargs['logdir'] = os.path.join(old_dir, 'finetuning')
-    kwargs['epochs'] = finetune_epochs
-    kwargs['site_indices'] = perm[4:]
-    results = finetune_and_evaluate(old_dir=old_dir, **kwargs)
+        kwargs['logdir'] = os.path.join(old_dir, 'finetuning')
+        kwargs['epochs'] = finetune_epochs
+        kwargs['site_indices'] = perm[trn_site_number:]
+        results = finetune_and_evaluate(old_dir=old_dir, **kwargs)
 
 def by_class_seperation(ndx, finetuning_epochs, **inputs):
     kwargs = {
