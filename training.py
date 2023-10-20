@@ -555,7 +555,7 @@ class LayerPersonalisationTrainingApp:
         writer.flush()
 
     def saveModel(self, epoch_ndx, val_metrics, trn_dls, val_dls):
-        file_path = os.path.join(
+        model_file_path = os.path.join(
             'saved_models',
             self.logdir_name,
             '{}-{}.state'.format(
@@ -563,29 +563,44 @@ class LayerPersonalisationTrainingApp:
                 self.comment
             )
         )
+        os.makedirs(os.path.dirname(model_file_path), mode=0o755, exist_ok=True)
+        data_file_path = os.path.join(
+            'saved_metrics',
+            self.logdir_name,
+            '{}-{}.state'.format(
+                self.time_str,
+                self.comment
+            )
+        )
+        os.makedirs(os.path.dirname(data_file_path), mode=0o755, exist_ok=True)
 
-        os.makedirs(os.path.dirname(file_path), mode=0o755, exist_ok=True)
-        state = {'valmetrics':val_metrics,
-                 'epoch': epoch_ndx,
-                 'settings':self.settings}
+        data_state = {'valmetrics':val_metrics.detach().cpu(),
+                      'epoch': epoch_ndx,
+                      'settings':self.settings}
+        model_state = {'epoch': epoch_ndx,}
         for ndx, model in enumerate(self.models):
             if isinstance(model, torch.nn.DataParallel):
                 model = model.module
-            state[ndx] = {
-                'model_state': model.state_dict(),
-                'model_name': type(model).__name__,
-                'optimizer_state': self.optims[ndx].state_dict(),
-                'optimizer_name': type(self.optims[ndx]).__name__,
+            data_state[ndx] = {
                 'trn_labels': trn_dls[ndx].dataset.labels,
                 'val_labels': val_dls[ndx].dataset.labels,
                 'trn_indices': trn_dls[ndx].dataset.indices,
                 'val_indices': val_dls[ndx].dataset.indices,
+            }
+            model_state[ndx] = {
+                'model_state': model.state_dict(),
+                'model_name': type(model).__name__,
+                'optimizer_state': self.optims[ndx].state_dict(),
+                'optimizer_name': type(self.optims[ndx]).__name__,
+                'scheduler_state': self.scheduler.state_dict(),
+                'scheduler_name': type(self.scheduler).__name__,
                 }
             if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
-                state[ndx]['emb_vector'] = model.state_dict()['embedding.weight'][ndx]
+                data_state[ndx]['emb_vector'] = model.state_dict()['embedding.weight'][ndx].detach().cpu()
 
-        torch.save(state, file_path)
-        log.debug("Saved model params to {}".format(file_path))
+        torch.save(model_state, model_file_path)
+        torch.save(data_state, data_file_path)
+        log.debug("Saved model params to {}".format(model_file_path))
 
     def mergeModels(self, is_init=False, model_path=None):
         if is_init:

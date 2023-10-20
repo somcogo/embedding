@@ -91,3 +91,12 @@ def perturb(batch, site_id, device, mode):
         return perturb_default(batch, site_id, device)
     elif mode == 'colorjitter':
         return perturb_colorjitter(batch, site_id)
+    
+def principle_comp_analysis(data:torch.Tensor):
+    
+    centered_data = data - data.mean(dim=1, keepdim=True)
+    cov = torch.cov(centered_data.transpose(0, 1))
+    evalue, evector = torch.linalg.eigh(cov)
+    transformed_data = torch.matmul(centered_data, evector)
+
+    return transformed_data, evector, evalue
