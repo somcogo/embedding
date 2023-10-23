@@ -1,15 +1,35 @@
+import math
+
 import torch
 from torch import nn
 
 from .edmcode import UNetBlock, FeedForward
 
 class ResNetWithEmbeddings(nn.Module):
-    def __init__(self, num_classes, in_channels=3, embed_dim=2, layers=[3, 4, 6, 3], site_number=1, use_hypnns=False, version=None, lightweight=False, affine=False, medium_ffwrd=False, extra_lightweight=False):
+    def __init__(self, num_classes, in_channels=3, embed_dim=2, layers=[3, 4, 6, 3], site_number=1, use_hypnns=False, version=None, lightweight=False, affine=False, medium_ffwrd=False, extra_lightweight=False, layer_number=4, conv1_residual=True, fc_residual=True):
         super().__init__()
+        self.layer_number = layer_number
+        self.use_hypnns = use_hypnns
+        self.conv1_residual = conv1_residual
+        self.fc_residual = fc_residual
+        self.in_channels = in_channels
+        self.num_classes = num_classes
 
         self.embedding = nn.Embedding(site_number, embedding_dim=embed_dim)
 
-        self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=7, stride=2, padding=3, bias=False)
+        # self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=7, stride=2, padding=3, bias=False)
+        if use_hypnns:
+            self.first_ffwrd = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=(in_channels*7*7 + 1)*64, version=version)
+        if (use_hypnns and conv1_residual) or not use_hypnns:
+            self.conv1_weight = nn.Parameter(torch.empty((64, in_channels, 7, 7)))
+            self.conv1_bias = nn.Parameter(torch.empty(64))
+            nn.init.kaiming_uniform_(self.conv1_weight, a=math.sqrt(5))
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.conv1_weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(self.conv1_bias, -bound, bound)
+        # self.conv1_affine = nn.Linear(embed_dim, (in_channels*7*7 + 1)*64)
+
+
         self.norm1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU()
         self.pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -28,12 +48,25 @@ class ResNetWithEmbeddings(nn.Module):
 
         self.layer1 = self._make_layer(layers[1], in_channels=64, out_channels=128, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd1, affine=affine, ffwrd_a=self.ffwrd_a1, medium_ffwrd=medium_ffwrd)
     
-        self.layer2 = self._make_layer(layers[2], in_channels=128, out_channels=256, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd2, affine=affine, ffwrd_a=self.ffwrd_a2, medium_ffwrd=medium_ffwrd)
+        if layer_number > 2:
+            self.layer2 = self._make_layer(layers[2], in_channels=128, out_channels=256, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd2, affine=affine, ffwrd_a=self.ffwrd_a2, medium_ffwrd=medium_ffwrd)
 
-        self.layer3 = self._make_layer(layers[3], in_channels=256, out_channels=512, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd3, affine=affine, ffwrd_a=self.ffwrd_a3, medium_ffwrd=medium_ffwrd)
+        if layer_number > 3:
+            self.layer3 = self._make_layer(layers[3], in_channels=256, out_channels=512, embed_dim=embed_dim, use_hypnns=use_hypnns, version=version, lightweight=lightweight, ffwrd=self.ffwrd3, affine=affine, ffwrd_a=self.ffwrd_a3, medium_ffwrd=medium_ffwrd)
 
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
-        self.fc = nn.Linear(512, num_classes)
+
+        # self.fc = nn.Linear(2**(layer_number + 5), num_classes)
+        if use_hypnns:
+            self.last_ffwrd = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=num_classes*(1 + 2**(layer_number + 5)), version=version)
+        if (use_hypnns and fc_residual) or not use_hypnns:
+            self.fc_weight = nn.Parameter(torch.empty((num_classes, 2**(layer_number + 5))))
+            self.fc_bias = nn.Parameter(torch.empty(num_classes))
+            nn.init.kaiming_uniform_(self.fc_weight, a=math.sqrt(5))
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.fc_weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(self.fc_bias, -bound, bound)
+        # self.fc_affine = nn.Linear(embed_dim, num_classes*(1 + 2**(layer_number + 5)))
 
     def _make_layer(self, depth, in_channels, out_channels, embed_dim, use_hypnns=False, version=None, lightweight=None, ffwrd=None, affine=None, ffwrd_a=None, medium_ffwrd=False):
         
@@ -47,20 +80,53 @@ class ResNetWithEmbeddings(nn.Module):
 
     def forward(self, x, site_id):
 
-        latent_vector = self.embedding(site_id)
+        emb = self.embedding(site_id).float()
+        # if len(emb.shape) == 1:
+        #     emb = emb.repeat(x.shape[0]).view(x.shape[0], -1)
+        # if len(emb.shape) == 1:
+        #     emb = emb.unsqueeze(0)
 
-        x = self.pool(self.relu(self.norm1(self.conv1(x))))
-        # latent_vector = latent_vector.repeat(x.shape[0]).view(x.shape[0], -1)
+        # conv1_params = self.conv1_affine(emb)
+        if self.use_hypnns:
+            conv1_params = self.first_ffwrd(emb)
+            conv1_weight = conv1_params[:self.in_channels*7*7*64]
+            conv1_weight = conv1_weight.reshape(64, self.in_channels, 7, 7)
+            conv1_bias = conv1_params[self.in_channels*7*7*64:]
+            if self.conv1_residual:
+                conv1_weight = conv1_weight + self.conv1_weight
+                conv1_bias = conv1_bias + self.conv1_bias
+        else:
+            conv1_weight = self.conv1_weight
+            conv1_bias = self.conv1_bias
+        x = nn.functional.conv2d(x, conv1_weight, conv1_bias)
+
+        x = self.pool(self.relu(self.norm1(x)))
+        # emb = emb.repeat(x.shape[0]).view(x.shape[0], -1)
         for block in self.layer0:
-            x = block(x, latent_vector)
+            x = block(x, emb)
         for block in self.layer1:
-            x = block(x, latent_vector)
-        for block in self.layer2:
-            x = block(x, latent_vector)
-        for block in self.layer3:
-            x = block(x, latent_vector)
+            x = block(x, emb)
+        if self.layer_number > 2:
+            for block in self.layer2:
+                x = block(x, emb)
+        if self.layer_number > 3:
+            for block in self.layer3:
+                x = block(x, emb)
+        x = self.avgpool(x).reshape(-1, 32*(2**self.layer_number))
 
-        out = self.fc(self.avgpool(x).reshape(-1, 512))
+        # fc_params = self.fc_affine(emb)
+        if self.use_hypnns:
+            fc_params = self.last_ffwrd(emb)
+            fc_weight = fc_params[:self.num_classes*2**(5 + self.layer_number)]
+            fc_weight = fc_weight.reshape(self.num_classes, 2**(5 + self.layer_number))
+            fc_bias = fc_params[self.num_classes*2**(5 + self.layer_number):]
+            if self.fc_residual:
+                fc_weight = fc_weight + self.fc_weight
+                fc_bias = fc_bias + self.fc_bias
+        else:
+            fc_weight = self.fc_weight
+            fc_bias = self.fc_bias
+        out = nn.functional.linear(x, fc_weight, fc_bias)
         return out
     
 class UNetWithEmbedding(nn.Module):
