@@ -11,6 +11,8 @@ class TruncatedDataset(Dataset):
     def __init__(self, dataset, dataset_name, indices=None):
         super().__init__()
         self.data = dataset.data
+        if dataset_name == 'mnist':
+            self.data = np.expand_dims(self.data, axis=3)
         if dataset_name == 'pascalvoc':
             self.labels = dataset.labels
         else:
@@ -29,7 +31,23 @@ class TruncatedDataset(Dataset):
     def __getitem__(self, index):
         img = self.data[index]
         label = self.labels[index]
-        return img, label
+        img_id = self.indices[index]
+        return img, label, img_id
+    
+class MergedDataset(Dataset):
+    def __init__(self, dataset1, dataset2, dataset_name):
+        super().__init__()
+        if dataset_name == 'mnist':
+            self.data = torch.cat([dataset1.data, dataset2.data], dim=0)
+        else:
+            self.data = np.concatenate([dataset1.data, dataset2.data], axis=0)
+        self.targets = np.concatenate([dataset1.labels, dataset2.labels], axis=0)
+
+    def __len__(self):
+        return len(self.targets)
+    
+    def __getitem__(self, index):
+        return self.data[index], self.targets[index]
 
 class ImageNetDataSet(Dataset):
     def __init__(self, data_dir, mode):
@@ -46,18 +64,52 @@ class ImageNetDataSet(Dataset):
         target = self.targets[index]
         return img, target
 
-def get_cifar10_datasets(data_dir):
-    train_mean = [0.4914, 0.4822, 0.4465]
-    train_std = [0.2470, 0.2435, 0.2616]
-    train_transform = Compose([ToTensor(), Normalize(train_mean, train_std)])
-    val_mean = [0.4942, 0.4851, 0.4504]
-    val_std = [0.2467, 0.2429, 0.2616]
-    val_transform = Compose([ToTensor(), Normalize(val_mean, val_std)])
+class CIFAR10DataSet(Dataset):
+    def __init__(self, data_dir, mode):
+        super().__init__()
+        h5_file = h5py.File(os.path.join(data_dir, 'cifar10_{}.hdf5'.format(mode)), 'r')
+        self.data = np.array(h5_file['data']).transpose(0, 2, 3, 1)
+        self.targets = np.array(h5_file['labels'])
 
-    dataset = CIFAR10(root=data_dir, train=True, download=True, transform=train_transform)
-    dataset.targets = np.array(dataset.targets)
-    val_dataset = CIFAR10(root=data_dir, train=False, download=True, transform=val_transform)
-    val_dataset.targets = np.array(val_dataset.targets)
+    def __len__(self):
+        return self.data.shape[0]
+    
+    def __getitem__(self, index):
+        img = torch.from_numpy(self.data[index])
+        target = self.targets[index]
+        return img, target
+
+class MNISTDataSet(Dataset):
+    def __init__(self, data_dir, mode):
+        super().__init__()
+        h5_file = h5py.File(os.path.join(data_dir, 'mnist_{}.hdf5'.format(mode)), 'r')
+        self.data = np.array(h5_file['data'])
+        self.targets = np.array(h5_file['targets'])
+
+    def __len__(self):
+        return self.data.shape[0]
+    
+    def __getitem__(self, index):
+        img = torch.from_numpy(self.data[index])
+        target = self.targets[index]
+        return img, target
+
+def get_cifar10_datasets(data_dir, use_hdf5=False):
+    if use_hdf5:
+        dataset = CIFAR10DataSet(data_dir, 'trn')
+        val_dataset = CIFAR10DataSet(data_dir, 'val')
+    else:
+        train_mean = [0.4914, 0.4822, 0.4465]
+        train_std = [0.2470, 0.2435, 0.2616]
+        train_transform = Compose([ToTensor(), Normalize(train_mean, train_std)])
+        val_mean = [0.4942, 0.4851, 0.4504]
+        val_std = [0.2467, 0.2429, 0.2616]
+        val_transform = Compose([ToTensor(), Normalize(val_mean, val_std)])
+
+        dataset = CIFAR10(root=data_dir, train=True, download=False, transform=train_transform)
+        dataset.targets = np.array(dataset.targets)
+        val_dataset = CIFAR10(root=data_dir, train=False, download=False, transform=val_transform)
+        val_dataset.targets = np.array(val_dataset.targets)
 
     return dataset, val_dataset
 
@@ -76,17 +128,21 @@ def get_cifar100_datasets(data_dir):
 
     return dataset, val_dataset
 
-def get_mnist_datasets(data_dir):
-    mean = 0.1307
-    std = 0.3081
-    transforms = Compose([ToTensor(), Normalize(mean, std)])
+def get_mnist_datasets(data_dir, use_hdf5=False):
+    if use_hdf5:
+        dataset = MNISTDataSet(data_dir, 'trn')
+        val_dataset = MNISTDataSet(data_dir, 'val')
+    else:
+        mean = 0.1307
+        std = 0.3081
+        transforms = Compose([ToTensor(), Normalize(mean, std)])
 
-    dataset = MNIST(root=data_dir, train=True, download=True, transform=transforms)
-    dataset.targets = np.array(dataset.targets)
-    dataset.data = dataset.data.unsqueeze(dim=1).permute((0, 2, 3, 1))
-    val_dataset = MNIST(root=data_dir, train=False, transform=transforms)
-    val_dataset.targets = np.array(val_dataset.targets)
-    val_dataset.data = val_dataset.data.unsqueeze(dim=1).permute((0, 2, 3 ,1))
+        dataset = MNIST(root=data_dir, train=True, download=True, transform=transforms)
+        dataset.targets = np.array(dataset.targets)
+        dataset.data = dataset.data.unsqueeze(dim=1).permute((0, 2, 3, 1))
+        val_dataset = MNIST(root=data_dir, train=False, transform=transforms)
+        val_dataset.targets = np.array(val_dataset.targets)
+        val_dataset.data = val_dataset.data.unsqueeze(dim=1).permute((0, 2, 3 ,1))
 
     return dataset, val_dataset
 
