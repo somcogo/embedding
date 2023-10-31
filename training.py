@@ -578,6 +578,8 @@ class LayerPersonalisationTrainingApp:
                       'epoch': epoch_ndx,
                       'settings':self.settings}
         model_state = {'epoch': epoch_ndx,}
+        model_state['model_state'] = self.models[0].state_dict()
+        layer_list = get_layer_list(model=self.model_name, strategy=self.strategy, original_list=[name for name, _ in self.models[0].named_parameters()])
         for ndx, model in enumerate(self.models):
             if isinstance(model, torch.nn.DataParallel):
                 model = model.module
@@ -587,8 +589,10 @@ class LayerPersonalisationTrainingApp:
                 'trn_indices': trn_dls[ndx].dataset.indices,
                 'val_indices': val_dls[ndx].dataset.indices,
             }
+            state_dict = model.state_dict()
+            site_state_dict = {key: state_dict[key] for key in state_dict.keys() if key not in layer_list}
             model_state[ndx] = {
-                'model_state': model.state_dict(),
+                'site_model_state': site_state_dict,
                 'model_name': type(model).__name__,
                 'optimizer_state': self.optims[ndx].state_dict(),
                 'optimizer_name': type(self.optims[ndx]).__name__,
