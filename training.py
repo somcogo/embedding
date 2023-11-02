@@ -9,7 +9,6 @@ import torch.nn as nn
 from torch.optim import Adam, AdamW, SGD, LBFGS
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
-from sklearn.mixture import GaussianMixture as SkGMM
 import numpy as np
 
 from utils.logconf import logging
@@ -23,16 +22,15 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 # log.setLevel(logging.DEBUG)
 
-class LayerPersonalisationTrainingApp:
+class EmbeddingTraining:
     def __init__(self, epochs=500, batch_size=128, logdir='test', lr=1e-3,
                  comment='dwlpt', dataset='cifar10', site_number=1,
                  model_name='resnet18emb', optimizer_type='newadam',
                  scheduler_mode='cosine', pretrained=False, T_max=500,
                  label_smoothing=0.0, save_model=False, partition='regular',
                  alpha=None, strategy='noembed', finetuning=False, embed_dim=2,
-                 model_path=None, embedding_lr=None, ffwrd_lr=None, gmm_components=None,
-                 single_vector_update=False, vector_update_batch=1000, vector_update_lr=1,
-                 layer_number=4, gmm_reg=False, k_fold_val_id=None, seed=None,
+                 model_path=None, embedding_lr=None, ffwrd_lr=None,
+                 layer_number=4, k_fold_val_id=None, seed=None,
                  site_indices=None, input_perturbation=False, use_hdf5=False,
                  conv1_residual=True, fc_residual=True, colorjitter=False):
 
@@ -58,10 +56,6 @@ class LayerPersonalisationTrainingApp:
         self.finetuning = finetuning
         self.embed_dim = embed_dim
         self.model_path = model_path
-        self.gmm_components = gmm_components
-        self.single_vector_update = single_vector_update
-        self.vector_update_batch = vector_update_batch
-        self.vector_update_lr = vector_update_lr
         self.input_perturbation = input_perturbation
         if site_indices is None:
             site_indices = range(site_number)
@@ -86,9 +80,6 @@ class LayerPersonalisationTrainingApp:
         self.mergeModels(is_init=True, model_path=model_path)
         self.optims = self.initOptimizers(lr, finetuning, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
-        if gmm_components is not None:
-            self.trn_gmms, self.val_gmms = self.initGMMs(gmm_reg=gmm_reg)
-            self.trn_vector_model, self.val_vector_model, self.trn_vector_optim, self.val_vector_optim = self.initEmbeddingVector(layer_number=layer_number)
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
     def initModels(self, embed_dim, layer_number):
@@ -178,71 +169,6 @@ class LayerPersonalisationTrainingApp:
                 log_dir=self.logdir + '/trn-' + self.comment)
             self.val_writer = SummaryWriter(
                 log_dir=self.logdir + '/val-' + self.comment)
-            
-    def initGMMs(self, gmm_reg=False):
-        trn_gmms = []
-        val_gmms = []
-        for i in range(self.site_number):
-            trn_gmms.append(SkGMM(n_components=self.gmm_components, warm_start=True, means_init=[self.mu_init[i]]*self.gmm_components))
-            val_gmms.append(SkGMM(n_components=self.gmm_components, warm_start=True, means_init=[self.mu_init[i]]*self.gmm_components))
-        return trn_gmms, val_gmms
-            
-    def initEmbeddingVector(self, layer_number):
-        if self.dataset == 'mnist':
-            trn_size = 60000
-            val_size = 10000
-        elif self.dataset == 'cifar10':
-            trn_size = 50000
-            val_size = 10000
-        elif self.dataset == 'cifar100':
-            trn_size = 50000
-            val_size = 10000
-        elif self.dataset == 'imagenet':
-            trn_size = 100000
-            val_size = 10000
-
-        trn_idx_map, val_idx_map = {}, {}
-        for i in range(self.site_number):
-            trn_idx_map[i] = self.trn_dls[i].dataset.indices
-            val_idx_map[i] = self.val_dls[i].dataset.indices
-        
-        trn_dls_emb_vector, val_dls_emb_vector = get_dl_lists(dataset=self.dataset, batch_size=self.vector_update_batch, partition='given', n_site=self.site_number, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, shuffle=False, use_hdf5=self.use_hdf5)
-        self.vector_trn_dls, self.vector_val_dls = trn_dls_emb_vector, val_dls_emb_vector
-
-        trn_init_vectors = torch.empty(trn_size, self.embed_dim, dtype=torch.float)
-        val_init_vectors = torch.empty(val_size, self.embed_dim, dtype=torch.float)
-        for i in range(self.site_number):
-            cov_matrix = np.eye(self.embed_dim)*0.1
-            v = torch.from_numpy(np.random.multivariate_normal(self.mu_init[i], cov_matrix, size=len(trn_idx_map[i])))
-            trn_init_vectors[trn_idx_map[i]] = v.to(dtype=torch.float)
-            v = torch.from_numpy(np.random.multivariate_normal(self.mu_init[i], cov_matrix, size=len(val_idx_map[i])))
-            val_init_vectors[val_idx_map[i]] = v.to(dtype=torch.float)
-
-        trn_vector_model = self.initModels(self.embed_dim, layer_number=layer_number)[0]
-        if self.single_vector_update:
-            trn_vector_model.embedding = nn.Embedding(int(trn_size/self.vector_update_batch), embedding_dim=self.embed_dim, device=self.device)
-        else:
-            trn_vector_model.embedding = nn.Embedding(trn_size, embedding_dim=self.embed_dim, device=self.device)
-            trn_vector_model.embedding.weight = nn.Parameter(trn_init_vectors.to(device=self.device))
-        for name, param in trn_vector_model.named_parameters():
-            if 'embedding.weight' not in name:
-                param.requires_grad = False
-
-        trn_vector_optim = Adam([trn_vector_model.embedding.weight], lr=self.vector_update_lr, betas=(.5,.9))
-        
-        val_vector_model = self.initModels(self.embed_dim, layer_number=layer_number)[0]
-        if self.single_vector_update:
-            val_vector_model.embedding = nn.Embedding(int(val_size/self.vector_update_batch), embedding_dim=self.embed_dim, device=self.device)
-        else:
-            val_vector_model.embedding = nn.Embedding(val_size, embedding_dim=self.embed_dim, device=self.device)
-            val_vector_model.embedding.weight = nn.Parameter(val_init_vectors.to(device=self.device))
-        for name, param in val_vector_model.named_parameters():
-            if 'embedding.weight' not in name:
-                param.requires_grad = False
-
-        val_vector_optim = Adam([val_vector_model.embedding.weight], lr=self.vector_update_lr, betas=(.5,.9))
-
-        return trn_vector_model, val_vector_model, trn_vector_optim, val_vector_optim
 
     def main(self):
         log.info("Starting {}".format(type(self).__name__))
@@ -280,12 +206,7 @@ class LayerPersonalisationTrainingApp:
                     self.saveModel(epoch_ndx, val_metrics, trn_dls, val_dls)
 
                 if epoch_ndx < 51 or epoch_ndx % 100 == 0:
-                    log.info('Epoch {} of {}, accuracy/miou {}, val loss {}'.format(epoch_ndx, self.epochs, accuracy, loss))
-
-            if self.gmm_components is not None:
-                self.updateEmbeddingVectors()
-                self.fitGMM(epoch_ndx)
-            
+                    log.info('Epoch {} of {}, accuracy/miou {}, val loss {}'.format(epoch_ndx, self.epochs, accuracy, loss))            
             
             if self.scheduler_mode == 'cosine' and not self.finetuning:
                 for scheduler in self.schedulers:
@@ -432,89 +353,6 @@ class LayerPersonalisationTrainingApp:
         metrics[-1, batch_ndx] = correct
 
         return loss.mean(), accuracy
-    
-    def updateEmbeddingVectors(self):
-        self.copyModelToVectorModel()
-
-        for i in range(self.site_number):
-            for batch_ndx, batch_tup in enumerate(self.vector_trn_dls[i]):
-                self.trn_vector_optim.zero_grad()
-                imgs, labels, img_ids = batch_tup
-                imgs = imgs.to(device=self.device).float().permute(0, 3, 1, 2)
-                if self.model_name[:9] == 'maxvitemb':
-                    resize = Resize(224, antialias=True)
-                    imgs = resize(imgs)
-                labels = labels.to(device=self.device).to(dtype=torch.long)
-                img_ids = img_ids.to(device=self.device).to(dtype=torch.long)
-                preds = torch.zeros(imgs.shape[0], 10, device=self.device)
-                if self.single_vector_update:
-                    preds = self.trn_vector_model(imgs, torch.tensor(batch_ndx, device=self.device))
-                else:
-                    preds = self.trn_vector_model(imgs, img_ids)
-                loss_fn = nn.CrossEntropyLoss()
-                loss = loss_fn(preds, labels)
-                loss.backward()
-                self.trn_vector_optim.step()
-            log.debug('done with trn-site {}'.format(i))
-
-        for i in range(self.site_number):
-            for batch_ndx, batch_tup in enumerate(self.vector_val_dls[i]):
-                self.val_vector_optim.zero_grad()
-                imgs, labels, img_ids = batch_tup
-                imgs = imgs.to(device=self.device).float().permute(0, 3, 1, 2)
-                if self.model_name[:9] == 'maxvitemb':
-                    resize = Resize(224, antialias=True)
-                    imgs = resize(imgs)
-                labels = labels.to(device=self.device).to(dtype=torch.long)
-                img_ids = img_ids.to(device=self.device).to(dtype=torch.long)
-                preds = torch.zeros(imgs.shape[0], 10, device=self.device)
-                if self.single_vector_update:
-                    preds = self.val_vector_model(imgs, torch.tensor(batch_ndx, device=self.device))
-                else:
-                    preds = self.val_vector_model(imgs, img_ids)
-                loss_fn = nn.CrossEntropyLoss()
-                loss = loss_fn(preds, labels)
-                loss.backward()
-                self.val_vector_optim.step()
-            log.debug('done with val-site {}'.format(i))
-        log.debug('completed vector update')
-    
-    def fitGMM(self, epoch_ndx):
-        trn_vectors, val_vectors = self.extractEmbeddingVectors()
-        trn_vectors = trn_vectors.to(device='cpu')
-        val_vectors = val_vectors.to(device='cpu')
-        trn_img_indices, val_img_indices = self.getImageIndicesBySite()
-        save_path = os.path.join(
-            'gmm_data',
-            self.logdir_name,
-            '{}-{}.pt'.format(self.time_str, self.comment))
-        
-        if epoch_ndx == 1:
-            state = {}
-        else:
-            state = torch.load(save_path)
-        state[epoch_ndx] = {'trn':{}, 'val':{}}
-        for i, indices in enumerate(trn_img_indices):
-            self.trn_gmms[i].fit(trn_vectors[indices])
-            mu = self.trn_gmms[i].means_
-            var = self.trn_gmms[i].covariances_
-            pred = self.trn_gmms[i].predict(trn_vectors[indices])
-            state[epoch_ndx]['trn'][i] = {'vectors':trn_vectors[indices],
-                               'pred':torch.tensor(pred, device='cpu'),
-                               'mu':torch.tensor(mu, device='cpu'),
-                               'var':torch.tensor(var, device='cpu')}
-        for i, indices in enumerate(val_img_indices):
-            self.val_gmms[i].fit(val_vectors[indices])
-            mu = self.val_gmms[i].means_
-            var = self.val_gmms[i].covariances_
-            pred = self.val_gmms[i].predict(val_vectors[indices])
-            state[epoch_ndx]['val'][i] = {'vectors':val_vectors[indices],
-                               'pred':torch.tensor(pred, device='cpu'),
-                               'mu':torch.tensor(mu, device='cpu'),
-                               'var':torch.tensor(var, device='cpu')}
-        os.makedirs(os.path.dirname(save_path), mode=0o755, exist_ok=True)
-        torch.save(state, save_path)
-        log.debug('fit gmm and saved data')
 
     def logMetrics(
         self,
@@ -634,32 +472,6 @@ class LayerPersonalisationTrainingApp:
             for model in self.models:
                 model.load_state_dict(param_dict, strict=False)
 
-    def copyModelToVectorModel(self):
-        model_state_dict = self.models[0].state_dict()
-        del model_state_dict['embedding.weight']
-        self.trn_vector_model.load_state_dict(model_state_dict, strict=False)
-        self.val_vector_model.load_state_dict(model_state_dict, strict=False)
-        for name, param in self.trn_vector_model.named_parameters():
-            if name != 'embedding.weight':
-                param.requires_grad = False
-        for name, param in self.val_vector_model.named_parameters():
-            if name != 'embedding.weight':
-                param.requires_grad = False
-
-    def extractEmbeddingVectors(self):
-        trn_state_dict = self.trn_vector_model.state_dict()
-        val_state_dict = self.val_vector_model.state_dict()
-        return trn_state_dict['embedding.weight'], val_state_dict['embedding.weight']
-    
-    def getImageIndicesBySite(self):
-        trn_img_indices = []
-        val_img_indices = []
-        for trn_dl in self.trn_dls:
-            trn_img_indices.append(trn_dl.dataset.indices)
-        for val_dl in self.val_dls:
-            val_img_indices.append(val_dl.dataset.indices)
-        return trn_img_indices, val_img_indices
-
 
 if __name__ == '__main__':
-    LayerPersonalisationTrainingApp().main()
+    EmbeddingTraining().main()

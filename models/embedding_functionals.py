@@ -4,6 +4,37 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+MODE_NAMES = {'embedding': 'embedding_weights',
+              'residual': 'embedding_residual',
+              'vanilla': 'vanilla'}
+
+class WeightGenerator(nn.Module):
+    def __init__(self, emb_dim, hidden_layer, out_channels, depth=None):
+        super().__init__()
+        self.depth = depth
+        
+        if depth == 1:
+            self.lin1 = nn.Linear(in_features=emb_dim, out_features=out_channels)
+            nn.init.ones_(self.lin1.weight)
+            nn.init.zeros_(self.lin1.bias)
+        if depth == 2:
+            self.lin1 = nn.Linear(in_features=emb_dim, out_features=hidden_layer)
+            self.lin2 = nn.Linear(in_features=hidden_layer, out_features=out_channels)
+            nn.init.ones_(self.lin1.weight)
+            nn.init.zeros_(self.lin1.bias)
+            nn.init.ones_(self.lin2.weight)
+            nn.init.zeros_(self.lin2.bias)
+    
+    def forward(self, x):
+        x = x.to(torch.float)
+        if self.depth == 1:
+            out = self.lin1(x)
+        if self.depth == 2:
+            x = self.lin1(x)
+            x = nn.functional.relu(x)
+            out = self.lin2(x)
+        return out
+
 class Conv2d_emb(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, emb_dim, size, gen_depth=2, gen_affine=False, gen_hidden_layer=64, stride=1, padding=0, dilation=1, groups=1, bias=True, device=None):
         super().__init__()
@@ -213,24 +244,67 @@ class Batchnorm2d_emb(nn.Module):
 
         x = self.batch_norm_2d(x)
         return x
-
-class WeightGenerator(nn.Module):
-    def __init__(self, emb_dim, hidden_layer, out_channels, depth=None):
-        super().__init__()
-        self.depth = depth
-        
-        if depth == 1:
-            self.lin1 = torch.nn.Linear(in_features=emb_dim, out_features=out_channels)
-        if depth == 2:
-            self.lin1 = torch.nn.Linear(in_features=emb_dim, out_features=hidden_layer)
-            self.lin2 = torch.nn.Linear(in_features=hidden_layer, out_features=out_channels)
     
-    def forward(self, x):
-        x = x.to(torch.float)
-        if self.depth == 1:
-            out = self.lin1(x)
-        if self.depth == 2:
-            x = self.lin1(x)
-            x = torch.nn.functional.relu(x)
-            out = self.lin2(x)
+class GeneralConv2d(nn.Module):
+    def __init__(self, mode, in_channels, out_channels, kernel_size, emb_dim=None, size=None, gen_depth=2, gen_affine=False, gen_hidden_layer=64, stride=1, padding=0, dilation=1, groups=1, bias=True, device=None):
+        super().__init__()
+        self.mode = mode
+        if mode == MODE_NAMES['embedding']:
+            self.conv = Conv2d_emb(in_channels, out_channels, kernel_size, emb_dim, size, gen_depth, gen_affine, gen_hidden_layer, stride, padding, dilation, groups, bias, device)
+        else:
+            self.conv = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, device=device)
+
+    def forward(self, x, emb):
+        if self.mode == MODE_NAMES['embedding']:
+            out = self.conv(x, emb)
+        else:
+            out = self.conv(x)
+        return out
+    
+class GeneralConvTranspose2d(nn.Module):
+    def __init__(self, mode, in_channels, out_channels, kernel_size, emb_dim=None, size=None, gen_depth=2, gen_affine=False, gen_hidden_layer=64, stride=1, padding=0, groups=1, bias=True, dilation=1, device=None):
+        super().__init__()
+        self.mode = mode
+        if mode == MODE_NAMES['embedding']:
+            self.transposed_conv = ConvTranspose2d_emb(in_channels, out_channels, kernel_size, emb_dim, size, gen_depth, gen_affine, gen_hidden_layer, stride, padding, groups, bias, dilation, device)
+        else:
+            self.transposed_conv = nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=stride, padding=padding, groups=groups, bias=bias, dilation=dilation, device=device)
+
+    def forward(self, x, emb):
+        if self.mode == MODE_NAMES['embedding']:
+            out = self.transposed_conv(x, emb)
+        else:
+            out = self.transposed_conv(x)
+        return out
+    
+class GeneralLinear(nn.Module):
+    def __init__(self, mode, in_channels, out_channels, emb_dim=None, size=None, gen_depth=2, gen_affine=False, gen_hidden_layer=64, bias=True, device=None):
+        super().__init__()
+        self.mode = mode
+        if mode == MODE_NAMES['embedding']:
+            self.linear = Linear_emb(in_channels, out_channels, emb_dim, size, gen_depth, gen_affine, gen_hidden_layer, bias, device)
+        else:
+            self.linear = nn.Linear(in_features=in_channels, out_features=out_channels, bias=bias, device=device)
+
+    def forward(self, x, emb):
+        if self.mode == MODE_NAMES['embedding']:
+            out = self.linear(x, emb)
+        else:
+            out = self.linear(x)
+        return out
+    
+class GeneralBatchnorm2d(nn.Module):
+    def __init__(self, mode, num_features, emb_dim, size, gen_depth=2, gen_affine=False, gen_hidden_layer=64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True, device=None, dtype=None):
+        super().__init__()
+        self.mode = mode
+        if mode == MODE_NAMES['embedding']:
+            self.batch_norm = Batchnorm2d_emb(num_features, emb_dim, size, gen_depth, gen_affine, gen_hidden_layer, eps, momentum, affine, track_running_stats, device)
+        else:
+            self.batch_norm = nn.BatchNorm2d(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, device=device)
+    
+    def forward(self, x, emb):
+        if self.mode == MODE_NAMES['embedding']:
+            out = self.batch_norm(x, emb)
+        else:
+            out = self.batch_norm(x)
         return out

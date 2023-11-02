@@ -4,6 +4,98 @@ import torch
 from torch import nn
 
 from .edmcode import UNetBlock, FeedForward
+from .embedding_functionals import MODE_NAMES, GeneralConv2d, GeneralConvTranspose2d, GeneralLinear, GeneralBatchnorm2d, WeightGenerator
+
+weight_gen_args = {'emb_dim':4,
+                   'size': 1,
+                   'gen_depth': 2,
+                   'gen_affine': False,
+                   'gen_hidden_layer': 64}
+
+### ----- Based on the official PyTorch ResNet-18 implementation ----- ###
+class CustomResnet(nn.Module):
+    def __init__(self, num_classes, in_channels=3, layers=[2, 2, 2, 2], mode='vanilla', weight_gen_args=None, norm_layer=GeneralBatchnorm2d, device=None):
+        super().__init__()
+        self.mode = mode
+
+        self.embedding = nn.Parameter(torch.zeros(weight_gen_args['emb_dim'])) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
+
+        self.conv1 = GeneralConv2d(mode, in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False, **weight_gen_args)
+        self.batch_norm1 = GeneralBatchnorm2d(mode, 64, **weight_gen_args)
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.resnet_blocks = nn.ModuleList([])
+        self.make_layer(64, 64, layers[0], norm_layer=norm_layer, weight_gen_args=weight_gen_args)
+        self.make_layer(64, 128, layers[1], stride=2, norm_layer=norm_layer, weight_gen_args=weight_gen_args)
+        self.make_layer(128, 256, layers[2], stride=2, norm_layer=norm_layer, weight_gen_args=weight_gen_args)
+        self.make_layer(256, 512, layers[3], stride=2, norm_layer=norm_layer, weight_gen_args=weight_gen_args)
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = GeneralLinear(mode, 512, num_classes, **weight_gen_args)
+
+    def make_layer(self, in_channels, out_channels, depth, stride=1, norm_layer=None, weight_gen_args=None):
+        downsample = None
+        if stride != 1 or in_channels != out_channels:
+            downsample = nn.ModuleList([
+                GeneralConv2d(self.mode, in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=stride, **weight_gen_args),
+                norm_layer(self.mode, out_channels, **weight_gen_args)
+            ])
+        
+        self.resnet_blocks.append(ResnetBlock(self.mode, in_channels, out_channels, stride, downsample, norm_layer, weight_gen_args))
+
+        for _ in range(1, depth):
+            self.resnet_blocks.append(ResnetBlock(self.mode, out_channels, out_channels, norm_layer=norm_layer, weight_gen_args=weight_gen_args))
+    
+    def forward(self, x):
+        x = self.conv1(x, self.embedding)
+        x = self.batch_norm1(x, self.embedding)
+        x = self.relu(x)
+        x = self.maxpool(x)
+
+        for block in self.resnet_blocks:
+            x = block(x, self.embedding)
+
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.fc(x, self.embedding)
+
+        return x
+
+class ResnetBlock(nn.Module):
+    def __init__(self, mode, in_channels, out_channels, stride=1, downsample=None, norm_layer=GeneralBatchnorm2d, weight_gen_args:dict =None):
+        super().__init__()
+        self.residual_affine_generator = WeightGenerator(weight_gen_args['emb_dim'], weight_gen_args['gen_hidden_layer'], out_channels, depth=weight_gen_args['gen_depth']) if mode is not MODE_NAMES['vanilla'] else None
+        self.residual_const_generator = WeightGenerator(weight_gen_args['emb_dim'], weight_gen_args['gen_hidden_layer'], out_channels, depth=weight_gen_args['gen_depth']) if mode is not MODE_NAMES['vanilla'] else None
+
+        self.conv1 = GeneralConv2d(mode=mode, in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=stride, padding=1, **weight_gen_args)
+        self.batch_norm1 = norm_layer(mode, out_channels, **weight_gen_args)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = GeneralConv2d(mode=mode, in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=1, **weight_gen_args)
+        self.batch_norm2 = norm_layer(mode, out_channels, **weight_gen_args)
+        self.downsample = downsample
+
+    def forward(self, x, emb):
+        identity = x
+
+        out = self.conv1(x, emb)
+        out = self.batch_norm1(out, emb)
+        out = self.relu(out)
+
+        if self.residual_affine_generator is not None:
+            scale = self.residual_affine_generator(emb).unsqueeze(1).unsqueeze(1)
+            const = self.residual_const_generator(emb).unsqueeze(1).unsqueeze(1)
+            out = scale*out + const
+
+        out = self.conv2(out, emb)
+        out = self.batch_norm2(out, emb)
+
+        if self.downsample is not None:
+            x = self.downsample[0](x, emb)
+            identity = self.downsample[1](x, emb)
+
+        out += identity
+        out = self.relu(out)
+
+        return out
 
 class ResNetWithEmbeddings(nn.Module):
     def __init__(self, num_classes, in_channels=3, embed_dim=2, layers=[3, 4, 6, 3], site_number=1, use_hypnns=False, version=None, lightweight=False, affine=False, medium_ffwrd=False, extra_lightweight=False, layer_number=4, conv1_residual=True, fc_residual=True):
