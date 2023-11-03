@@ -138,3 +138,5 @@ notebook.ipynb
 script_runner.py
 plots
 script.py
+saved_metrics
+gmm_data
