@@ -1,33 +1,42 @@
 import os
 import datetime
+import math
+import copy
 
 import torch
+from torchvision.transforms import Resize
 import torch.nn as nn
 from torch.optim import Adam, AdamW, SGD, LBFGS
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
+import numpy as np
 
-from models.model import ResNetWithEmbeddings, ResNet34Model, ResNet18Model
 from utils.logconf import logging
 from utils.data_loader import get_dl_lists
-from utils.ops import aug_image
+from utils.ops import aug_image, perturb
 from utils.merge_strategies import get_layer_list
+from utils.get_model import get_model
 
 log = logging.getLogger(__name__)
 # log.setLevel(logging.WARN)
 log.setLevel(logging.INFO)
 # log.setLevel(logging.DEBUG)
 
-class LayerPersonalisationTrainingApp:
-    def __init__(self, epochs=2, batch_size=128, logdir='test', lr=1e-4,
+class EmbeddingTraining:
+    def __init__(self, epochs=500, batch_size=128, logdir='test', lr=1e-3,
                  comment='dwlpt', dataset='cifar10', site_number=1,
-                 model_name='resnet18emb', optimizer_type='sgd',
-                 scheduler_mode=None, pretrained=False, T_max=500,
+                 model_name='resnet18emb', optimizer_type='newadam',
+                 scheduler_mode='cosine', pretrained=False, T_max=500,
                  label_smoothing=0.0, save_model=False, partition='regular',
-                 alpha=None, strategy='all', finetuning=False, embed_dim=2,
-                 model_path=None, embedding_lr=None, ffwrd_lr=None):
+                 alpha=None, strategy='noembed', finetuning=False, embed_dim=2,
+                 model_path=None, embedding_lr=None, ffwrd_lr=None,
+                 layer_number=4, k_fold_val_id=None, seed=None,
+                 site_indices=None, input_perturbation=False, use_hdf5=False,
+                 conv1_residual=True, fc_residual=True, colorjitter=False):
 
-        log.info(locals())
+        self.settings = copy.deepcopy(locals())
+        del self.settings['self']
+        log.info(self.settings)
         self.epochs = epochs
         self.logdir_name = logdir
         self.comment = comment
@@ -37,12 +46,24 @@ class LayerPersonalisationTrainingApp:
         self.optimizer_type = optimizer_type
         self.scheduler_mode = scheduler_mode
         self.pretrained = pretrained
-        self.T_max = T_max
+        if epochs > T_max:
+            self.T_max = epochs
+        else:
+            self.T_max = T_max
         self.label_smoothing = label_smoothing
         self.save_model = save_model
         self.strategy = strategy
         self.finetuning = finetuning
+        self.embed_dim = embed_dim
         self.model_path = model_path
+        self.input_perturbation = input_perturbation
+        if site_indices is None:
+            site_indices = range(site_number)
+        self.site_indices = site_indices
+        self.use_hdf5 = use_hdf5
+        self.conv1_residual = conv1_residual
+        self.fc_residual = fc_residual
+        self.colorjitter = colorjitter
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
@@ -53,59 +74,30 @@ class LayerPersonalisationTrainingApp:
         self.val_writer = None
         self.totalTrainingSamples_count = 0
 
-        self.models = self.initModels(embed_dim=embed_dim)
+        self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
+        self.site_number = len(site_indices)
+        self.models = self.initModels(embed_dim=embed_dim, layer_number=layer_number)
         self.mergeModels(is_init=True, model_path=model_path)
         self.optims = self.initOptimizers(lr, finetuning, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
-        self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha)
+        assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
-    def initModels(self, embed_dim):
-        if self.dataset == 'cifar10':
-            num_classes = 10
-            in_channels = 3
-        elif self.dataset == 'cifar100':
-            num_classes = 100
-            in_channels = 3
-        elif self.dataset == 'pascalvoc':
-            num_classes = 21
-            in_channels = 3
-        elif self.dataset == 'mnist':
-            num_classes = 10
-            in_channels = 1
-        elif self.dataset == 'imagenet':
-            num_classes = 200
-            in_channels = 3
-        self.num_classes = num_classes
-        models = []
-        for _ in range(self.site_number):
-            if self.model_name == 'resnet34emb':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[3, 4, 6, 3], site_number=self.site_number, embed_dim=embed_dim)
-            elif self.model_name == 'resnet18emb':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim)
-            elif self.model_name == 'resnet18embhypnn1':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=1)
-            elif self.model_name == 'resnet18embhypnn2':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=2)
-            elif self.model_name == 'resnet18lightweight1':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True)
-            elif self.model_name == 'resnet18lightweight2':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True)
-            elif self.model_name == 'resnet18affine1':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, affine=True)
-            elif self.model_name == 'resnet18affine2':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, affine=True)
-            elif self.model_name == 'resnet18medium1':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, affine=True, medium_ffwrd=True)
-            elif self.model_name == 'resnet18medium2':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=self.site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, affine=True, medium_ffwrd=True)
-            elif self.model_name == 'resnet34':
-                model = ResNet34Model(num_classes=num_classes, in_channels=in_channels, pretrained=self.pretrained)
-            elif self.model_name == 'resnet18':
-                model = ResNet18Model(num_classes=num_classes, in_channels=in_channels, pretrained=self.pretrained)
-            models.append(model)
+    def initModels(self, embed_dim, layer_number):
+        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, layer_number, self.pretrained, conv1_residual=self.conv1_residual, fc_residual=self.fc_residual)
+
+        if 'embedding.weight' in '\t'.join(models[0].state_dict().keys()):
+            if embed_dim > 2:
+                self.mu_init = np.eye(self.site_number, embed_dim)
+            else:
+                mu_init = np.exp((2 * np.pi * 1j/ self.site_number)*np.arange(0,self.site_number))
+                self.mu_init = np.stack([np.real(mu_init), np.imag(mu_init)], axis=1)
+            for i, model in enumerate(models):
+                init_weight = torch.from_numpy(self.mu_init[i]).repeat(self.site_number).reshape(self.site_number, embed_dim)
+                model.embedding.weight = nn.Parameter(init_weight)
+
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
-            for model in models:
+            for i, model in enumerate(models):
                 if torch.cuda.device_count() > 1:
                     model = nn.DataParallel(model)
                 model = model.to(self.device)
@@ -117,7 +109,8 @@ class LayerPersonalisationTrainingApp:
         for model in self.models:
             params_to_update = []
             if finetuning:
-                layer_list = get_layer_list(self.model_name, strategy=self.strategy)
+                assert self.strategy in ['finetuning', 'affinetoo', 'onlyfc', 'onlyemb']
+                layer_list = get_layer_list(self.model_name, strategy=self.strategy, original_list=model.state_dict().keys())
                 for name, param in model.named_parameters():
                     if name in layer_list:
                         params_to_update.append(param)
@@ -155,16 +148,19 @@ class LayerPersonalisationTrainingApp:
             schedulers = []
             for optim in self.optims:
                 if self.scheduler_mode == 'cosine':
-                    scheduler = CosineAnnealingLR(optim, T_max=self.T_max)
+                    scheduler = CosineAnnealingLR(optim, T_max=self.T_max, eta_min=1e-6)
                 schedulers.append(scheduler)
             
         return schedulers
 
-    def initDls(self, batch_size, partition, alpha):
-        index_dict = torch.load('models/{}_saved_index_maps.pt'.format(self.dataset)) if partition == 'given' else None
+    def initDls(self, batch_size, partition, alpha, k_fold_val_id, seed, site_indices):
+        if not self.finetuning:
+            index_dict = torch.load('utils/index_maps_and_seeds/{}_saved_index_maps.pt'.format(self.dataset)) if partition in ['given', '5foldval'] else None
+        else:
+            index_dict = torch.load('utils/index_maps_and_seeds/{}_finetune.pt'.format(self.dataset)) if partition in ['given', '5foldval'] else None
         trn_idx_map = index_dict[self.site_number][alpha]['trn'] if index_dict is not None else None
         val_idx_map = index_dict[self.site_number][alpha]['val'] if index_dict is not None else None
-        trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map)
+        trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, net_dataidx_map_train=trn_idx_map, net_dataidx_map_test=val_idx_map, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices, use_hdf5=self.use_hdf5)
         return trn_dls, val_dls
 
     def initTensorboardWriters(self):
@@ -206,13 +202,13 @@ class LayerPersonalisationTrainingApp:
                 self.logMetrics(epoch_ndx, 'val', val_metrics)
                 saving_criterion = max(accuracy, saving_criterion)
 
-                if self.save_model and (accuracy==saving_criterion or self.finetuning):
+                if self.save_model and accuracy==saving_criterion:
                     self.saveModel(epoch_ndx, val_metrics, trn_dls, val_dls)
 
-                if epoch_ndx < 501 or epoch_ndx % 100 == 0:
-                    log.info('Epoch {} of {}, accuracy/miou {}, val loss {}'.format(epoch_ndx, self.epochs, accuracy, loss))
+                if epoch_ndx < 51 or epoch_ndx % 100 == 0:
+                    log.info('Epoch {} of {}, accuracy/miou {}, val loss {}'.format(epoch_ndx, self.epochs, accuracy, loss))            
             
-            if self.scheduler_mode == 'cosine':
+            if self.scheduler_mode == 'cosine' and not self.finetuning:
                 for scheduler in self.schedulers:
                     scheduler.step()
                     # log.debug(self.scheduler.get_last_lr())
@@ -223,6 +219,8 @@ class LayerPersonalisationTrainingApp:
         if hasattr(self, 'trn_writer'):
             self.trn_writer.close()
             self.val_writer.close()
+
+        return saving_criterion
 
     def doTraining(self, epoch_ndx, trn_dls):
         for model in self.models:
@@ -238,39 +236,23 @@ class LayerPersonalisationTrainingApp:
             local_trn_metrics = torch.zeros(2 + 2*self.num_classes, len(trn_dl), device=self.device)
 
             for batch_ndx, batch_tuple in enumerate(trn_dl):
-                # try:
-                #     with torch.autograd.detect_anomaly():
-                        def closure():
-                            self.optims[ndx].zero_grad()
-                            loss, _ = self.computeBatchLoss(
-                                batch_ndx,
-                                batch_tuple,
-                                self.models[ndx],
-                                local_trn_metrics,
-                                'trn',
-                                ndx)
-                            loss.backward()
-                            return loss
-                        if self.optimizer_type == 'lbfgs':
-                            self.optims[ndx].step(closure)
-                        else:
-                            loss = closure()
-                            self.optims[ndx].step()
-                # except:
-                #     print('epoch', epoch_ndx, 'batch', batch_ndx)
-                    # for name, param in self.models[ndx].named_parameters():
-                    #     if param.grad is None:
-                    #         print(name, 'None')
-                    #     elif param.grad.norm()>1000:
-                    #         print(name, param.grad.norm())
-                #     raise
-                # finally:
-                #     print('epoch', epoch_ndx, 'batch', batch_ndx)
-                #     for name, param in self.models[ndx].named_parameters():
-                #         if param is None:
-                #             print(name, 'None')
-                #         elif param.norm()>10000:
-                #             print(name, param.norm())
+                # with torch.autograd.detect_anomaly():
+                    def closure():
+                        self.optims[ndx].zero_grad()
+                        loss, _ = self.computeBatchLoss(
+                            batch_ndx,
+                            batch_tuple,
+                            self.models[ndx],
+                            local_trn_metrics,
+                            'trn',
+                            ndx)
+                        loss.backward()
+                        return loss
+                    if self.optimizer_type == 'lbfgs':
+                        self.optims[ndx].step(closure)
+                    else:
+                        loss = closure()
+                        self.optims[ndx].step()
 
             loss += local_trn_metrics[-2].sum()
             correct += local_trn_metrics[-1].sum()
@@ -307,18 +289,19 @@ class LayerPersonalisationTrainingApp:
                 local_val_metrics = torch.zeros(2 + 2*self.num_classes, len(val_dl), device=self.device)
 
                 for batch_ndx, batch_tuple in enumerate(val_dl):
-                    _, accuracy = self.computeBatchLoss(
-                        batch_ndx,
-                        batch_tuple,
-                        self.models[ndx],
-                        local_val_metrics,
-                        'val',
-                        ndx
-                    )
+                    # with torch.autograd.detect_anomaly():
+                        _, accuracy = self.computeBatchLoss(
+                            batch_ndx,
+                            batch_tuple,
+                            self.models[ndx],
+                            local_val_metrics,
+                            'val',
+                            ndx
+                        )
                 
                 loss += local_val_metrics[-2].sum()
                 correct += local_val_metrics[-1].sum()
-                total += len(val_dl.dataset)
+                total += local_val_metrics[self.num_classes: 2*self.num_classes].sum()
 
                 correct_by_class += local_val_metrics[:self.num_classes].sum(dim=1)
                 total_by_class += local_val_metrics[self.num_classes: 2*self.num_classes].sum(dim=1)
@@ -333,14 +316,20 @@ class LayerPersonalisationTrainingApp:
         return val_metrics.to('cpu'), correct / total, loss / total
 
     def computeBatchLoss(self, batch_ndx, batch_tup, model, metrics, mode, site_id):
-        batch, labels = batch_tup
+        batch, labels, img_id = batch_tup
         batch = batch.to(device=self.device, non_blocking=True).float().permute(0, 3, 1, 2)
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
 
+        if self.input_perturbation:
+            perturb_mode = 'colorjitter' if self.colorjitter else 'default'
+            batch = perturb(batch, self.site_indices[site_id], self.device, perturb_mode)
         if mode == 'trn':
             batch = aug_image(batch, self.dataset)
+        if self.model_name[:6] == 'maxvit':
+            resize = Resize(224, antialias=True)
+            batch = resize(batch)
 
-        if not self.model_name == 'resnet34' and not self.model_name == 'resnet18':
+        if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
             pred = model(batch, torch.tensor(site_id, device=self.device, dtype=torch.int))
         else:
             pred = model(batch)
@@ -404,47 +393,56 @@ class LayerPersonalisationTrainingApp:
         writer.flush()
 
     def saveModel(self, epoch_ndx, val_metrics, trn_dls, val_dls):
-        file_path = os.path.join(
+        model_file_path = os.path.join(
             'saved_models',
             self.logdir_name,
-            '{}_{}.state'.format(
+            '{}-{}.state'.format(
                 self.time_str,
                 self.comment
             )
         )
+        os.makedirs(os.path.dirname(model_file_path), mode=0o755, exist_ok=True)
+        data_file_path = os.path.join(
+            'saved_metrics',
+            self.logdir_name,
+            '{}-{}.state'.format(
+                self.time_str,
+                self.comment
+            )
+        )
+        os.makedirs(os.path.dirname(data_file_path), mode=0o755, exist_ok=True)
 
-        os.makedirs(os.path.dirname(file_path), mode=0o755, exist_ok=True)
-        state = {'valmetrics':val_metrics,
-                    'epoch': epoch_ndx}
+        data_state = {'valmetrics':val_metrics.detach().cpu(),
+                      'epoch': epoch_ndx,
+                      'settings':self.settings}
+        model_state = {'epoch': epoch_ndx,}
+        model_state['model_state'] = self.models[0].state_dict()
+        layer_list = get_layer_list(model=self.model_name, strategy=self.strategy, original_list=[name for name, _ in self.models[0].named_parameters()])
         for ndx, model in enumerate(self.models):
             if isinstance(model, torch.nn.DataParallel):
                 model = model.module
-            if self.finetuning:
-                state[ndx] = {
-                    'model_state': model.state_dict(),
-                    'trn_labels': trn_dls[ndx].dataset.labels,
-                    'val_labels': val_dls[ndx].dataset.labels,
-                    'trn_indices': trn_dls[ndx].dataset.indices,
-                    'val_indices': val_dls[ndx].dataset.indices
+            data_state[ndx] = {
+                'trn_labels': trn_dls[ndx].dataset.labels,
+                'val_labels': val_dls[ndx].dataset.labels,
+                'trn_indices': trn_dls[ndx].dataset.indices,
+                'val_indices': val_dls[ndx].dataset.indices,
+            }
+            state_dict = model.state_dict()
+            site_state_dict = {key: state_dict[key] for key in state_dict.keys() if key not in layer_list}
+            model_state[ndx] = {
+                'site_model_state': site_state_dict,
+                'model_name': type(model).__name__,
+                'optimizer_state': self.optims[ndx].state_dict(),
+                'optimizer_name': type(self.optims[ndx]).__name__,
+                'scheduler_state': self.scheduler.state_dict(),
+                'scheduler_name': type(self.scheduler).__name__,
                 }
-                if self.model_name == 'resnet18emb':
-                    state[ndx]['emb_vector'] = model.state_dict()['embedding.weight'][ndx]
-                else:
-                    state[ndx]['model_state'] = model.state_dict()
-            else:
-                state[ndx] = {
-                    'model_state': model.state_dict(),
-                    'model_name': type(model).__name__,
-                    'optimizer_state': self.optims[ndx].state_dict(),
-                    'optimizer_name': type(self.optims[ndx]).__name__,
-                    'trn_labels': trn_dls[ndx].dataset.labels,
-                    'val_labels': val_dls[ndx].dataset.labels,
-                    'trn_indices': trn_dls[ndx].dataset.indices,
-                    'val_indices': val_dls[ndx].dataset.indices
-                }
+            if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
+                data_state[ndx]['emb_vector'] = model.state_dict()['embedding.weight'][ndx].detach().cpu()
 
-        torch.save(state, file_path)
-        log.debug("Saved model params to {}".format(file_path))
+        torch.save(model_state, model_file_path)
+        torch.save(data_state, data_file_path)
+        log.debug("Saved model params to {}".format(model_file_path))
 
     def mergeModels(self, is_init=False, model_path=None):
         if is_init:
@@ -456,7 +454,7 @@ class LayerPersonalisationTrainingApp:
                     state_dict = loaded_dict[0]['model_state']
             else:
                 state_dict = self.models[0].state_dict()
-            if 'embedding.weight' in state_dict:
+            if 'embedding.weight' in '\t'.join(state_dict.keys()):
                 state_dict['embedding.weight'] = state_dict['embedding.weight'][0].unsqueeze(0).repeat(self.site_number, 1)
             for model in self.models:
                 model.load_state_dict(state_dict, strict=False)
@@ -474,5 +472,6 @@ class LayerPersonalisationTrainingApp:
             for model in self.models:
                 model.load_state_dict(param_dict, strict=False)
 
+
 if __name__ == '__main__':
-    LayerPersonalisationTrainingApp().main()
+    EmbeddingTraining().main()

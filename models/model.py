@@ -1,7 +1,7 @@
 import torch.nn as  nn
 from torchvision.models import resnet34, ResNet34_Weights, resnet18, ResNet18_Weights, swin_t
 
-from .resnet_with_embedding import ResNetWithEmbeddings
+from .resnet_with_embedding import ResNetWithEmbeddings, CustomResnet
     
 class ResNet34Model(nn.Module):
     def __init__(self, num_classes, in_channels=3, pretrained=False):
