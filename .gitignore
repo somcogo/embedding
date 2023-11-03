@@ -138,8 +138,5 @@ notebook.ipynb
 script_runner.py
 plots
 script.py
-<<<<<<< HEAD
+saved_metrics
 gmm_data
-=======
-gmm_data
->>>>>>> b55864120d9565e920ec428795339be98b460e4c
