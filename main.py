@@ -16,6 +16,7 @@ class EmbeddingTask:
                  batch_size,
                  k_fold_val_id,
                  epochs,
+                 ft_epochs=None,
                  lr=None,
                  optimizer_type=None,
                  scheduler_mode=None,
@@ -42,8 +43,8 @@ class EmbeddingTask:
 
         self.initVariables()
         self.sites = self.initSites(data_part_seed, transform_gen_seed)
-        self.trainer = self.initTrainer()
-        self.fine_tuner = self.initFineTuner()
+        self.trainer = self.initTrainer(epochs=epochs, logdir=logdir, lr=lr, comment=comment, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max,save_model=save_model, strategy=strategy)
+        self.fine_tuner = self.initFineTuner(epochs=ft_epochs, logdir=logdir, lr=lr, comment=comment, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max, save_model=save_model)
 
     def initVariables(self):
         if self.task == 'classification':
@@ -62,10 +63,10 @@ class EmbeddingTask:
                      for ndx in range(self.site_number)]
         return site_dict
 
-    def initTrainer(self):
-        self.trainer = EmbeddingTraining(epochs=None, logdir=None, lr=None, comment=None, site_number=self.trn_site_number, model_name=None, model_type=None, optimizer_type=None, scheduler_mode=None, T_max=None, save_model=None, strategy=None, finetuning=None, sites=self.sites[:self.trn_site_number])
+    def initTrainer(self, epochs, logdir, lr, comment, model_name, model_type, optimizer_type, scheduler_mode, T_max, save_model, strategy):
+        self.trainer = EmbeddingTraining(epochs=epochs, logdir=logdir, lr=lr, comment=comment, site_number=self.trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max, save_model=save_model, strategy=strategy, finetuning=False, sites=self.sites[:self.trn_site_number])
 
-    def initFineTuner(self):
+    def initFineTuner(self, epochs, logdir, lr, comment, model_name, model_type, optimizer_type, scheduler_mode, T_max, save_model, strategy):
         pass
 
     def main(self):
