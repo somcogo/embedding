@@ -4,7 +4,7 @@ import os
 import numpy as np
 import torch
 
-from training import LayerPersonalisationTrainingApp
+from training import EmbeddingTraining
 
 def finetune_and_evaluate(old_dir, **kwargs):
     old_comment = kwargs['comment']
@@ -13,7 +13,7 @@ def finetune_and_evaluate(old_dir, **kwargs):
     path = glob.glob(search_string)[0]
     kwargs['comment'] = old_comment + '-finetune-siteindices4'
     kwargs['strategy'] = 'finetuning'
-    app = LayerPersonalisationTrainingApp(**kwargs, finetuning=True, model_path=path)
+    app = EmbeddingTraining(**kwargs, finetuning=True, model_path=path)
     as_is_validation = app.doValidation(2, app.val_dls)[1]
     normal_finetuning = app.main()
 
@@ -21,14 +21,14 @@ def finetune_and_evaluate(old_dir, **kwargs):
         if kwargs['fc_residual']:
             kwargs['comment'] = old_comment + '-onlyfc-siteindices4'
             kwargs['strategy'] = 'onlyfc'
-            onlyfc_app = LayerPersonalisationTrainingApp(**kwargs, finetuning=True, model_path=path)
+            onlyfc_app = EmbeddingTraining(**kwargs, finetuning=True, model_path=path)
             only_fc_finetuning = onlyfc_app.main()
         else:
             only_fc_finetuning = None
 
         kwargs['comment'] = old_comment + '-onlyemb-siteindices4'
         kwargs['strategy'] = 'onlyemb'
-        onlyemb_app = LayerPersonalisationTrainingApp(**kwargs, finetuning=True, model_path=path)
+        onlyemb_app = EmbeddingTraining(**kwargs, finetuning=True, model_path=path)
         only_emb_finetuning = onlyemb_app.main()
     else:
         only_fc_finetuning, only_emb_finetuning = None, None
@@ -71,7 +71,7 @@ def input_variation(perm_seed, trn_site_number=4, finetune_epochs=100, resnet18_
     kwargs['site_indices'] = perm[:trn_site_number]
     print('***Training for permutation {}***'.format(perm))
 
-    exp = LayerPersonalisationTrainingApp(**kwargs)
+    exp = EmbeddingTraining(**kwargs)
     exp.main()
 
     old_dir = kwargs['logdir']
@@ -89,7 +89,7 @@ def input_variation(perm_seed, trn_site_number=4, finetune_epochs=100, resnet18_
         kwargs['site_indices'] = perm[:trn_site_number]
         kwargs['embed_dim'] = None
 
-        exp = LayerPersonalisationTrainingApp(**kwargs)
+        exp = EmbeddingTraining(**kwargs)
         exp.main()
 
         kwargs['logdir'] = os.path.join(old_dir, 'finetuning')
@@ -120,7 +120,7 @@ def by_class_seperation(ndx, finetuning_epochs, **inputs):
     for key in inputs.keys():
         kwargs[key] = inputs[key]
 
-    exp = LayerPersonalisationTrainingApp(**kwargs)
+    exp = EmbeddingTraining(**kwargs)
     exp.main()
 
     old_dir = kwargs['logdir']
@@ -137,7 +137,7 @@ def by_class_seperation(ndx, finetuning_epochs, **inputs):
     kwargs['site_indices'] = [0, 1, 2, 3]
     kwargs['embed_dim'] = None
 
-    exp = LayerPersonalisationTrainingApp(**kwargs)
+    exp = EmbeddingTraining(**kwargs)
     exp.main()
 
     kwargs['logdir'] = os.path.join(old_dir, 'finetuning')

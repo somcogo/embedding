@@ -106,15 +106,15 @@ def getTransformList(degradation, site_number, seed):
     rng = np.random.default_rng(seed)
     if degradation == 'colorjitter':
         endpoints = np.linspace(0.5, 1.5, site_number+1)
-        brightness_ndx = rng.permutation(np.arange(100))
-        contrast_ndx = rng.permutation(np.arange(100))
-        saturation_ndx = rng.permutation(np.arange(100))
-        hue_ndx = rng.permutation(np.arange(100))
-        for site in site_number:
+        brightness_ndx = rng.permutation(np.arange(site_number))
+        contrast_ndx = rng.permutation(np.arange(site_number))
+        saturation_ndx = rng.permutation(np.arange(site_number))
+        hue_ndx = rng.permutation(np.arange(site_number))
+        for site in range(site_number):
             brightness = rng.uniform(endpoints[brightness_ndx[site]], endpoints[brightness_ndx[site]+1])
             contrast = rng.uniform(endpoints[contrast_ndx[site]], endpoints[contrast_ndx[site]+1])
             saturation = rng.uniform(endpoints[saturation_ndx[site]], endpoints[saturation_ndx[site]+1])
-            hue = rng.uniform(endpoints[hue_ndx[site]], endpoints[hue_ndx[site]+1])
+            hue = rng.uniform(endpoints[hue_ndx[site]], endpoints[hue_ndx[site]+1]) - 1
             transforms.append(ColorJitter((brightness, brightness),
                                           (contrast, contrast),
                                           (saturation, saturation),

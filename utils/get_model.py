@@ -1,8 +1,8 @@
-from models.model import ResNet18Model, ResNet34Model, ResNetWithEmbeddings
+from models.model import ResNet18Model, ResNet34Model, ResNetWithEmbeddings, CustomResnet
 from models.maxvit import MaxViT
 from models.maxvitemb import MaxViTEmb
 
-def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=None, pretrained=False, conv1_residual=True, fc_residual=True):
+def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=None, pretrained=False, conv1_residual=True, fc_residual=True, model_type=None):
     if dataset == 'cifar10':
         num_classes = 10
         in_channels = 3
@@ -43,7 +43,16 @@ def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=Non
         elif model_name == 'resnet34':
             model = ResNet34Model(num_classes=num_classes, in_channels=in_channels, pretrained=pretrained)
         elif model_name == 'resnet18':
-            model = ResNet18Model(num_classes=num_classes, in_channels=in_channels, pretrained=pretrained)
+            if model_type == 'embv1':
+                weight_gen_args = {'emb_dim':embed_dim,
+                                   'size':2,
+                                   'gen_depth':2,
+                                   'gen_affine':True,
+                                   'gen_hidden_layer':64}
+                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='embedding_weights', weight_gen_args=weight_gen_args)
+            else:
+                model = ResNet18Model(num_classes=num_classes, in_channels=in_channels)
+                # model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='vanilla', weight_gen_args={})
         elif model_name == 'maxvitembv1':
             model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(64, 128, 256), site_number=site_number, latent_dim=embed_dim)
         elif model_name == 'maxvitv1':

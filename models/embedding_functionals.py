@@ -15,15 +15,15 @@ class WeightGenerator(nn.Module):
         
         if depth == 1:
             self.lin1 = nn.Linear(in_features=emb_dim, out_features=out_channels)
-            nn.init.ones_(self.lin1.weight)
-            nn.init.zeros_(self.lin1.bias)
+            # nn.init.ones_(self.lin1.weight)
+            # nn.init.zeros_(self.lin1.bias)
         if depth == 2:
             self.lin1 = nn.Linear(in_features=emb_dim, out_features=hidden_layer)
             self.lin2 = nn.Linear(in_features=hidden_layer, out_features=out_channels)
-            nn.init.ones_(self.lin1.weight)
-            nn.init.zeros_(self.lin1.bias)
-            nn.init.ones_(self.lin2.weight)
-            nn.init.zeros_(self.lin2.bias)
+            # nn.init.ones_(self.lin1.weight)
+            # nn.init.zeros_(self.lin1.bias)
+            # nn.init.ones_(self.lin2.weight)
+            # nn.init.zeros_(self.lin2.bias)
     
     def forward(self, x):
         x = x.to(torch.float)
@@ -294,7 +294,7 @@ class GeneralLinear(nn.Module):
         return out
     
 class GeneralBatchnorm2d(nn.Module):
-    def __init__(self, mode, num_features, emb_dim, size, gen_depth=2, gen_affine=False, gen_hidden_layer=64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True, device=None, dtype=None):
+    def __init__(self, mode, num_features, emb_dim=None, size=None, gen_depth=2, gen_affine=False, gen_hidden_layer=64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True, device=None, dtype=None):
         super().__init__()
         self.mode = mode
         if mode == MODE_NAMES['embedding']:

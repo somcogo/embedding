@@ -18,21 +18,16 @@ class TruncatedDataset(Dataset):
         else:
             self.labels = dataset.targets
 
-        if indices is not None:
-            self.indices = indices
-            self.data = self.data[indices]
-            self.labels = self.labels[indices]
-        else:
-            self.indices = range(len(dataset))
+        self.indices = indices if indices is not None else list(range(len(dataset)))
 
     def __len__(self):
-        return len(self.data)
+        return len(self.indices)
 
     def __getitem__(self, index):
-        img = self.data[index]
-        label = self.labels[index]
-        img_id = self.indices[index]
-        return img, label, img_id
+        img_index = self.indices[index]
+        img = self.data[img_index]
+        label = self.labels[img_index]
+        return img, label, img_index
     
 class MergedDataset(Dataset):
     def __init__(self, dataset1, dataset2, dataset_name):
@@ -53,7 +48,7 @@ class ImageNetDataSet(Dataset):
     def __init__(self, data_dir, mode):
         super().__init__()
         h5_file = h5py.File(os.path.join(data_dir, 'tiny_imagenet_{}.hdf5'.format(mode)), 'r')
-        self.data = np.array(h5_file['data'])
+        self.data = h5_file['data']
         self.targets = np.array(h5_file['labels'])
 
     def __len__(self):
@@ -68,14 +63,14 @@ class CIFAR10DataSet(Dataset):
     def __init__(self, data_dir, mode):
         super().__init__()
         h5_file = h5py.File(os.path.join(data_dir, 'cifar10_{}.hdf5'.format(mode)), 'r')
-        self.data = np.array(h5_file['data']).transpose(0, 2, 3, 1)
+        self.data = h5_file['data']
         self.targets = np.array(h5_file['labels'])
 
     def __len__(self):
         return self.data.shape[0]
     
     def __getitem__(self, index):
-        img = torch.from_numpy(self.data[index])
+        img = torch.from_numpy(self.data[index]).permute(2, 0, 1)
         target = self.targets[index]
         return img, target
 
@@ -83,7 +78,7 @@ class MNISTDataSet(Dataset):
     def __init__(self, data_dir, mode):
         super().__init__()
         h5_file = h5py.File(os.path.join(data_dir, 'mnist_{}.hdf5'.format(mode)), 'r')
-        self.data = np.array(h5_file['data'])
+        self.data = h5_file['data']
         self.targets = np.array(h5_file['targets'])
 
     def __len__(self):

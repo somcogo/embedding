@@ -32,11 +32,12 @@ class EmbeddingTraining:
                  model_path=None, embedding_lr=None, ffwrd_lr=None,
                  layer_number=4, k_fold_val_id=None, seed=None,
                  site_indices=None, input_perturbation=False, use_hdf5=False,
-                 conv1_residual=True, fc_residual=True, colorjitter=False):
+                 conv1_residual=True, fc_residual=True, colorjitter=False,
+                 sites=None, model_type=None):
 
-        self.settings = copy.deepcopy(locals())
-        del self.settings['self']
-        log.info(self.settings)
+        # self.settings = copy.deepcopy(locals())
+        # del self.settings['self']
+        # log.info(self.settings)
         self.epochs = epochs
         self.logdir_name = logdir
         self.comment = comment
@@ -46,7 +47,7 @@ class EmbeddingTraining:
         self.optimizer_type = optimizer_type
         self.scheduler_mode = scheduler_mode
         self.pretrained = pretrained
-        if epochs > T_max:
+        if T_max is None or epochs > T_max:
             self.T_max = epochs
         else:
             self.T_max = T_max
@@ -74,26 +75,36 @@ class EmbeddingTraining:
         self.val_writer = None
         self.totalTrainingSamples_count = 0
 
-        self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
-        self.site_number = len(site_indices)
-        self.models = self.initModels(embed_dim=embed_dim, layer_number=layer_number)
-        self.mergeModels(is_init=True, model_path=model_path)
+        if sites is not None:
+            self.trn_dls = [site['trn_dl'] for site in sites]
+            self.val_dls = [site['val_dl'] for site in sites]
+            self.transforms = [site['transform'] for site in sites]
+            self.site_number = len(sites)
+        else:
+            self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
+            self.site_number = len(site_indices)
+        self.models = self.initModels(embed_dim=embed_dim, layer_number=layer_number, model_type=model_type)
         self.optims = self.initOptimizers(lr, finetuning, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
-    def initModels(self, embed_dim, layer_number):
-        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, layer_number, self.pretrained, conv1_residual=self.conv1_residual, fc_residual=self.fc_residual)
+    def initModels(self, embed_dim, layer_number, model_type):
+        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, layer_number, self.pretrained, conv1_residual=self.conv1_residual, fc_residual=self.fc_residual, model_type=model_type)
 
-        if 'embedding.weight' in '\t'.join(models[0].state_dict().keys()):
+        if 'embedding.weight' in '\t'.join(models[0].state_dict().keys()) or hasattr(models[0], 'embedding'):
             if embed_dim > 2:
                 self.mu_init = np.eye(self.site_number, embed_dim)
             else:
                 mu_init = np.exp((2 * np.pi * 1j/ self.site_number)*np.arange(0,self.site_number))
                 self.mu_init = np.stack([np.real(mu_init), np.imag(mu_init)], axis=1)
-            for i, model in enumerate(models):
-                init_weight = torch.from_numpy(self.mu_init[i]).repeat(self.site_number).reshape(self.site_number, embed_dim)
-                model.embedding.weight = nn.Parameter(init_weight)
+            if 'embedding.weight' in '\t'.join(models[0].state_dict().keys()):
+                for i, model in enumerate(models):
+                    init_weight = torch.from_numpy(self.mu_init[i]).repeat(self.site_number).reshape(self.site_number, embed_dim)
+                    model.embedding.weight = nn.Parameter(init_weight)
+            else:
+                for i, model in enumerate(models):
+                    init_weight = torch.from_numpy(self.mu_init[i])
+                    model.embedding = nn.Parameter(init_weight)
 
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
@@ -105,7 +116,7 @@ class EmbeddingTraining:
 
     def initOptimizers(self, lr, finetuning, embedding_lr=None, ffwrd_lr=None):
         optims = []
-        weight_decay = 0.
+        weight_decay = 0.0001
         for model in self.models:
             params_to_update = []
             if finetuning:
@@ -170,8 +181,9 @@ class EmbeddingTraining:
             self.val_writer = SummaryWriter(
                 log_dir=self.logdir + '/val-' + self.comment)
 
-    def main(self):
+    def train(self, state_dict=None):
         log.info("Starting {}".format(type(self).__name__))
+        self.mergeModels(is_init=True, model_path=self.model_path, state_dict=state_dict)
 
         trn_dls = self.trn_dls
         val_dls = self.val_dls
@@ -206,7 +218,7 @@ class EmbeddingTraining:
                     self.saveModel(epoch_ndx, val_metrics, trn_dls, val_dls)
 
                 if epoch_ndx < 51 or epoch_ndx % 100 == 0:
-                    log.info('Epoch {} of {}, accuracy/miou {}, val loss {}'.format(epoch_ndx, self.epochs, accuracy, loss))            
+                    log.info('Epoch {} of {}, accuracy {}, val loss {}'.format(epoch_ndx, self.epochs, accuracy, loss))            
             
             if self.scheduler_mode == 'cosine' and not self.finetuning:
                 for scheduler in self.schedulers:
@@ -220,7 +232,7 @@ class EmbeddingTraining:
             self.trn_writer.close()
             self.val_writer.close()
 
-        return saving_criterion
+        return saving_criterion, self.models[0].state_dict()
 
     def doTraining(self, epoch_ndx, trn_dls):
         for model in self.models:
@@ -248,11 +260,17 @@ class EmbeddingTraining:
                             ndx)
                         loss.backward()
                         return loss
-                    if self.optimizer_type == 'lbfgs':
-                        self.optims[ndx].step(closure)
-                    else:
-                        loss = closure()
-                        self.optims[ndx].step()
+                    try:
+                        if self.optimizer_type == 'lbfgs':
+                            self.optims[ndx].step(closure)
+                        else:
+                            loss = closure()
+                            self.optims[ndx].step()
+                    except:
+                        for name, param in self.models[ndx].named_parameters():
+                            if param.max() > 1e3:
+                                print(name, param.max())
+                        raise
 
             loss += local_trn_metrics[-2].sum()
             correct += local_trn_metrics[-1].sum()
@@ -328,6 +346,8 @@ class EmbeddingTraining:
         if self.model_name[:6] == 'maxvit':
             resize = Resize(224, antialias=True)
             batch = resize(batch)
+        if hasattr(self, 'transforms'):
+            batch = self.transforms[site_id](batch)
 
         if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
             pred = model(batch, torch.tensor(site_id, device=self.device, dtype=torch.int))
@@ -352,7 +372,7 @@ class EmbeddingTraining:
         metrics[-2, batch_ndx] = loss.detach()
         metrics[-1, batch_ndx] = correct
 
-        return loss.mean(), accuracy
+        return loss.sum(), accuracy
 
     def logMetrics(
         self,
@@ -413,8 +433,8 @@ class EmbeddingTraining:
         os.makedirs(os.path.dirname(data_file_path), mode=0o755, exist_ok=True)
 
         data_state = {'valmetrics':val_metrics.detach().cpu(),
-                      'epoch': epoch_ndx,
-                      'settings':self.settings}
+                      'epoch': epoch_ndx,}
+                    #   'settings':self.settings}
         model_state = {'epoch': epoch_ndx,}
         model_state['model_state'] = self.models[0].state_dict()
         layer_list = get_layer_list(model=self.model_name, strategy=self.strategy, original_list=[name for name, _ in self.models[0].named_parameters()])
@@ -434,17 +454,19 @@ class EmbeddingTraining:
                 'model_name': type(model).__name__,
                 'optimizer_state': self.optims[ndx].state_dict(),
                 'optimizer_name': type(self.optims[ndx]).__name__,
-                'scheduler_state': self.scheduler.state_dict(),
-                'scheduler_name': type(self.scheduler).__name__,
+                'scheduler_state': self.schedulers[ndx].state_dict(),
+                'scheduler_name': type(self.schedulers[ndx]).__name__,
                 }
             if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
                 data_state[ndx]['emb_vector'] = model.state_dict()['embedding.weight'][ndx].detach().cpu()
+            elif hasattr(model, 'embedding'):
+                data_state[ndx]['emb_vector'] = model.embedding.detach().cpu()
 
         torch.save(model_state, model_file_path)
         torch.save(data_state, data_file_path)
         log.debug("Saved model params to {}".format(model_file_path))
 
-    def mergeModels(self, is_init=False, model_path=None):
+    def mergeModels(self, is_init=False, model_path=None, state_dict=None):
         if is_init:
             if model_path is not None:
                 loaded_dict = torch.load(model_path)
@@ -452,7 +474,7 @@ class EmbeddingTraining:
                     state_dict = loaded_dict['model_state']
                 else:
                     state_dict = loaded_dict[0]['model_state']
-            else:
+            elif state_dict is None:
                 state_dict = self.models[0].state_dict()
             if 'embedding.weight' in '\t'.join(state_dict.keys()):
                 state_dict['embedding.weight'] = state_dict['embedding.weight'][0].unsqueeze(0).repeat(self.site_number, 1)
@@ -474,4 +496,4 @@ class EmbeddingTraining:
 
 
 if __name__ == '__main__':
-    EmbeddingTraining().main()
+    EmbeddingTraining().train()
