@@ -5,19 +5,25 @@ import numpy as np
 
 from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, get_image_net_dataset
 
-def partition(data_dir, dataset, partition, n_sites, alpha=None):
+def partition(data_dir, dataset, partition, n_sites, alpha=None, seed=None):
 
     if partition == 'by-class':
-        (net_dataidx_map_train, net_dataidx_map_test) = partition_by_class(data_dir, dataset, n_sites)
+        (net_dataidx_map_train, net_dataidx_map_test) = partition_by_class(data_dir, dataset, n_sites, seed)
     elif partition == 'dirichlet':
-        (net_dataidx_map_train, net_dataidx_map_test) = partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha)
+        (net_dataidx_map_train, net_dataidx_map_test) = partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha, seed)
     return (net_dataidx_map_train, net_dataidx_map_test)
 
-def partition_by_class(data_dir, dataset, n_sites):
+def partition_by_class(data_dir, dataset, n_sites, seed=None):
+    rng = np.random.default_rng(seed)
+
     if dataset == 'cifar10':
         train_ds, test_ds = get_cifar10_datasets(data_dir)
     if dataset == 'cifar100':
         train_ds, test_ds = get_cifar100_datasets(data_dir)
+    if dataset == 'mnist':
+        train_ds, test_ds = get_mnist_datasets(data_dir)
+    if dataset == 'imagenet':
+        train_ds, test_ds = get_image_net_dataset(data_dir)
     y_train = train_ds.targets
     y_test = test_ds.targets
 
@@ -33,6 +39,9 @@ def partition_by_class(data_dir, dataset, n_sites):
     elif dataset == 'imagenet':
         K = 200
         num = K // n_sites
+    elif dataset == 'mnist':
+        K = 10
+        num = K // n_sites
 
     # -------------------------------------------#
     # Divide classes + num samples for each user #
@@ -42,7 +51,7 @@ def partition_by_class(data_dir, dataset, n_sites):
     class_dict = {}
     for i in range(K):
         # sampling alpha_i_c
-        probs = np.random.uniform(0.4, 0.6, size=count_per_class)
+        probs = rng.uniform(0.4, 0.6, size=count_per_class)
         # normalizing
         probs_norm = (probs / probs.sum()).tolist()
         class_dict[i] = {'count': count_per_class, 'prob': probs_norm}
@@ -56,7 +65,7 @@ def partition_by_class(data_dir, dataset, n_sites):
         for _ in range(num):
             class_counts = [class_dict[i]['count'] for i in range(K)]
             max_class_counts = np.where(np.array(class_counts) == max(class_counts))[0]
-            c.append(np.random.choice(max_class_counts))
+            c.append(rng.choice(max_class_counts))
             class_dict[c[-1]]['count'] -= 1
         class_partitions['class'].append(c)
         class_partitions['prob'].append([class_dict[i]['prob'].pop() for i in c])
@@ -78,9 +87,9 @@ def partition_by_class(data_dir, dataset, n_sites):
     # Shuffling #
     # --------- #
     for data_idx in data_class_idx_train.values():
-        random.shuffle(data_idx)
+        rng.shuffle(data_idx)
     for data_idx in data_class_idx_test.values():
-        random.shuffle(data_idx)
+        rng.shuffle(data_idx)
 
     # ------------------------------ #
     # Assigning samples to each user #
@@ -105,7 +114,9 @@ def partition_by_class(data_dir, dataset, n_sites):
 # https://github.com/zhyczy/FedTP/blob/main/utils.py
 # https://github.com/FedML-AI/FedML/blob/master/python/fedml/core/data/noniid_partition.py
 
-def partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha):
+def partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha, seed=None):
+    rng = np.random.default_rng(seed)
+
     if dataset == 'cifar10':
         train_ds, test_ds = get_cifar10_datasets(data_dir)
     if dataset == 'cifar100':
@@ -155,22 +166,22 @@ def partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha):
                 train_idx_k = np.where(y_train == k)[0]
                 test_idx_k = np.where(y_test == k)[0]
 
-            idx_batch_train, idx_batch_test, min_size = partition_class_samples_with_dirichlet_distribution(N_train, alpha, n_sites, idx_batch_train, idx_batch_test, train_idx_k, test_idx_k)
+            idx_batch_train, idx_batch_test, min_size = partition_class_samples_with_dirichlet_distribution(N_train, alpha, n_sites, idx_batch_train, idx_batch_test, train_idx_k, test_idx_k, rng)
         
         for j in range(n_sites):
-            np.random.shuffle(idx_batch_train[j])
-            np.random.shuffle(idx_batch_test[j])
+            rng.shuffle(idx_batch_train[j])
+            rng.shuffle(idx_batch_test[j])
             net_dataidx_map_train[j] = idx_batch_train[j]
             net_dataidx_map_test[j] = idx_batch_test[j]
 
     return (net_dataidx_map_train, net_dataidx_map_test)
 
-def partition_class_samples_with_dirichlet_distribution(N, alpha, n_sites, idx_batch_train, idx_batch_test, train_idx_k, test_idx_k):
+def partition_class_samples_with_dirichlet_distribution(N, alpha, n_sites, idx_batch_train, idx_batch_test, train_idx_k, test_idx_k, rng):
 
-    np.random.shuffle(train_idx_k)
-    np.random.shuffle(test_idx_k)
+    rng.shuffle(train_idx_k)
+    rng.shuffle(test_idx_k)
     
-    proportions = np.random.dirichlet(np.repeat(alpha, n_sites))
+    proportions = rng.dirichlet(np.repeat(alpha, n_sites))
 
     # get the index in idx_k according to the dirichlet distribution
     proportions = np.array(

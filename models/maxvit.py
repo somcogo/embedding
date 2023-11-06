@@ -637,7 +637,7 @@ class MaxViT(nn.Module):
             )
         self.stages = nn.ModuleList(stages)
         self.global_pool: str = global_pool
-        self.head = nn.Linear(channels[-1], num_classes)
+        self.fc = nn.Linear(channels[-1], num_classes)
 
     @torch.jit.ignore
     def no_weight_decay(self) -> Set[str]:
@@ -662,7 +662,7 @@ class MaxViT(nn.Module):
         self.num_classes: int = num_classes
         if global_pool is not None:
             self.global_pool = global_pool
-        self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
+        self.fc = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
 
     def forward_features(self, input: torch.Tensor) -> torch.Tensor:
         """ Forward pass of feature extraction.
@@ -692,7 +692,7 @@ class MaxViT(nn.Module):
             input = input.mean(dim=(2, 3))
         elif self.global_pool == "max":
             input = torch.amax(input, dim=(2, 3))
-        return input if pre_logits else self.head(input)
+        return input if pre_logits else self.fc(input)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """ Forward pass
