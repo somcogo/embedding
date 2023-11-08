@@ -213,11 +213,19 @@ class Linear_emb(nn.Module):
         return x
     
 class BatchNorm2d_emb(nn.Module):
-    def __init__(self, num_features, emb_dim, size, gen_depth=2, gen_affine=False, gen_hidden_layer=64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True, device=None, dtype=None):
+    def __init__(self, num_features,eps=1e-05, momentum=0.1, affine=True, track_running_stats=True,  emb_dim=8, size=1, gen_depth=2, gen_affine=False, gen_hidden_layer=64, device=None, dtype=None):
         super().__init__()
         self.gen_affine = gen_affine
+        self.momentum = momentum
+        self.eps = eps
 
-        self.batch_norm_2d = nn.BatchNorm2d(num_features, eps, momentum, affine, track_running_stats, device, dtype)
+        self.weight = nn.Parameter(torch.empty(num_features, device=device))
+        self.bias = nn.Parameter(torch.empty(num_features, device=device))
+        self.register_buffer('running_mean', torch.zeros(num_features, device=device))
+        self.register_buffer('running_var', torch.ones(num_features, device=device))
+
+        nn.init.ones_(self.weight)
+        nn.init.zeros_(self.bias)
         
         gen_weight_const_size = 1
         gen_weight_affine_size = 1 if gen_affine else None
@@ -230,8 +238,8 @@ class BatchNorm2d_emb(nn.Module):
         self.bias_affine_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_bias_affine_size, gen_depth, target='affine') if gen_affine else None
 
     def forward(self, x, emb):
-        weight = self.batch_norm_2d.weight.data
-        bias = self.batch_norm_2d.bias.data
+        weight = self.weight.to(x.dtype)
+        bias = self.bias.to(x.dtype)
         if self.gen_affine:
             weight_affine = self.weight_affine_generator(emb).expand(weight.shape)
             weight = weight_affine*weight
@@ -242,10 +250,7 @@ class BatchNorm2d_emb(nn.Module):
         bias_const = self.bias_const_generator(emb).expand(bias.shape)
         bias = bias + bias_const
 
-        self.batch_norm_2d.weight.data = weight
-        self.batch_norm_2d.bias.data = bias
-
-        x = self.batch_norm_2d(x)
+        x = F.batch_norm(x, running_mean=self.running_mean, running_var=self.running_var, weight=weight, bias=bias, training=self.training, momentum=self.momentum, eps=self.eps)
         return x
     
 class InstanceNorm2d_emb(nn.Module):
