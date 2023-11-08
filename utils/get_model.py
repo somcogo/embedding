@@ -1,6 +1,7 @@
 from models.model import ResNet18Model, ResNet34Model, ResNetWithEmbeddings, CustomResnet
-from models.maxvit import MaxViT
-from models.maxvitemb import MaxViTEmb
+from models.embedding_functionals import GeneralInstanceNorm2d
+# from models.maxvit import MaxViT
+# from models.maxvitemb import MaxViTEmb
 
 def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=None, pretrained=False, conv1_residual=True, fc_residual=True, model_type=None):
     if dataset == 'cifar10':
@@ -47,23 +48,23 @@ def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=Non
                 weight_gen_args = {'emb_dim':embed_dim,
                                    'size':2,
                                    'gen_depth':2,
-                                   'gen_affine':True,
+                                   'gen_affine':False,
                                    'gen_hidden_layer':64}
-                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='embedding_weights', weight_gen_args=weight_gen_args)
+                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='embedding_weights', weight_gen_args=weight_gen_args, norm_layer=GeneralInstanceNorm2d)
             else:
                 model = ResNet18Model(num_classes=num_classes, in_channels=in_channels)
                 # model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='vanilla', weight_gen_args={})
-        elif model_name == 'maxvitembv1':
-            model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(64, 128, 256), site_number=site_number, latent_dim=embed_dim)
-        elif model_name == 'maxvitv1':
-            model = MaxViT(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(64, 128, 256))
-        elif model_name == 'maxvitembv2':
-            model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(32, 64, 128), site_number=site_number, latent_dim=embed_dim)
-        elif model_name == 'maxvitv2':
-            model = MaxViT(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(32, 64, 128))
-        elif model_name == 'maxvitembv3':
-            model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(1, 1, 2), channels=(64, 128, 256), site_number=site_number, latent_dim=embed_dim)
-        elif model_name == 'maxvitv3':
-            model = MaxViT(num_classes=num_classes, in_channels=in_channels, depths=(1, 1, 2), channels=(64, 128, 256))
+        # elif model_name == 'maxvitembv1':
+        #     model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(64, 128, 256), site_number=site_number, latent_dim=embed_dim)
+        # elif model_name == 'maxvitv1':
+        #     model = MaxViT(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(64, 128, 256))
+        # elif model_name == 'maxvitembv2':
+        #     model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(32, 64, 128), site_number=site_number, latent_dim=embed_dim)
+        # elif model_name == 'maxvitv2':
+        #     model = MaxViT(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(32, 64, 128))
+        # elif model_name == 'maxvitembv3':
+        #     model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(1, 1, 2), channels=(64, 128, 256), site_number=site_number, latent_dim=embed_dim)
+        # elif model_name == 'maxvitv3':
+        #     model = MaxViT(num_classes=num_classes, in_channels=in_channels, depths=(1, 1, 2), channels=(64, 128, 256))
         models.append(model)
     return models, num_classes
