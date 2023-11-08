@@ -33,7 +33,7 @@ class EmbeddingTraining:
                  layer_number=4, k_fold_val_id=None, seed=None,
                  site_indices=None, input_perturbation=False, use_hdf5=False,
                  conv1_residual=True, fc_residual=True, colorjitter=False,
-                 sites=None, model_type=None):
+                 sites=None, model_type=None, weight_decay=1e-5):
 
         # self.settings = copy.deepcopy(locals())
         # del self.settings['self']
@@ -84,7 +84,7 @@ class EmbeddingTraining:
             self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
             self.site_number = len(site_indices)
         self.models = self.initModels(embed_dim=embed_dim, layer_number=layer_number, model_type=model_type)
-        self.optims = self.initOptimizers(lr, finetuning, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
+        self.optims = self.initOptimizers(lr, finetuning, weight_decay=weight_decay, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
@@ -114,9 +114,8 @@ class EmbeddingTraining:
                 model = model.to(self.device)
         return models
 
-    def initOptimizers(self, lr, finetuning, embedding_lr=None, ffwrd_lr=None):
+    def initOptimizers(self, lr, finetuning, weight_decay=None, embedding_lr=None, ffwrd_lr=None):
         optims = []
-        weight_decay = 0.0001
         for model in self.models:
             params_to_update = []
             if finetuning:
@@ -144,7 +143,7 @@ class EmbeddingTraining:
             elif self.optimizer_type == 'newadam':
                 optim = Adam(params=params_to_update, lr=lr, weight_decay=weight_decay, betas=(0.5,0.9))
             elif self.optimizer_type == 'adamw':
-                optim = AdamW(params=params_to_update, lr=lr, weight_decay=0.05)
+                optim = AdamW(params=params_to_update, lr=lr, weight_decay=weight_decay)
             elif self.optimizer_type == 'sgd':
                 optim = SGD(params=params_to_update, lr=lr, weight_decay=weight_decay, momentum=0.9)
             elif self.optimizer_type == 'lbfgs':

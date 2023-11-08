@@ -1,5 +1,5 @@
 from models.model import ResNet18Model, ResNet34Model, ResNetWithEmbeddings, CustomResnet
-from models.embedding_functionals import GeneralInstanceNorm2d
+from models.embedding_functionals import GeneralInstanceNorm2d, BatchNorm2d_noemb, GeneralBatchNorm2d
 # from models.maxvit import MaxViT
 # from models.maxvitemb import MaxViTEmb
 
@@ -50,7 +50,14 @@ def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=Non
                                    'gen_depth':2,
                                    'gen_affine':False,
                                    'gen_hidden_layer':64}
-                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='embedding_weights', weight_gen_args=weight_gen_args, norm_layer=GeneralInstanceNorm2d)
+                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='embedding_weights', weight_gen_args=weight_gen_args, norm_layer=GeneralBatchNorm2d)
+            elif model_type == 'embv1_bnormnoemb':
+                weight_gen_args = {'emb_dim':embed_dim,
+                                   'size':2,
+                                   'gen_depth':2,
+                                   'gen_affine':False,
+                                   'gen_hidden_layer':64}
+                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='embedding_weights', weight_gen_args=weight_gen_args, norm_layer=BatchNorm2d_noemb)
             else:
                 model = ResNet18Model(num_classes=num_classes, in_channels=in_channels)
                 # model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='vanilla', weight_gen_args={})

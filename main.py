@@ -30,6 +30,7 @@ class EmbeddingTask:
                  lr=None,
                  gen_lr=None,
                  optimizer_type=None,
+                 weight_decay=None,
                  scheduler_mode=None,
                  T_max=None,
                  save_model=None,
@@ -59,9 +60,9 @@ class EmbeddingTask:
 
         self.initVariables()
         self.initSites(data_part_seed, transform_gen_seed)
-        self.initTrainer(epochs=epochs, logdir=logdir, lr=lr, gen_lr=gen_lr, comment=comment, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max,save_model=save_model, strategy=strategy)
+        self.initTrainer(epochs=epochs, logdir=logdir, lr=lr, gen_lr=gen_lr, weight_decay=weight_decay, comment=comment, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max,save_model=save_model, strategy=strategy)
         if site_number > trn_site_number:
-            self.initFineTuner(epochs=ft_epochs, logdir=logdir, lr=lr, comment=comment, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max, save_model=save_model, strategies=ft_strategies)
+            self.initFineTuner(epochs=ft_epochs, logdir=logdir, lr=lr, gen_lr=gen_lr, weight_decay=weight_decay, comment=comment, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max, save_model=save_model, strategies=ft_strategies)
 
     def initVariables(self):
         if self.task == 'classification':
@@ -80,15 +81,15 @@ class EmbeddingTask:
                      for ndx in range(self.site_number)]
         self.sites = site_dict
 
-    def initTrainer(self, epochs, logdir, lr, gen_lr, comment, model_name, model_type, optimizer_type, scheduler_mode, T_max, save_model, strategy):
-        self.trainer = EmbeddingTraining(epochs=epochs, logdir=logdir, lr=lr, ffwrd_lr=gen_lr, comment=comment, dataset=self.dataset, site_number=self.trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max, save_model=save_model, strategy=strategy, finetuning=False, sites=self.sites[:self.trn_site_number])
+    def initTrainer(self, epochs, logdir, lr, gen_lr, weight_decay, comment, model_name, model_type, optimizer_type, scheduler_mode, T_max, save_model, strategy):
+        self.trainer = EmbeddingTraining(epochs=epochs, logdir=logdir, lr=lr, ffwrd_lr=gen_lr, weight_decay=weight_decay, comment=comment, dataset=self.dataset, site_number=self.trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max, save_model=save_model, strategy=strategy, finetuning=False, sites=self.sites[:self.trn_site_number])
 
-    def initFineTuner(self, epochs, logdir, lr, comment, model_name, model_type, optimizer_type, scheduler_mode, T_max, save_model, strategies):
+    def initFineTuner(self, epochs, logdir, lr, gen_lr, weight_decay, comment, model_name, model_type, optimizer_type, scheduler_mode, T_max, save_model, strategies):
         ft_trainers = []
         logdir = os.path.join(logdir, 'finetuning')
         for strategy in strategies:
             str_comment = comment + strategy
-            ft_trainers.append(EmbeddingTraining(epochs=epochs, logdir=logdir, lr=lr, comment=str_comment, dataset=self.dataset, site_number=self.site_number-self.trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, save_model=save_model, strategy=strategy, finetuning=True, sites=self.sites[self.trn_site_number:]))
+            ft_trainers.append(EmbeddingTraining(epochs=epochs, logdir=logdir, lr=lr, ffwrd_lr=gen_lr, weight_decay=weight_decay, comment=str_comment, dataset=self.dataset, site_number=self.site_number-self.trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, save_model=save_model, strategy=strategy, finetuning=True, sites=self.sites[self.trn_site_number:]))
         self.ft_trainers = ft_trainers
 
     def main(self):
