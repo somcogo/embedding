@@ -5,6 +5,12 @@ import torch
 from utils.data_loader import get_dl_lists
 from utils.ops import getTransformList
 from training import EmbeddingTraining
+from utils.logconf import logging
+
+log = logging.getLogger(__name__)
+# log.setLevel(logging.WARN)
+log.setLevel(logging.INFO)
+# log.setLevel(logging.DEBUG)
 
 class EmbeddingTask:
     def __init__(self,
@@ -22,6 +28,7 @@ class EmbeddingTask:
                  epochs,
                  ft_epochs=None,
                  lr=None,
+                 gen_lr=None,
                  optimizer_type=None,
                  scheduler_mode=None,
                  T_max=None,
@@ -44,6 +51,7 @@ class EmbeddingTask:
         self.comment = comment
         self.save_path = os.path.join('./results', logdir)
         os.makedirs(self.save_path, exist_ok=True)
+        log.info(comment)
 
         assert self.task in ['classification', 'reconstruction', 'segmentation']
         assert self.site_number >= self.trn_site_number
@@ -51,7 +59,7 @@ class EmbeddingTask:
 
         self.initVariables()
         self.initSites(data_part_seed, transform_gen_seed)
-        self.initTrainer(epochs=epochs, logdir=logdir, lr=lr, comment=comment, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max,save_model=save_model, strategy=strategy)
+        self.initTrainer(epochs=epochs, logdir=logdir, lr=lr, gen_lr=gen_lr, comment=comment, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max,save_model=save_model, strategy=strategy)
         if site_number > trn_site_number:
             self.initFineTuner(epochs=ft_epochs, logdir=logdir, lr=lr, comment=comment, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max, save_model=save_model, strategies=ft_strategies)
 
@@ -72,8 +80,8 @@ class EmbeddingTask:
                      for ndx in range(self.site_number)]
         self.sites = site_dict
 
-    def initTrainer(self, epochs, logdir, lr, comment, model_name, model_type, optimizer_type, scheduler_mode, T_max, save_model, strategy):
-        self.trainer = EmbeddingTraining(epochs=epochs, logdir=logdir, lr=lr, comment=comment, dataset=self.dataset, site_number=self.trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max, save_model=save_model, strategy=strategy, finetuning=False, sites=self.sites[:self.trn_site_number])
+    def initTrainer(self, epochs, logdir, lr, gen_lr, comment, model_name, model_type, optimizer_type, scheduler_mode, T_max, save_model, strategy):
+        self.trainer = EmbeddingTraining(epochs=epochs, logdir=logdir, lr=lr, ffwrd_lr=gen_lr, comment=comment, dataset=self.dataset, site_number=self.trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max, save_model=save_model, strategy=strategy, finetuning=False, sites=self.sites[:self.trn_site_number])
 
     def initFineTuner(self, epochs, logdir, lr, comment, model_name, model_type, optimizer_type, scheduler_mode, T_max, save_model, strategies):
         ft_trainers = []

@@ -140,3 +140,5 @@ plots
 script.py
 saved_metrics
 gmm_data
+execute_script.py
+results

@@ -135,7 +135,7 @@ class EmbeddingTraining:
                     embedding_names = [name for name in all_names if name.split('.')[0] == 'embedding']
                     params_to_update.append({'params':[param for name, param in model.named_parameters() if name in embedding_names], 'lr':embedding_lr})
                 if ffwrd_lr is not None:
-                    ffwrd_names = [name for name in all_names if 'ffwrd' in name]
+                    ffwrd_names = [name for name in all_names if 'generator' in name]
                     params_to_update.append({'params':[param for name, param in model.named_parameters() if name in ffwrd_names], 'lr':ffwrd_lr})
                 params_to_update.append({'params':[param for name, param in model.named_parameters() if not name in embedding_names and not name in ffwrd_names]})
 
@@ -248,7 +248,7 @@ class EmbeddingTraining:
             local_trn_metrics = torch.zeros(2 + 2*self.num_classes, len(trn_dl), device=self.device)
 
             for batch_ndx, batch_tuple in enumerate(trn_dl):
-                # with torch.autograd.detect_anomaly():
+                # with torch.autograd.detect_anomaly():s
                     def closure():
                         self.optims[ndx].zero_grad()
                         loss, _ = self.computeBatchLoss(
@@ -260,17 +260,19 @@ class EmbeddingTraining:
                             ndx)
                         loss.backward()
                         return loss
-                    try:
-                        if self.optimizer_type == 'lbfgs':
-                            self.optims[ndx].step(closure)
-                        else:
-                            loss = closure()
-                            self.optims[ndx].step()
-                    except:
-                        for name, param in self.models[ndx].named_parameters():
-                            if param.max() > 1e3:
-                                print(name, param.max())
-                        raise
+                    # try:
+                    if self.optimizer_type == 'lbfgs':
+                        self.optims[ndx].step(closure)
+                    else:
+                        loss = closure()
+                        self.optims[ndx].step()
+                    # except:
+                    # for name, param in self.models[ndx].named_parameters():
+                    #     if param.grad is None:
+                    #         print(batch_ndx, name,)
+                    #     if torch.norm(param) < 1e-3:
+                    #         print(batch_ndx, name, torch.norm(param))
+                    
 
             loss += local_trn_metrics[-2].sum()
             correct += local_trn_metrics[-1].sum()
