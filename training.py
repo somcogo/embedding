@@ -248,7 +248,7 @@ class EmbeddingTraining:
             local_trn_metrics = torch.zeros(2 + 2*self.num_classes, len(trn_dl), device=self.device)
 
             for batch_ndx, batch_tuple in enumerate(trn_dl):
-                # with torch.autograd.detect_anomaly():
+                with torch.autograd.detect_anomaly():
                     def closure():
                         self.optims[ndx].zero_grad()
                         loss, _ = self.computeBatchLoss(
@@ -271,6 +271,9 @@ class EmbeddingTraining:
                             if param.max() > 1e3:
                                 print(name, param.max())
                         raise
+                    for name, param in self.models[ndx].named_parameters():
+                        if param.grad is None:
+                            print(name)
 
             loss += local_trn_metrics[-2].sum()
             correct += local_trn_metrics[-1].sum()

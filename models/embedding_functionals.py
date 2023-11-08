@@ -15,15 +15,15 @@ class WeightGenerator(nn.Module):
         
         if depth == 1:
             self.lin1 = nn.Linear(in_features=emb_dim, out_features=out_channels)
-            # nn.init.ones_(self.lin1.weight)
-            # nn.init.zeros_(self.lin1.bias)
+            nn.init.zeros_(self.lin1.weight)
+            nn.init.zeros_(self.lin1.bias)
         if depth == 2:
             self.lin1 = nn.Linear(in_features=emb_dim, out_features=hidden_layer)
             self.lin2 = nn.Linear(in_features=hidden_layer, out_features=out_channels)
-            # nn.init.ones_(self.lin1.weight)
-            # nn.init.zeros_(self.lin1.bias)
-            # nn.init.ones_(self.lin2.weight)
-            # nn.init.zeros_(self.lin2.bias)
+            nn.init.zeros_(self.lin1.weight)
+            nn.init.zeros_(self.lin1.bias)
+            nn.init.zeros_(self.lin2.weight)
+            nn.init.zeros_(self.lin2.bias)
     
     def forward(self, x):
         x = x.to(torch.float)

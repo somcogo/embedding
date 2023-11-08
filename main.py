@@ -5,6 +5,12 @@ import torch
 from utils.data_loader import get_dl_lists
 from utils.ops import getTransformList
 from training import EmbeddingTraining
+from utils.logconf import logging
+
+log = logging.getLogger(__name__)
+# log.setLevel(logging.WARN)
+log.setLevel(logging.INFO)
+# log.setLevel(logging.DEBUG)
 
 class EmbeddingTask:
     def __init__(self,
@@ -44,6 +50,7 @@ class EmbeddingTask:
         self.comment = comment
         self.save_path = os.path.join('./results', logdir)
         os.makedirs(self.save_path, exist_ok=True)
+        log.info(comment)
 
         assert self.task in ['classification', 'reconstruction', 'segmentation']
         assert self.site_number >= self.trn_site_number
