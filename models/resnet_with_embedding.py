@@ -14,13 +14,16 @@ weight_gen_args = {'emb_dim':4,
 
 ### ----- Based on the official PyTorch ResNet-18 implementation ----- ###
 class CustomResnet(nn.Module):
-    def __init__(self, num_classes, in_channels=3, layers=[2, 2, 2, 2], mode='vanilla', weight_gen_args=None, norm_layer=GeneralBatchNorm2d, device=None):
+    def __init__(self, num_classes, in_channels=3, layers=[2, 2, 2, 2], mode='vanilla', weight_gen_args=None, norm_layer=GeneralBatchNorm2d, device=None, cifar=False):
         super().__init__()
         self.mode = mode
 
         self.embedding = nn.Parameter(torch.zeros(weight_gen_args['emb_dim'])) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
 
-        self.conv1 = GeneralConv2d(mode, in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False, **weight_gen_args)
+        if cifar:
+            self.conv1 = GeneralConv2d(mode, in_channels, 64, kernel_size=3, stride=1, padding=3, bias=False, **weight_gen_args)
+        else:
+            self.conv1 = GeneralConv2d(mode, in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False, **weight_gen_args)
         self.batch_norm1 = norm_layer(mode, 64, **weight_gen_args)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)

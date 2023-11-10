@@ -44,22 +44,41 @@ def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=Non
         elif model_name == 'resnet34':
             model = ResNet34Model(num_classes=num_classes, in_channels=in_channels, pretrained=pretrained)
         elif model_name == 'resnet18':
-            if model_type == 'embv1':
+            if model_type == 'embv1_cifar':
                 weight_gen_args = {'emb_dim':embed_dim,
                                    'size':2,
                                    'gen_depth':2,
                                    'gen_affine':False,
                                    'gen_hidden_layer':64}
-                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='embedding_weights', weight_gen_args=weight_gen_args, norm_layer=GeneralBatchNorm2d)
-            elif model_type == 'embv1_bnormnoemb':
+                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='embedding_weights', weight_gen_args=weight_gen_args, norm_layer=GeneralBatchNorm2d, cifar=True)
+            elif model_type == 'embtiny_cifar':
+                weight_gen_args = {'emb_dim':embed_dim,
+                                   'size':1,
+                                   'gen_depth':1,
+                                   'gen_affine':False,
+                                   'gen_hidden_layer':64}
+                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='embedding_weights', weight_gen_args=weight_gen_args, norm_layer=GeneralBatchNorm2d, cifar=True)
+            elif model_type == 'embv1_bnormnoemb_cifar':
                 weight_gen_args = {'emb_dim':embed_dim,
                                    'size':2,
                                    'gen_depth':2,
                                    'gen_affine':False,
                                    'gen_hidden_layer':64}
-                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='embedding_weights', weight_gen_args=weight_gen_args, norm_layer=BatchNorm2d_noemb)
-            else:
-                model = ResNet18Model(num_classes=num_classes, in_channels=in_channels)
+                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='embedding_weights', weight_gen_args=weight_gen_args, norm_layer=BatchNorm2d_noemb, cifar=True)
+            elif model_type == 'vanilla_cifar':
+                weight_gen_args = {'emb_dim':None,
+                                   'size':None,
+                                   'gen_depth':None,
+                                   'gen_affine':None,
+                                   'gen_hidden_layer':None}
+                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='vanilla', weight_gen_args=weight_gen_args, cifar=True)
+            elif model_type == 'vanilla':
+                weight_gen_args = {'emb_dim':None,
+                                   'size':None,
+                                   'gen_depth':None,
+                                   'gen_affine':None,
+                                   'gen_hidden_layer':None}
+                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='vanilla', weight_gen_args=weight_gen_args)
                 # model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='vanilla', weight_gen_args={})
         # elif model_name == 'maxvitembv1':
         #     model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(64, 128, 256), site_number=site_number, latent_dim=embed_dim)

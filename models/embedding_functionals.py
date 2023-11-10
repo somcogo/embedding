@@ -351,7 +351,7 @@ class GeneralBatchNorm2d(nn.Module):
         super().__init__()
         self.mode = mode
         if mode == MODE_NAMES['embedding']:
-            self.batch_norm = BatchNorm2d_emb(num_features, emb_dim, size, gen_depth, gen_affine, gen_hidden_layer, eps, momentum, affine, track_running_stats, device)
+            self.batch_norm = BatchNorm2d_emb(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, emb_dim=emb_dim, size=size, gen_depth=gen_depth, gen_affine=gen_affine, gen_hidden_layer=gen_hidden_layer, device=device)
         else:
             self.batch_norm = nn.BatchNorm2d(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, device=device)
     

@@ -38,6 +38,7 @@ class EmbeddingTraining:
         # self.settings = copy.deepcopy(locals())
         # del self.settings['self']
         # log.info(self.settings)
+        log.info(comment)
         self.epochs = epochs
         self.logdir_name = logdir
         self.comment = comment
@@ -266,11 +267,6 @@ class EmbeddingTraining:
                         loss = closure()
                         self.optims[ndx].step()
                     # except:
-                    # for name, param in self.models[ndx].named_parameters():
-                    #     if param.grad is None:
-                    #         print(batch_ndx, name,)
-                    #     if torch.norm(param) < 1e-3:
-                    #         print(batch_ndx, name, torch.norm(param))
                     
 
             loss += local_trn_metrics[-2].sum()
