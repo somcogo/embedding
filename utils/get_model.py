@@ -58,6 +58,20 @@ def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=Non
                                    'gen_affine':False,
                                    'gen_hidden_layer':64}
                 model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='embedding_weights', weight_gen_args=weight_gen_args, norm_layer=GeneralBatchNorm2d, cifar=True)
+            elif model_type == 'embres1_cifar':
+                weight_gen_args = {'emb_dim':embed_dim,
+                                   'size':1,
+                                   'gen_depth':1,
+                                   'gen_affine':False,
+                                   'gen_hidden_layer':64}
+                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='embedding_residual', weight_gen_args=weight_gen_args, norm_layer=GeneralBatchNorm2d, cifar=True)
+            elif model_type == 'embres2_cifar':
+                weight_gen_args = {'emb_dim':embed_dim,
+                                   'size':1,
+                                   'gen_depth':2,
+                                   'gen_affine':False,
+                                   'gen_hidden_layer':64}
+                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='embedding_residual', weight_gen_args=weight_gen_args, norm_layer=GeneralBatchNorm2d, cifar=True)
             elif model_type == 'embv1_bnormnoemb_cifar':
                 weight_gen_args = {'emb_dim':embed_dim,
                                    'size':2,
@@ -71,7 +85,7 @@ def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=Non
                                    'gen_depth':None,
                                    'gen_affine':None,
                                    'gen_hidden_layer':None}
-                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='vanilla', weight_gen_args=weight_gen_args, cifar=True)
+                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='vanilla', weight_gen_args=weight_gen_args, norm_layer=GeneralBatchNorm2d, cifar=True)
             elif model_type == 'vanilla':
                 weight_gen_args = {'emb_dim':None,
                                    'size':None,

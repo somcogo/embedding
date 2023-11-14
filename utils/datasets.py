@@ -88,6 +88,34 @@ class MNISTDataSet(Dataset):
         img = torch.from_numpy(self.data[index])
         target = self.targets[index]
         return img, target
+    
+class CelebAMask_HQDataset(Dataset):
+    def __init__(self, data_dir, img_tr, mask_tr, mode):
+        super().__init__()
+        self.img_tr = img_tr
+        self.mask_tr = mask_tr
+
+        h5_file = h5py.File(os.path.join(data_dir, 'celeba.hdf5'), 'r')
+        if mode == 'trn':
+            start_ndx = 0
+            end_ndx = 24000
+        else:
+            start_ndx = 24000
+            end_ndx = 30000
+        self.data = h5_file['img'][start_ndx:end_ndx]
+        self.labels = h5_file['mask'][start_ndx:end_ndx]
+        self.img_ids = h5_file['img_id'][start_ndx:end_ndx]
+
+    def __len__(self):
+        return len(self.img_ids)
+
+    def __getitem__(self, index):
+        img = self.data[index]
+        mask = self.labels[index]
+
+        img = self.img_tr(img)
+        mask = self.mask_tr(mask)
+        return img, mask
 
 def get_cifar10_datasets(data_dir, use_hdf5=False):
     if use_hdf5:
@@ -144,4 +172,9 @@ def get_mnist_datasets(data_dir, use_hdf5=False):
 def get_image_net_dataset(data_dir):
     dataset = ImageNetDataSet(data_dir=data_dir, mode='trn')
     val_dataset = ImageNetDataSet(data_dir=data_dir, mode='val')
+    return dataset, val_dataset
+
+def get_celeba_dataset(data_dir, img_tr, mask_tr):
+    dataset = CelebAMask_HQDataset(data_dir, img_tr, mask_tr, 'trn')
+    val_dataset = CelebAMask_HQDataset(data_dir, img_tr, mask_tr, 'val')
     return dataset, val_dataset
