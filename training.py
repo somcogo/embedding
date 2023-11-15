@@ -69,7 +69,7 @@ class EmbeddingTraining:
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
-        self.logdir = os.path.join('./runs', self.logdir_name)
+        self.logdir = os.path.join('/home/hansel/developer/embedding/runs', self.logdir_name)
         os.makedirs(self.logdir, exist_ok=True)
 
         self.trn_writer = None
@@ -411,7 +411,7 @@ class EmbeddingTraining:
 
     def saveModel(self, epoch_ndx, val_metrics, trn_dls, val_dls):
         model_file_path = os.path.join(
-            'saved_models',
+            '/home/hansel/developer/embedding/saved_models',
             self.logdir_name,
             '{}-{}.state'.format(
                 self.time_str,
@@ -420,7 +420,7 @@ class EmbeddingTraining:
         )
         os.makedirs(os.path.dirname(model_file_path), mode=0o755, exist_ok=True)
         data_file_path = os.path.join(
-            'saved_metrics',
+            '/home/hansel/developer/embedding/saved_metrics',
             self.logdir_name,
             '{}-{}.state'.format(
                 self.time_str,

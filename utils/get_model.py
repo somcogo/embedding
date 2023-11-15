@@ -93,7 +93,12 @@ def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=Non
                                    'gen_affine':None,
                                    'gen_hidden_layer':None}
                 model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='vanilla', weight_gen_args=weight_gen_args)
-                # model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode='vanilla', weight_gen_args={})
+            elif model_type == 'vanilla_old':
+                model = ResNet18Model(num_classes=num_classes, in_channels=in_channels)
+            elif model_type == 'emb_old':
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
+            elif model_type == 'lightweight_old':
+                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
         # elif model_name == 'maxvitembv1':
         #     model = MaxViTEmb(num_classes=num_classes, in_channels=in_channels, depths=(2, 2, 2), channels=(64, 128, 256), site_number=site_number, latent_dim=embed_dim)
         # elif model_name == 'maxvitv1':
