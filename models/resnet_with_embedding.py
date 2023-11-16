@@ -101,7 +101,7 @@ class ResnetBlock(nn.Module):
         return out
 
 class ResNetWithEmbeddings(nn.Module):
-    def __init__(self, num_classes, in_channels=3, embed_dim=2, layers=[3, 4, 6, 3], site_number=1, use_hypnns=False, version=None, lightweight=False, affine=False, medium_ffwrd=False, extra_lightweight=False, layer_number=4, conv1_residual=True, fc_residual=True):
+    def __init__(self, num_classes, in_channels=3, embed_dim=2, layers=[3, 4, 6, 3], site_number=1, use_hypnns=False, version=None, lightweight=False, affine=False, medium_ffwrd=False, extra_lightweight=False, layer_number=4, conv1_residual=True, fc_residual=True, cifar=False):
         super().__init__()
         self.layer_number = layer_number
         self.use_hypnns = use_hypnns
@@ -109,19 +109,31 @@ class ResNetWithEmbeddings(nn.Module):
         self.fc_residual = fc_residual
         self.in_channels = in_channels
         self.num_classes = num_classes
+        self.cifar = cifar
 
         self.embedding = nn.Embedding(site_number, embedding_dim=embed_dim)
 
         # self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=7, stride=2, padding=3, bias=False)
-        if use_hypnns:
-            self.first_ffwrd = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=(in_channels*7*7 + 1)*64, version=version)
-        if (use_hypnns and conv1_residual) or not use_hypnns:
-            self.conv1_weight = nn.Parameter(torch.empty((64, in_channels, 7, 7)))
-            self.conv1_bias = nn.Parameter(torch.empty(64))
-            nn.init.kaiming_uniform_(self.conv1_weight, a=math.sqrt(5))
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.conv1_weight)
-            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-            nn.init.uniform_(self.conv1_bias, -bound, bound)
+        if cifar:
+            if use_hypnns:
+                self.first_ffwrd = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=(in_channels*3*3 + 1)*64, version=version)
+            if (use_hypnns and conv1_residual) or not use_hypnns:
+                self.conv1_weight = nn.Parameter(torch.empty((64, in_channels, 3, 3)))
+                self.conv1_bias = nn.Parameter(torch.empty(64))
+                nn.init.kaiming_uniform_(self.conv1_weight, a=math.sqrt(5))
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.conv1_weight)
+                bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+                nn.init.uniform_(self.conv1_bias, -bound, bound)
+        else:
+            if use_hypnns:
+                self.first_ffwrd = FeedForward(in_channels=embed_dim, hidden_layer=64, out_channels=(in_channels*7*7 + 1)*64, version=version)
+            if (use_hypnns and conv1_residual) or not use_hypnns:
+                self.conv1_weight = nn.Parameter(torch.empty((64, in_channels, 7, 7)))
+                self.conv1_bias = nn.Parameter(torch.empty(64))
+                nn.init.kaiming_uniform_(self.conv1_weight, a=math.sqrt(5))
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.conv1_weight)
+                bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+                nn.init.uniform_(self.conv1_bias, -bound, bound)
         # self.conv1_affine = nn.Linear(embed_dim, (in_channels*7*7 + 1)*64)
 
 
@@ -182,18 +194,32 @@ class ResNetWithEmbeddings(nn.Module):
         #     emb = emb.unsqueeze(0)
 
         # conv1_params = self.conv1_affine(emb)
-        if self.use_hypnns:
-            conv1_params = self.first_ffwrd(emb)
-            conv1_weight = conv1_params[:self.in_channels*7*7*64]
-            conv1_weight = conv1_weight.reshape(64, self.in_channels, 7, 7)
-            conv1_bias = conv1_params[self.in_channels*7*7*64:]
-            if self.conv1_residual:
-                conv1_weight = conv1_weight + self.conv1_weight
-                conv1_bias = conv1_bias + self.conv1_bias
+        if self.cifar:
+            if self.use_hypnns:
+                conv1_params = self.first_ffwrd(emb)
+                conv1_weight = conv1_params[:self.in_channels*3*3*64]
+                conv1_weight = conv1_weight.reshape(64, self.in_channels, 3, 3)
+                conv1_bias = conv1_params[self.in_channels*3*3*64:]
+                if self.conv1_residual:
+                    conv1_weight = conv1_weight + self.conv1_weight
+                    conv1_bias = conv1_bias + self.conv1_bias
+            else:
+                conv1_weight = self.conv1_weight
+                conv1_bias = self.conv1_bias
+            x = nn.functional.conv2d(x, conv1_weight, conv1_bias, stride=1, padding=3)
         else:
-            conv1_weight = self.conv1_weight
-            conv1_bias = self.conv1_bias
-        x = nn.functional.conv2d(x, conv1_weight, conv1_bias)
+            if self.use_hypnns:
+                conv1_params = self.first_ffwrd(emb)
+                conv1_weight = conv1_params[:self.in_channels*7*7*64]
+                conv1_weight = conv1_weight.reshape(64, self.in_channels, 7, 7)
+                conv1_bias = conv1_params[self.in_channels*7*7*64:]
+                if self.conv1_residual:
+                    conv1_weight = conv1_weight + self.conv1_weight
+                    conv1_bias = conv1_bias + self.conv1_bias
+            else:
+                conv1_weight = self.conv1_weight
+                conv1_bias = self.conv1_bias
+            x = nn.functional.conv2d(x, conv1_weight, conv1_bias, stride=2, padding=3)
 
         x = self.pool(self.relu(self.norm1(x)))
         # emb = emb.repeat(x.shape[0]).view(x.shape[0], -1)

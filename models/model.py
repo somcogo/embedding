@@ -20,7 +20,7 @@ class ResNet34Model(nn.Module):
         return out
     
 class ResNet18Model(nn.Module):
-    def __init__(self, num_classes, in_channels=3, pretrained=False):
+    def __init__(self, num_classes, in_channels=3, pretrained=False, cifar=False):
         super().__init__()
         if pretrained:
             weights = ResNet18_Weights.DEFAULT
@@ -28,7 +28,9 @@ class ResNet18Model(nn.Module):
             weights = None
         self.model = resnet18(weights=weights)
         self.model.fc = nn.Linear(512, num_classes)
-        if in_channels != 3:
+        if cifar:
+            self.model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=(3, 3), stride=(1, 1), padding=(3, 3), bias=False)
+        else:
             self.model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
 
     def forward(self, x):
