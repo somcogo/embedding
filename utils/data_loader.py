@@ -44,8 +44,8 @@ def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, n
         trn_ds_list = [TruncatedDataset(merged_ds_list[i], dataset, idx_map[0]) for i, idx_map in enumerate(indices)]
         val_ds_list = [TruncatedDataset(merged_ds_list[i], dataset, idx_map[1]) for i, idx_map in enumerate(indices)]
 
-    trn_dl_list = [DataLoader(dataset=trn_ds, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=8, persistent_workers=True) for trn_ds in trn_ds_list]
-    val_dl_list = [DataLoader(dataset=val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=8, persistent_workers=True) for val_ds in val_ds_list]
+    trn_dl_list = [DataLoader(dataset=trn_ds, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=0, persistent_workers=False) for trn_ds in trn_ds_list]
+    val_dl_list = [DataLoader(dataset=val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=0, persistent_workers=False) for val_ds in val_ds_list]
     if site_indices is not None:
         trn_dl_list = [trn_dl_list[i] for i in site_indices]
         val_dl_list = [val_dl_list[i] for i in site_indices]
