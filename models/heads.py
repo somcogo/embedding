@@ -1,15 +1,27 @@
-# TODO: cite https://github.com/yassouali/pytorch-segmentation/blob/master/models/upernet.py
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from itertools import chain
 
-from models.embedding_functionals import GeneralConv2d, GeneralBatchNorm2d, GeneralLinear, GeneralAdaptiveAvgPool2d, GeneralReLU, MODE_NAMES
-from models.resnet_with_embedding import CustomResnet, get_backbone
-from models.heads import get_head
+from models.embedding_functionals import (GeneralAdaptiveAvgPool2d, GeneralBatchNorm2d,
+                                          GeneralConv2d, GeneralLinear, GeneralReLU)
+    
+class ClassifierHead(nn.Module):
+    def __init__(self, num_classes, mode='vanilla', weight_gen_args=None, **kwargs):
+        super().__init__()
 
-class CustomPSPModule(nn.Module):
+        self.avgpool = GeneralAdaptiveAvgPool2d((1, 1))
+        self.fc = GeneralLinear(mode, 512, num_classes, **weight_gen_args)
+
+    def forward(self, features, emb):
+        x = features[-1]
+        x = self.avgpool(x, emb)
+        x = torch.flatten(x, 1)
+        x = self.fc(x, emb)
+
+        return x
+
+### --------- TODO: cite https://github.com/yassouali/pytorch-segmentation/blob/master/models/upernet.py --------- ###
+class PSPModule(nn.Module):
     # In the original inmplementation they use precise RoI pooling 
     # Instead of using adaptative average pooling
     def __init__(self, in_channels, mode, weight_gen_args, bin_sizes=[1, 2, 4, 6]):
@@ -50,7 +62,7 @@ class CustomPSPModule(nn.Module):
 def up_and_add(x, y):
     return F.interpolate(x, size=(y.size(2), y.size(3)), mode='bilinear', align_corners=True) + y
 
-class CustomFPN_fuse(nn.Module):
+class FPN_fuse(nn.Module):
     def __init__(self, mode, weight_gen_args, feature_channels=[256, 512, 1024, 2048], fpn_out=256):
         super().__init__()
         assert feature_channels[0] == fpn_out
@@ -79,46 +91,27 @@ class CustomFPN_fuse(nn.Module):
             x = module(x)
         return x
 
-class CustomUperNet(nn.Module):
+class UperNet(nn.Module):
     # Implementing only the object path
-    def __init__(self, mode, weight_gen_args, num_classes, in_channels=3, backbone='resnet18', layers=[2, 2, 2, 2], cifar=True, fpn_out=256,):
+    def __init__(self, mode, weight_gen_args, num_classes, fpn_out=256, feature_channels=[64, 128, 256, 512], input_size=(64, 64), **kwargs):
         super().__init__()
 
-        if backbone == 'resnet34' or backbone == 'resnet18':
-            feature_channels = [64, 128, 256, 512]
-        else:
-            feature_channels = [256, 512, 1024, 2048]
-        self.backbone = CustomResnet(num_classes, in_channels, layers, mode, weight_gen_args, cifar)
-        self.PPN = CustomPSPModule(feature_channels[-1], mode, weight_gen_args)
-        self.FPN = CustomFPN_fuse(mode, weight_gen_args, feature_channels, fpn_out=fpn_out)
+        self.input_size = input_size
+        self.PPN = PSPModule(feature_channels[-1], mode, weight_gen_args)
+        self.FPN = FPN_fuse(mode, weight_gen_args, feature_channels, fpn_out=fpn_out)
         self.head = GeneralConv2d(mode, fpn_out, num_classes, kernel_size=3, padding=1, **weight_gen_args)
 
-    def forward(self, x, emb):
-        input_size = (x.size()[2], x.size()[3])
-
-        features = self.backbone(x, emb)
+    def forward(self, features, emb):        
         features[-1] = self.PPN(features[-1], emb)
         x = self.head(self.FPN(features, emb), emb)
 
-        x = F.interpolate(x, size=input_size, mode='bilinear')
+        x = F.interpolate(x, size=self.input_size, mode='bilinear')
         return x
 
-    def get_backbone_params(self):
-        return self.backbone.parameters()
+def get_head(head_name, **model_init):
+    if head_name == 'classifier':
+        head = ClassifierHead(**model_init)
+    elif head_name == 'upernet':
+        head = UperNet(**model_init)
 
-    def get_decoder_params(self):
-        return chain(self.PPN.parameters(), self.FPN.parameters(), self.head.parameters())
-    
-class ModelAssembler(nn.Module):
-    def __init__(self, mode='vanilla', weight_gen_args=None, **model_init):
-        super().__init__()
-
-        self.embedding = nn.Parameter(torch.zeros(weight_gen_args['emb_dim'])) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
-
-        self.backbone = get_backbone(mode=mode, weight_gen_args=weight_gen_args, **model_init)
-        self.head = get_head(mode=mode, weight_gen_args=weight_gen_args, **model_init)
-
-    def forward(self, x):
-        features = self.backbone(x, self.embedding)
-        x = self.head(features, self.embedding)        
-        return x
+    return head

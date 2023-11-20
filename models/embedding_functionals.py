@@ -386,3 +386,19 @@ class GeneralInstanceNorm2d(nn.Module):
         else:
             out = self.instance_norm(x)
         return out
+    
+class GeneralAdaptiveAvgPool2d(nn.Module):
+    def __init__(self, output_size):
+        super().__init__()
+        self.adaptive_avg_pool= nn.AdaptiveAvgPool2d(output_size)
+
+    def forward(self, x, emb):
+        return self.adaptive_avg_pool(x)
+    
+class GeneralReLU(nn.Module):
+    def __init__(self, in_place=False):
+        super().__init__()
+        self.relu = nn.ReLU(inplace=in_place)
+
+    def forward(self, x, emb):
+        return self.relu(x)
