@@ -26,18 +26,16 @@ class EmbeddingTraining:
     def __init__(self, epochs=500, batch_size=128, logdir='test', lr=1e-3,
                  comment='dwlpt', dataset='cifar10', site_number=1,
                  model_name='resnet18emb', optimizer_type='newadam',
-                 scheduler_mode='cosine', pretrained=False, T_max=500,
-                 label_smoothing=0.0, save_model=False, partition='regular',
-                 alpha=None, strategy='noembed', finetuning=False, embed_dim=2,
-                 model_path=None, embedding_lr=None, ffwrd_lr=None,
-                 layer_number=4, k_fold_val_id=None, seed=None,
-                 site_indices=None, input_perturbation=False, use_hdf5=False,
-                 conv1_residual=True, fc_residual=True, colorjitter=False,
-                 sites=None, model_type=None, weight_decay=1e-5):
+                 scheduler_mode='cosine', T_max=500, save_model=False,
+                 partition='regular', alpha=None, strategy='noembed',
+                 finetuning=False, embed_dim=2, model_path=None,
+                 embedding_lr=None, ffwrd_lr=None, k_fold_val_id=None,
+                 seed=None, site_indices=None, use_hdf5=False, sites=None,
+                 model_type=None, weight_decay=1e-5, task='classification'):
 
-        # self.settings = copy.deepcopy(locals())
-        # del self.settings['self']
-        # log.info(self.settings)
+        comment = '{}-e{}-b{}-lr{}-{}-s{}-{}-{}-{}-{}-T{}-edim{}-genlr{}-wdecay{}-{}'.format(
+            comment, epochs, batch_size, lr, dataset, site_number, model_name, model_type,
+            optimizer_type, scheduler_mode, T_max, embed_dim, ffwrd_lr, weight_decay, task)
         log.info(comment)
         self.epochs = epochs
         self.logdir_name = logdir
@@ -47,25 +45,20 @@ class EmbeddingTraining:
         self.model_name = model_name
         self.optimizer_type = optimizer_type
         self.scheduler_mode = scheduler_mode
-        self.pretrained = pretrained
         if T_max is None or epochs > T_max:
             self.T_max = epochs
         else:
             self.T_max = T_max
-        self.label_smoothing = label_smoothing
         self.save_model = save_model
         self.strategy = strategy
         self.finetuning = finetuning
         self.embed_dim = embed_dim
         self.model_path = model_path
-        self.input_perturbation = input_perturbation
         if site_indices is None:
             site_indices = range(site_number)
         self.site_indices = site_indices
         self.use_hdf5 = use_hdf5
-        self.conv1_residual = conv1_residual
-        self.fc_residual = fc_residual
-        self.colorjitter = colorjitter
+        self.task = task
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
@@ -84,28 +77,13 @@ class EmbeddingTraining:
         else:
             self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
             self.site_number = len(site_indices)
-        self.models = self.initModels(embed_dim=embed_dim, layer_number=layer_number, model_type=model_type)
+        self.models = self.initModels(embed_dim=embed_dim, model_type=model_type)
         self.optims = self.initOptimizers(lr, finetuning, weight_decay=weight_decay, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
-    def initModels(self, embed_dim, layer_number, model_type):
-        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, layer_number, self.pretrained, conv1_residual=self.conv1_residual, fc_residual=self.fc_residual, model_type=model_type)
-
-        if 'embedding.weight' in '\t'.join(models[0].state_dict().keys()) or hasattr(models[0], 'embedding'):
-            if embed_dim > 2:
-                self.mu_init = np.eye(self.site_number, embed_dim)
-            else:
-                mu_init = np.exp((2 * np.pi * 1j/ self.site_number)*np.arange(0,self.site_number))
-                self.mu_init = np.stack([np.real(mu_init), np.imag(mu_init)], axis=1)
-            if 'embedding.weight' in '\t'.join(models[0].state_dict().keys()):
-                for i, model in enumerate(models):
-                    init_weight = torch.from_numpy(self.mu_init[i]).repeat(self.site_number).reshape(self.site_number, embed_dim)
-                    model.embedding.weight = nn.Parameter(init_weight)
-            else:
-                for i, model in enumerate(models):
-                    init_weight = torch.from_numpy(self.mu_init[i])
-                    model.embedding = nn.Parameter(init_weight)
+    def initModels(self, embed_dim, model_type):
+        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, model_type, self.task)
 
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
@@ -301,11 +279,10 @@ class EmbeddingTraining:
             correct_by_class = torch.zeros(self.num_classes, device=self.device)
             total_by_class = torch.zeros(self.num_classes, device=self.device)
             for ndx, val_dl in enumerate(val_dls):
-                local_val_metrics = torch.zeros(2 + 2*self.num_classes, len(val_dl), device=self.device)
-
+                site_metrics = self.get_empty_metrics()
                 for batch_ndx, batch_tuple in enumerate(val_dl):
                     # with torch.autograd.detect_anomaly():
-                        _, accuracy = self.computeBatchLoss(
+                        _, local_val_metrics = self.computeBatchLoss(
                             batch_ndx,
                             batch_tuple,
                             self.models[ndx],
@@ -313,20 +290,20 @@ class EmbeddingTraining:
                             'val',
                             ndx
                         )
-                
-                loss += local_val_metrics[-2].sum()
-                correct += local_val_metrics[-1].sum()
-                total += local_val_metrics[self.num_classes: 2*self.num_classes].sum()
+                                   
+            #     loss += local_val_metrics[-2].sum()
+            #     correct += local_val_metrics[-1].sum()
+            #     total += local_val_metrics[self.num_classes: 2*self.num_classes].sum()
 
-                correct_by_class += local_val_metrics[:self.num_classes].sum(dim=1)
-                total_by_class += local_val_metrics[self.num_classes: 2*self.num_classes].sum(dim=1)
+            #     correct_by_class += local_val_metrics[:self.num_classes].sum(dim=1)
+            #     total_by_class += local_val_metrics[self.num_classes: 2*self.num_classes].sum(dim=1)
 
-                val_metrics[2*ndx] = local_val_metrics[-2].sum() / len(val_dl.dataset)
-                val_metrics[2*ndx + 1] = local_val_metrics[-1].sum() / len(val_dl.dataset)
+            #     val_metrics[2*ndx] = local_val_metrics[-2].sum() / len(val_dl.dataset)
+            #     val_metrics[2*ndx + 1] = local_val_metrics[-1].sum() / len(val_dl.dataset)
 
-            val_metrics[2*self.site_number: 2*self.site_number + self.num_classes] = correct_by_class / total_by_class
-            val_metrics[-2] = loss / total
-            val_metrics[-1] = correct / total
+            # val_metrics[2*self.site_number: 2*self.site_number + self.num_classes] = correct_by_class / total_by_class
+            # val_metrics[-2] = loss / total
+            # val_metrics[-1] = correct / total
 
         return val_metrics.to('cpu'), correct / total, loss / total
 
@@ -335,11 +312,8 @@ class EmbeddingTraining:
         batch = batch.to(device=self.device, non_blocking=True).float().permute(0, 3, 1, 2)
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
 
-        if self.input_perturbation:
-            perturb_mode = 'colorjitter' if self.colorjitter else 'default'
-            batch = perturb(batch, self.site_indices[site_id], self.device, perturb_mode)
         if mode == 'trn':
-            batch = aug_image(batch, self.dataset)
+            batch, labels = aug_image(batch, labels, self.dataset)
         if self.model_name[:6] == 'maxvit':
             resize = Resize(224, antialias=True)
             batch = resize(batch)
@@ -351,25 +325,78 @@ class EmbeddingTraining:
         else:
             pred = model(batch)
         pred_label = torch.argmax(pred, dim=1)
-        loss_fn = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
+        loss_fn = nn.CrossEntropyLoss()
         loss = loss_fn(pred, labels)
 
-        correct_mask = pred_label == labels
-        correct = torch.sum(correct_mask)
-        accuracy = correct / batch.shape[0] * 100
+        local_metrics = self.calculateLocalMetrics(pred_label, labels, loss)
 
-        for cls in range(self.num_classes):
-            class_mask = labels == cls
-            correct_in_cls = torch.sum(correct_mask[class_mask])
-            total_in_cls = torch.sum(class_mask)
-            metrics[cls, batch_ndx] = correct_in_cls
-            metrics[self.num_classes + cls, batch_ndx] = total_in_cls
+        return loss.sum(), local_metrics
+    
+    def get_empty_metrics(self):
+        metrics = {'loss':0,
+                   'total':0}
+        if self.task == 'classification':
+            metrics['correct'] = 0
+            for cls in range(self.num_classes):
+                metrics[cls] = {'correct':0,
+                                'total':0}
+        elif self.task == 'segmentation':
+            for cls in range(self.num_classes):
+                metrics[cls] = {
+                    'dice_score':0,
+                    'precision':0,
+                    'recall':0,
+                    'true_pos':0,
+                    'false_pos':0,
+                    'false_neg':0,
+                    'true_neg':0
+                }
+    
+    def calculateLocalMetrics(self, pred_label, labels, loss):
+        local_metrics = {}
+        local_metrics['loss'] = loss 
+        if self.task == 'classification':
+            correct_mask = pred_label == labels
+            correct = torch.sum(correct_mask)
+            local_metrics['accuracy'] = correct / pred_label.shape[0] * 100
+            local_metrics['correct'] = correct
+            local_metrics['total'] = pred_label.shape[0]
 
+            for cls in range(self.num_classes):
+                local_metrics[cls] = {}
+                class_mask = labels == cls
+                local_metrics[cls]['correct'] = torch.sum(correct_mask[class_mask])
+                local_metrics[cls]['total'] = torch.sum(class_mask)
+        elif self.task == 'segmentation':
+            eps = 1e-5
 
-        metrics[-2, batch_ndx] = loss.detach()
-        metrics[-1, batch_ndx] = correct
+            for cls in range(self.num_classes):
+                cls_label = labels == cls
+                cls_pred = cls_pred == cls
 
-        return loss.sum(), accuracy
+                if cls_label.sum() > 0:
+                    true_pos = (cls_label * cls_pred).sum(dim=[1, 2, 3, 4]).unsqueeze(0)
+                    false_pos = ((1 - cls_label)*cls_pred).sum(dim=[1, 2, 3, 4]).unsqueeze(0)
+                    false_neg = (cls_label*(1 - cls_pred)).sum(dim=[1, 2, 3, 4]).unsqueeze(0)
+
+                    dice_score = (2*true_pos + eps)/(2*true_pos + false_pos + false_neg + eps)
+                    precision = (true_pos + eps)/(true_pos + false_pos + eps)
+                    recall = (true_pos + eps)/(true_pos + false_neg + eps)
+
+                    local_metrics[cls] = {
+                        'dice_score':dice_score,
+                        'precision':precision,
+                        'recall':recall,
+                        'true_pos':true_pos,
+                        'false_pos':false_pos,
+                        'false_neg':false_neg
+                    }
+                    total_dice += dice_score
+                else:
+                    local_metrics[cls] = None
+
+    def calculateGlobalMetricsFromLocal(self, local_metrics):
+        pass
 
     def logMetrics(
         self,

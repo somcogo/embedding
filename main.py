@@ -50,7 +50,7 @@ class EmbeddingTask:
         self.batch_size = batch_size
         self.k_fold_val_id = k_fold_val_id
         self.comment = comment
-        self.save_path = os.path.join('./results', logdir)
+        self.save_path = os.path.join('/home/hansel/developer/embedding/results', logdir)
         os.makedirs(self.save_path, exist_ok=True)
         log.info(comment)
 
@@ -99,6 +99,6 @@ class EmbeddingTask:
             for trainer in self.ft_trainers:
                 fine_tuning_metrics[trainer.strategy] = trainer.train(state_dict)[0]
 
-        results = {'training_metrics':training_metrics,
-                   'fine_tuning_accuracies':fine_tuning_metrics}
+        results = {'training':training_metrics,
+                   'fine_tuning':fine_tuning_metrics}
         torch.save(results, os.path.join(self.save_path, self.comment))
