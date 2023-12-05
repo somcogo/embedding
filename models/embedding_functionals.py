@@ -9,24 +9,24 @@ MODE_NAMES = {'embedding': 'embedding_weights',
               'vanilla': 'vanilla'}
 
 class WeightGenerator(nn.Module):
-    def __init__(self, emb_dim, hidden_layer, out_channels, depth=None, target='const'):
+    def __init__(self, gen_args, out_channels, target='const'):
         super().__init__()
-        self.depth = depth
-        if target == 'const':
-            init = nn.init.zeros_
-        else:
-            init = nn.init.ones_
-        if depth == 1:
-            self.lin1 = nn.Linear(in_features=emb_dim, out_features=out_channels)
-            nn.init.zeros_(self.lin1.weight)
-            init(self.lin1.bias)
-        if depth == 2:
-            self.lin1 = nn.Linear(in_features=emb_dim, out_features=hidden_layer)
-            self.lin2 = nn.Linear(in_features=hidden_layer, out_features=out_channels)
-            nn.init.zeros_(self.lin1.weight)
-            nn.init.zeros_(self.lin1.bias)
-            nn.init.zeros_(self.lin2.weight)
-            init(self.lin2.bias)
+        self.depth = gen_args['gen_depth']
+        # if target == 'const':
+        #     init = nn.init.zeros_
+        # else:
+        #     init = nn.init.ones_
+        if gen_args['gen_depth'] == 1:
+            self.lin1 = nn.Linear(in_features=gen_args['emb_dim'], out_features=out_channels)
+            # nn.init.zeros_(self.lin1.weight)
+            # init(self.lin1.bias)
+        if gen_args['gen_depth'] == 2:
+            self.lin1 = nn.Linear(in_features=gen_args['emb_dim'], out_features=gen_args['hidden_layer'])
+            self.lin2 = nn.Linear(in_features=gen_args['hidden_layer'], out_features=out_channels)
+            # nn.init.zeros_(self.lin1.weight)
+            # nn.init.zeros_(self.lin1.bias)
+            # nn.init.zeros_(self.lin2.weight)
+            # init(self.lin2.bias)
     
     def forward(self, x):
         x = x.to(torch.float)
@@ -39,12 +39,12 @@ class WeightGenerator(nn.Module):
         return out
 
 class Conv2d_emb(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, emb_dim, size, gen_depth=2, gen_affine=False, gen_hidden_layer=64, stride=1, padding=0, dilation=1, groups=1, bias=True, device=None):
+    def __init__(self, in_channels, out_channels, kernel_size, weight_gen_args=None, stride=1, padding=0, dilation=1, groups=1, bias=True, device=None):
         super().__init__()
         self.stride = stride
         self.padding = padding
         self.dilation = dilation
-        self.gen_affine = gen_affine
+        self.gen_affine = weight_gen_args['gen_affine']
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size
@@ -64,21 +64,21 @@ class Conv2d_emb(nn.Module):
                 bound = 1 / math.sqrt(fan_in)
                 nn.init.uniform_(self.bias, -bound, bound)
 
-        if size == 1:
+        if weight_gen_args['size'] == 1:
             gen_weight_const_size = kernel_size**2
-            gen_weight_affine_size = kernel_size**4 if gen_affine else None
+            gen_weight_affine_size = kernel_size**4 if weight_gen_args['gen_affine'] else None
             gen_bias_const_size = 1 if bias else None
-            gen_bias_affine_size = 1 if bias and gen_affine else None
-        elif size == 2:
+            gen_bias_affine_size = 1 if bias and weight_gen_args['gen_affine'] else None
+        elif weight_gen_args['size'] == 2:
             gen_weight_const_size = in_channels // groups * kernel_size**2
-            gen_weight_affine_size = in_channels // groups * kernel_size**4 if gen_affine else None
+            gen_weight_affine_size = in_channels // groups * kernel_size**4 if weight_gen_args['gen_affine'] else None
             gen_bias_const_size = out_channels if bias else None
-            gen_bias_affine_size = 1 if bias and gen_affine else None
+            gen_bias_affine_size = 1 if bias and weight_gen_args['gen_affine'] else None
 
-        self.weight_const_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_weight_const_size, gen_depth, target='const')
-        self.weight_affine_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_weight_affine_size, gen_depth, target='affine') if gen_affine else None
-        self.bias_const_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_bias_const_size, gen_depth, target='const') if bias else None
-        self.bias_affine_generator = WeightGenerator(emb_dim,  gen_hidden_layer, gen_bias_affine_size, gen_depth, target='affine') if bias and gen_affine else None
+        self.weight_const_generator = WeightGenerator(weight_gen_args, gen_weight_const_size, target='const')
+        self.weight_affine_generator = WeightGenerator(weight_gen_args, gen_weight_affine_size, target='affine') if weight_gen_args['gen_affine'] else None
+        self.bias_const_generator = WeightGenerator(weight_gen_args, gen_bias_const_size, target='const') if bias else None
+        self.bias_affine_generator = WeightGenerator(weight_gen_args, gen_bias_affine_size, target='affine') if bias and weight_gen_args['gen_affine'] else None
 
     def forward(self, x, emb):
         weight = self.weight.to(x.dtype)
@@ -101,10 +101,10 @@ class Conv2d_emb(nn.Module):
         return x
     
 class ConvTranspose2d_emb(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, emb_dim, size, gen_depth=2, gen_affine=False, gen_hidden_layer=64, stride=1, padding=0, groups=1, bias=True, dilation=1, device=None):
+    def __init__(self, in_channels, out_channels, kernel_size, weight_gen_args=None, stride=1, padding=0, groups=1, bias=True, dilation=1, device=None):
         super().__init__()
         self.kernel_size = kernel_size
-        self.gen_affine = gen_affine
+        self.gen_affine = weight_gen_args['gen_affine']
         self.stride = stride
         self.padding = padding
         self.groups = groups
@@ -124,21 +124,21 @@ class ConvTranspose2d_emb(nn.Module):
                 bound = 1 / math.sqrt(fan_in)
                 nn.init.uniform_(self.bias, -bound, bound)
 
-        if size == 1:
+        if weight_gen_args['size'] == 1:
             gen_weight_const_size = kernel_size**2
-            gen_weight_affine_size = kernel_size**4 if gen_affine else None
+            gen_weight_affine_size = kernel_size**4 if weight_gen_args['gen_affine'] else None
             gen_bias_const_size = 1 if bias else None
-            gen_bias_affine_size = 1 if bias and gen_affine else None
-        elif size == 2:
+            gen_bias_affine_size = 1 if bias and weight_gen_args['gen_affine'] else None
+        elif weight_gen_args['size'] == 2:
             gen_weight_const_size = out_channels // groups * kernel_size**2
-            gen_weight_affine_size = out_channels // groups * kernel_size**4 if gen_affine else None
+            gen_weight_affine_size = out_channels // groups * kernel_size**4 if weight_gen_args['gen_affine'] else None
             gen_bias_const_size = out_channels if bias else None
-            gen_bias_affine_size = 1 if bias and gen_affine else None
+            gen_bias_affine_size = 1 if bias and weight_gen_args['gen_affine'] else None
 
-        self.weight_const_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_weight_const_size, gen_depth, target='const')
-        self.weight_affine_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_weight_affine_size, gen_depth, target='affine') if gen_affine else None
-        self.bias_const_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_bias_const_size, gen_depth, target='const') if bias else None
-        self.bias_affine_generator = WeightGenerator(emb_dim,  gen_hidden_layer, gen_bias_affine_size, gen_depth, target='affine') if bias and gen_affine else None
+        self.weight_const_generator = WeightGenerator(weight_gen_args, gen_weight_const_size, target='const')
+        self.weight_affine_generator = WeightGenerator(weight_gen_args, gen_weight_affine_size, target='affine') if weight_gen_args['gen_affine'] else None
+        self.bias_const_generator = WeightGenerator(weight_gen_args, gen_bias_const_size, target='const') if bias else None
+        self.bias_affine_generator = WeightGenerator(weight_gen_args, gen_bias_affine_size, target='affine') if bias and weight_gen_args['gen_affine'] else None
 
 
     def forward(self, x, emb):
@@ -162,9 +162,9 @@ class ConvTranspose2d_emb(nn.Module):
         return x
 
 class Linear_emb(nn.Module):
-    def __init__(self, in_channels, out_channels, emb_dim, size, gen_depth=2, gen_affine=False, gen_hidden_layer=64, bias=True, device=None):
+    def __init__(self, in_channels, out_channels, weight_gen_args=None, bias=True, device=None):
         super().__init__()
-        self.gen_affine = gen_affine
+        self.gen_affine = weight_gen_args['gen_affine']
 
         self.weight = nn.Parameter(torch.empty((out_channels, in_channels), device=device))
         if bias:
@@ -178,21 +178,21 @@ class Linear_emb(nn.Module):
             bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
             nn.init.uniform_(self.bias, -bound, bound)
 
-        if size == 1:
+        if weight_gen_args['size'] == 1:
             gen_weight_const_size = 1
-            gen_weight_affine_size = 1 if gen_affine else None
+            gen_weight_affine_size = 1 if weight_gen_args['gen_affine'] else None
             gen_bias_const_size = 1 if bias else None
-            gen_bias_affine_size = 1 if bias and gen_affine else None
-        elif size == 2:
+            gen_bias_affine_size = 1 if bias and weight_gen_args['gen_affine'] else None
+        elif weight_gen_args['size'] == 2:
             gen_weight_const_size = in_channels
-            gen_weight_affine_size = in_channels if gen_affine else None
+            gen_weight_affine_size = in_channels if weight_gen_args['gen_affine'] else None
             gen_bias_const_size = 1 if bias else None
-            gen_bias_affine_size = 1 if bias and gen_affine else None
+            gen_bias_affine_size = 1 if bias and weight_gen_args['gen_affine'] else None
 
-        self.weight_const_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_weight_const_size, gen_depth, target='const')
-        self.weight_affine_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_weight_affine_size, gen_depth, target='affine') if gen_affine else None
-        self.bias_const_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_bias_const_size, gen_depth, target='const') if bias else None
-        self.bias_affine_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_bias_affine_size, gen_depth, target='affine') if bias and gen_affine else None
+        self.weight_const_generator = WeightGenerator(weight_gen_args, gen_weight_const_size, target='const')
+        self.weight_affine_generator = WeightGenerator(weight_gen_args, gen_weight_affine_size, target='affine') if weight_gen_args['gen_affine'] else None
+        self.bias_const_generator = WeightGenerator(weight_gen_args, gen_bias_const_size, target='const') if bias else None
+        self.bias_affine_generator = WeightGenerator(weight_gen_args, gen_bias_affine_size, target='affine') if bias and weight_gen_args['gen_affine'] else None
 
     def forward(self, x, emb):
         weight = self.weight.to(x.dtype)
@@ -213,9 +213,9 @@ class Linear_emb(nn.Module):
         return x
     
 class BatchNorm2d_emb(nn.Module):
-    def __init__(self, num_features,eps=1e-05, momentum=0.1, affine=True, track_running_stats=True,  emb_dim=8, size=1, gen_depth=2, gen_affine=False, gen_hidden_layer=64, device=None, dtype=None):
+    def __init__(self, num_features,eps=1e-05, momentum=0.1, affine=True, track_running_stats=True,  weight_gen_args=None, device=None, dtype=None):
         super().__init__()
-        self.gen_affine = gen_affine
+        self.gen_affine = weight_gen_args['gen_affine']
         self.momentum = momentum
         self.eps = eps
 
@@ -228,14 +228,14 @@ class BatchNorm2d_emb(nn.Module):
         nn.init.zeros_(self.bias)
         
         gen_weight_const_size = 1
-        gen_weight_affine_size = 1 if gen_affine else None
+        gen_weight_affine_size = 1 if weight_gen_args['gen_affine'] else None
         gen_bias_const_size = 1 
-        gen_bias_affine_size = 1 if gen_affine else None
+        gen_bias_affine_size = 1 if weight_gen_args['gen_affine'] else None
 
-        self.weight_const_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_weight_const_size, gen_depth, target='const')
-        self.weight_affine_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_weight_affine_size, gen_depth, target='affine') if gen_affine else None
-        self.bias_const_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_bias_const_size, gen_depth, target='const') 
-        self.bias_affine_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_bias_affine_size, gen_depth, target='affine') if gen_affine else None
+        self.weight_const_generator = WeightGenerator(weight_gen_args, gen_weight_const_size, target='const')
+        self.weight_affine_generator = WeightGenerator(weight_gen_args, gen_weight_affine_size, target='affine') if weight_gen_args['gen_affine'] else None
+        self.bias_const_generator = WeightGenerator(weight_gen_args, gen_bias_const_size, target='const') 
+        self.bias_affine_generator = WeightGenerator(weight_gen_args, gen_bias_affine_size, target='affine') if weight_gen_args['gen_affine'] else None
 
     def forward(self, x, emb):
         weight = self.weight.to(x.dtype)
@@ -254,9 +254,9 @@ class BatchNorm2d_emb(nn.Module):
         return x
     
 class InstanceNorm2d_emb(nn.Module):
-    def __init__(self, num_features, eps, momentum, emb_dim, size, gen_depth=2, gen_affine=False, gen_hidden_layer=64, bias=True, device=None):
+    def __init__(self, num_features, eps, momentum, weight_gen_args=None, bias=True, device=None):
         super().__init__()
-        self.gen_affine = gen_affine
+        self.gen_affine = weight_gen_args['gen_affine']
         self.eps = eps
         self.momentum = momentum
 
@@ -271,14 +271,14 @@ class InstanceNorm2d_emb(nn.Module):
             nn.init.zeros_(self.bias)
 
         gen_weight_const_size = 1
-        gen_weight_affine_size = 1 if gen_affine else None
+        gen_weight_affine_size = 1 if weight_gen_args['gen_affine'] else None
         gen_bias_const_size = 1 if bias else None
-        gen_bias_affine_size = 1 if bias and gen_affine else None
+        gen_bias_affine_size = 1 if bias and weight_gen_args['gen_affine'] else None
 
-        self.weight_const_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_weight_const_size, gen_depth, target='const')
-        self.weight_affine_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_weight_affine_size, gen_depth, target='affine') if gen_affine else None
-        self.bias_const_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_bias_const_size, gen_depth, target='const') if bias else None
-        self.bias_affine_generator = WeightGenerator(emb_dim, gen_hidden_layer, gen_bias_affine_size, gen_depth, target='affine') if bias and gen_affine else None
+        self.weight_const_generator = WeightGenerator(weight_gen_args, gen_weight_const_size, target='const')
+        self.weight_affine_generator = WeightGenerator(weight_gen_args, gen_weight_affine_size, target='affine') if weight_gen_args['gen_affine'] else None
+        self.bias_const_generator = WeightGenerator(weight_gen_args, gen_bias_const_size, target='const') if bias else None
+        self.bias_affine_generator = WeightGenerator(weight_gen_args, gen_bias_affine_size, target='affine') if bias and weight_gen_args['gen_affine'] else None
 
     def forward(self, x, emb):
         weight = self.weight.to(x.dtype)
@@ -299,11 +299,11 @@ class InstanceNorm2d_emb(nn.Module):
         return x
     
 class GeneralConv2d(nn.Module):
-    def __init__(self, mode, in_channels, out_channels, kernel_size, emb_dim=None, size=None, gen_depth=2, gen_affine=False, gen_hidden_layer=64, stride=1, padding=0, dilation=1, groups=1, bias=True, device=None):
+    def __init__(self, mode, in_channels, out_channels, kernel_size, weight_gen_args=None, stride=1, padding=0, dilation=1, groups=1, bias=True, device=None):
         super().__init__()
         self.mode = mode
         if mode == MODE_NAMES['embedding']:
-            self.conv = Conv2d_emb(in_channels, out_channels, kernel_size, emb_dim, size, gen_depth, gen_affine, gen_hidden_layer, stride, padding, dilation, groups, bias, device)
+            self.conv = Conv2d_emb(in_channels, out_channels, kernel_size, weight_gen_args, stride, padding, dilation, groups, bias, device)
         else:
             self.conv = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, device=device)
 
@@ -315,11 +315,11 @@ class GeneralConv2d(nn.Module):
         return out
     
 class GeneralConvTranspose2d(nn.Module):
-    def __init__(self, mode, in_channels, out_channels, kernel_size, emb_dim=None, size=None, gen_depth=2, gen_affine=False, gen_hidden_layer=64, stride=1, padding=0, groups=1, bias=True, dilation=1, device=None):
+    def __init__(self, mode, in_channels, out_channels, kernel_size, weight_gen_args=None, stride=1, padding=0, groups=1, bias=True, dilation=1, device=None):
         super().__init__()
         self.mode = mode
         if mode == MODE_NAMES['embedding']:
-            self.transposed_conv = ConvTranspose2d_emb(in_channels, out_channels, kernel_size, emb_dim, size, gen_depth, gen_affine, gen_hidden_layer, stride, padding, groups, bias, dilation, device)
+            self.transposed_conv = ConvTranspose2d_emb(in_channels, out_channels, kernel_size, weight_gen_args, stride, padding, groups, bias, dilation, device)
         else:
             self.transposed_conv = nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=stride, padding=padding, groups=groups, bias=bias, dilation=dilation, device=device)
 
@@ -331,11 +331,11 @@ class GeneralConvTranspose2d(nn.Module):
         return out
     
 class GeneralLinear(nn.Module):
-    def __init__(self, mode, in_channels, out_channels, emb_dim=None, size=None, gen_depth=2, gen_affine=False, gen_hidden_layer=64, bias=True, device=None):
+    def __init__(self, mode, in_channels, out_channels, weight_gen_args=None, bias=True, device=None):
         super().__init__()
         self.mode = mode
         if mode == MODE_NAMES['embedding']:
-            self.linear = Linear_emb(in_channels, out_channels, emb_dim, size, gen_depth, gen_affine, gen_hidden_layer, bias, device)
+            self.linear = Linear_emb(in_channels, out_channels, weight_gen_args, bias, device)
         else:
             self.linear = nn.Linear(in_features=in_channels, out_features=out_channels, bias=bias, device=device)
 
@@ -347,11 +347,11 @@ class GeneralLinear(nn.Module):
         return out
     
 class GeneralBatchNorm2d(nn.Module):
-    def __init__(self, mode, num_features, eps=1e-05, momentum=0.1, emb_dim=None, size=None, gen_depth=2, gen_affine=False, gen_hidden_layer=64, affine=True, track_running_stats=True, device=None, dtype=None):
+    def __init__(self, mode, num_features, eps=1e-05, momentum=0.1, weight_gen_args=None, affine=True, track_running_stats=True, device=None, dtype=None):
         super().__init__()
         self.mode = mode
         if mode == MODE_NAMES['embedding']:
-            self.batch_norm = BatchNorm2d_emb(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, emb_dim=emb_dim, size=size, gen_depth=gen_depth, gen_affine=gen_affine, gen_hidden_layer=gen_hidden_layer, device=device)
+            self.batch_norm = BatchNorm2d_emb(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, weight_gen_args=weight_gen_args, device=device)
         else:
             self.batch_norm = nn.BatchNorm2d(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, device=device)
     
@@ -363,7 +363,7 @@ class GeneralBatchNorm2d(nn.Module):
         return out
     
 class BatchNorm2d_noemb(nn.Module):
-    def __init__(self, mode, num_features, eps=1e-05, momentum=0.1, emb_dim=None, size=None, gen_depth=2, gen_affine=False, gen_hidden_layer=64, affine=True, track_running_stats=True, device=None, dtype=None):
+    def __init__(self, mode, num_features, eps=1e-05, momentum=0.1, weight_gen_args=None, affine=True, track_running_stats=True, device=None, dtype=None):
         super().__init__()
         self.batch_norm = nn.BatchNorm2d(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, device=device)
     
@@ -372,11 +372,11 @@ class BatchNorm2d_noemb(nn.Module):
         return out
     
 class GeneralInstanceNorm2d(nn.Module):
-    def __init__(self, mode, num_features, eps=1e-05, momentum=0.1, emb_dim=None, size=None, gen_depth=2, gen_affine=False, gen_hidden_layer=64, device=None, dtype=None):
+    def __init__(self, mode, num_features, eps=1e-05, momentum=0.1, weight_gen_args=None, device=None, dtype=None):
         super().__init__()
         self.mode = mode
         if mode == MODE_NAMES['embedding']:
-            self.instance_norm = InstanceNorm2d_emb(num_features, eps, momentum, emb_dim, size, gen_depth, gen_affine, gen_hidden_layer, device)
+            self.instance_norm = InstanceNorm2d_emb(num_features, eps, momentum, weight_gen_args, device)
         else:
             self.instance_norm = nn.InstanceNorm2d(num_features=num_features, eps=eps, momentum=momentum, device=device)
     

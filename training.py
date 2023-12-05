@@ -13,7 +13,7 @@ import numpy as np
 
 from utils.logconf import logging
 from utils.data_loader import get_dl_lists
-from utils.ops import aug_image, perturb
+from utils.ops import aug_image, perturb, getTransformList
 from utils.merge_strategies import get_layer_list
 from utils.get_model import get_model
 
@@ -27,13 +27,14 @@ class EmbeddingTraining:
                  comment='dwlpt', dataset='cifar10', site_number=1,
                  model_name='resnet18emb', optimizer_type='newadam',
                  scheduler_mode='cosine', pretrained=False, T_max=500,
-                 label_smoothing=0.0, save_model=False, partition='regular',
-                 alpha=None, strategy='noembed', finetuning=False, embed_dim=2,
+                 label_smoothing=0.0, save_model=False, partition='dirichlet',
+                 alpha=1e7, strategy='noembed', finetuning=False, embed_dim=2,
                  model_path=None, embedding_lr=None, ffwrd_lr=None,
-                 layer_number=4, k_fold_val_id=None, seed=None,
+                 layer_number=4, k_fold_val_id=None, seed=0,
                  site_indices=None, input_perturbation=False, use_hdf5=False,
                  conv1_residual=True, fc_residual=True, colorjitter=False,
-                 sites=None, model_type=None, weight_decay=1e-5):
+                 sites=None, model_type=None, weight_decay=1e-5, cifar=True,
+                 extra_conv=False, get_transforms=False, state_dict=None):
 
         # self.settings = copy.deepcopy(locals())
         # del self.settings['self']
@@ -66,6 +67,9 @@ class EmbeddingTraining:
         self.conv1_residual = conv1_residual
         self.fc_residual = fc_residual
         self.colorjitter = colorjitter
+        self.cifar = cifar
+        self.extra_conv = extra_conv
+        self.state_dict = state_dict
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
@@ -75,7 +79,8 @@ class EmbeddingTraining:
         self.trn_writer = None
         self.val_writer = None
         self.totalTrainingSamples_count = 0
-
+        if get_transforms:
+            self.transforms = getTransformList('colorjitternoclip', site_number, seed=1)
         if sites is not None:
             self.trn_dls = [site['trn_dl'] for site in sites]
             self.val_dls = [site['val_dl'] for site in sites]
@@ -90,9 +95,9 @@ class EmbeddingTraining:
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
     def initModels(self, embed_dim, layer_number, model_type):
-        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, layer_number, self.pretrained, conv1_residual=self.conv1_residual, fc_residual=self.fc_residual, model_type=model_type)
+        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, layer_number, self.pretrained, conv1_residual=self.conv1_residual, fc_residual=self.fc_residual, model_type=model_type, cifar=self.cifar, extra_conv=self.extra_conv)
 
-        if 'embedding.weight' in '\t'.join(models[0].state_dict().keys()) or hasattr(models[0], 'embedding'):
+        if 'embedding.weight' in '\t'.join(models[0].state_dict().keys()) or (hasattr(models[0], 'embedding') and models[0].embedding is not None):
             if embed_dim > 2:
                 self.mu_init = np.eye(self.site_number, embed_dim)
             else:
@@ -117,16 +122,19 @@ class EmbeddingTraining:
 
     def initOptimizers(self, lr, finetuning, weight_decay=None, embedding_lr=None, ffwrd_lr=None):
         optims = []
-        for model in self.models:
+        for ndx, model in enumerate(self.models):
             params_to_update = []
             if finetuning:
-                assert self.strategy in ['finetuning', 'affinetoo', 'onlyfc', 'onlyemb']
+                assert self.strategy in ['finetuning', 'affinetoo', 'onlyfc', 'onlyemb', 'extra_conv', 'onlyextra_conv']
                 layer_list = get_layer_list(self.model_name, strategy=self.strategy, original_list=model.state_dict().keys())
                 for name, param in model.named_parameters():
                     if name in layer_list:
                         params_to_update.append(param)
                     else:
                         param.requires_grad = False
+
+                if ndx == 0:
+                    log.debug('Finetuning layers {}'.format(layer_list))
             else:
                 all_names = [name for name, _ in model.named_parameters()]
                 embedding_names = []
@@ -183,6 +191,7 @@ class EmbeddingTraining:
 
     def train(self, state_dict=None):
         log.info("Starting {}".format(type(self).__name__))
+        state_dict = self.state_dict if self.state_dict is not None else state_dict
         self.mergeModels(is_init=True, model_path=self.model_path, state_dict=state_dict)
 
         trn_dls = self.trn_dls
@@ -194,7 +203,7 @@ class EmbeddingTraining:
         if self.finetuning:
             val_metrics, accuracy, loss = self.doValidation(0, val_dls)
             self.logMetrics(0, 'val', val_metrics)
-            log.info('Epoch {} of {}, accuracy/miou {}, val loss {}'.format(0, self.epochs, accuracy, loss))
+            log.info('Epoch {} of {}, accuracy {}, val loss {}'.format(0, self.epochs, accuracy, loss))
 
         for epoch_ndx in range(1, self.epochs + 1):
 
@@ -332,7 +341,9 @@ class EmbeddingTraining:
 
     def computeBatchLoss(self, batch_ndx, batch_tup, model, metrics, mode, site_id):
         batch, labels, img_id = batch_tup
-        batch = batch.to(device=self.device, non_blocking=True).float().permute(0, 3, 1, 2)
+        batch = batch.to(device=self.device, non_blocking=True).float()
+        if self.dataset == 'imagenet':
+            batch = batch.permute(0, 3, 1, 2)
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
 
         if self.input_perturbation:
@@ -344,7 +355,12 @@ class EmbeddingTraining:
             resize = Resize(224, antialias=True)
             batch = resize(batch)
         if hasattr(self, 'transforms'):
-            batch = self.transforms[site_id](batch)
+            b_max = torch.amax(batch, dim=(1, 2, 3), keepdim=True)
+            b_min = torch.amin(batch, dim=(1, 2, 3), keepdim=True)
+            batch = (batch - b_min) / (b_max - b_min)
+            if len(self.transforms) > site_id:
+                batch = self.transforms[site_id](batch)
+            batch = (b_max - b_min) * batch + b_min
 
         if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
             pred = model(batch, torch.tensor(site_id, device=self.device, dtype=torch.int))
@@ -445,7 +461,10 @@ class EmbeddingTraining:
                 'val_indices': val_dls[ndx].dataset.indices,
             }
             state_dict = model.state_dict()
-            site_state_dict = {key: state_dict[key] for key in state_dict.keys() if key not in layer_list}
+            if self.finetuning:
+                site_state_dict = {key: state_dict[key] for key in state_dict.keys() if key in layer_list}
+            else:
+                site_state_dict = {key: state_dict[key] for key in state_dict.keys() if key not in layer_list}
             model_state[ndx] = {
                 'site_model_state': site_state_dict,
                 'model_name': type(model).__name__,
@@ -456,7 +475,7 @@ class EmbeddingTraining:
                 }
             if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
                 data_state[ndx]['emb_vector'] = model.state_dict()['embedding.weight'][ndx].detach().cpu()
-            elif hasattr(model, 'embedding'):
+            elif hasattr(model, 'embedding') and model.embedding is not None:
                 data_state[ndx]['emb_vector'] = model.embedding.detach().cpu()
 
         torch.save(model_state, model_file_path)
@@ -471,6 +490,14 @@ class EmbeddingTraining:
                     state_dict = loaded_dict['model_state']
                 else:
                     state_dict = loaded_dict[0]['model_state']
+
+                # log.debug('Also loading {}'.format(loaded_dict[0]['site_model_state'].keys()))
+                # for ndx, model in enumerate(self.models):
+                #     try:
+                #         model.load_state_dict(loaded_dict[0]['site_model_state'], strict=False)
+                #     except:
+                #         log.info('Not enough models to load. # of models:{}, # of loaded models: {}'.format(len(self.models), ndx))
+                #         break
             elif state_dict is None:
                 state_dict = self.models[0].state_dict()
             if 'embedding.weight' in '\t'.join(state_dict.keys()):
