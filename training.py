@@ -172,7 +172,7 @@ class EmbeddingTraining:
         if self.finetuning:
             val_metrics = self.doValidation(0, val_dls)
             self.logMetrics(0, 'val', val_metrics)
-            metric_to_report = val_metrics['accuracy'] if 'accuracy' in val_metrics.keys() else val_metrics['overall/mean dice']
+            metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['overall/mean dice']
             log.info('Epoch {} of {}, accuracy/dice {}, val loss {}'.format(0, self.epochs, metric_to_report, val_metrics['mean loss']))
 
         for epoch_ndx in range(1, self.epochs + 1):
@@ -192,14 +192,14 @@ class EmbeddingTraining:
                 val_metrics = self.doValidation(epoch_ndx, val_dls)
                 self.logMetrics(epoch_ndx, 'val', val_metrics)
 
-                metric_to_report = val_metrics['accuracy'] if 'accuracy' in val_metrics.keys() else val_metrics['overall/mean dice']
+                metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['overall/mean dice']
                 saving_criterion = max(metric_to_report, saving_criterion)
 
                 if self.save_model and metric_to_report==saving_criterion:
                     self.saveModel(epoch_ndx, val_metrics, trn_dls, val_dls)
 
                 if epoch_ndx < 51 or epoch_ndx % 100 == 0:
-                    log.info('Epoch {} of {}, accuracy/dice {}, val loss {}'.format(epoch_ndx, self.epochs, metric_to_report, val_metrics['loss']))
+                    log.info('Epoch {} of {}, accuracy/dice {}, val loss {}'.format(epoch_ndx, self.epochs, metric_to_report, val_metrics['mean loss']))
             
             if self.scheduler_mode == 'cosine' and not self.finetuning:
                 for scheduler in self.schedulers:
@@ -227,7 +227,7 @@ class EmbeddingTraining:
                 # with torch.autograd.detect_anomaly():s
                     def closure():
                         self.optims[ndx].zero_grad()
-                        loss, _ = self.computeBatchLoss(
+                        loss = self.computeBatchLoss(
                             batch_ndx,
                             batch_tuple,
                             self.models[ndx],
@@ -246,7 +246,7 @@ class EmbeddingTraining:
                     metrics.append(site_metrics)
             trn_metrics = self.calculateGlobalMetricsFromLocal(metrics)
 
-        return trn_metrics.to('cpu')
+        return trn_metrics
 
     def doValidation(self, epoch_ndx, val_dls):
         with torch.no_grad():
@@ -260,7 +260,7 @@ class EmbeddingTraining:
                 site_metrics = self.get_empty_metrics()
                 for batch_ndx, batch_tuple in enumerate(val_dl):
                     # with torch.autograd.detect_anomaly():
-                        _, site_metrics = self.computeBatchLoss(
+                        _ = self.computeBatchLoss(
                             batch_ndx,
                             batch_tuple,
                             self.models[ndx],
@@ -268,10 +268,10 @@ class EmbeddingTraining:
                             'val',
                             ndx
                         )
-                metrics.append(site_metrics)
+                        metrics.append(site_metrics)
             val_metrics = self.calculateGlobalMetricsFromLocal(metrics)
 
-        return val_metrics.to('cpu')
+        return val_metrics
 
     def computeBatchLoss(self, batch_ndx, batch_tup, model, metrics, mode, site_id):
         batch, labels, img_id = batch_tup
@@ -296,7 +296,7 @@ class EmbeddingTraining:
 
         metrics = self.calculateLocalMetrics(pred_label, labels, loss, metrics)
 
-        return loss.sum(), metrics
+        return loss.sum()
     
     def get_empty_metrics(self):
         metrics = {'loss':0,
@@ -315,8 +315,10 @@ class EmbeddingTraining:
                     'true_pos':0,
                     'false_pos':0,
                     'false_neg':0,
-                    'true_neg':0
+                    'true_neg':0,
+                    'total':0
                 }
+        return metrics
     
     def calculateLocalMetrics(self, pred_label, labels, loss, local_metrics):
         local_metrics['loss'] += loss.sum()
@@ -336,19 +338,19 @@ class EmbeddingTraining:
 
             for cls in range(self.num_classes):
                 cls_label = labels == cls
-                cls_pred = cls_pred == cls
-                cls_ndx_mask = torch.sum(cls_label, dim=[1, 2, 3, 4]) > 0
+                cls_pred = pred_label == cls
+                cls_ndx_mask = torch.sum(cls_label, dim=[1, 2]) > 0
 
-                true_pos =  (cls_label       * cls_pred      ).sum(dim=[1, 2, 3, 4]).unsqueeze(0)
-                false_pos = ((1 - cls_label) * cls_pred      ).sum(dim=[1, 2, 3, 4]).unsqueeze(0)
-                false_neg = (cls_label       * (1 - cls_pred)).sum(dim=[1, 2, 3, 4]).unsqueeze(0)
-                true_neg =  ((1 - cls_label) * (1 - cls_pred)).sum(dim=[1, 2, 3, 4]).unsqueeze(0)
+                true_pos =  ( cls_label *  cls_pred).sum(dim=[1, 2])
+                false_pos = (~cls_label *  cls_pred).sum(dim=[1, 2])
+                false_neg = ( cls_label * ~cls_pred).sum(dim=[1, 2])
+                true_neg =  (~cls_label * ~cls_pred).sum(dim=[1, 2])
 
                 dice_score = (2*true_pos + eps)/(2*true_pos + false_pos + false_neg + eps)
                 precision = (true_pos + eps)/(true_pos + false_pos + eps)
                 recall = (true_pos + eps)/(true_pos + false_neg + eps)
 
-                local_metrics[cls]['dice'] += dice_score[cls_ndx_mask].sum()
+                local_metrics[cls]['dice_score'] += dice_score[cls_ndx_mask].sum()
                 local_metrics[cls]['precision'] += precision[cls_ndx_mask].sum()
                 local_metrics[cls]['recall'] += recall[cls_ndx_mask].sum()
                 local_metrics[cls]['true_pos'] += true_pos[cls_ndx_mask].sum()
@@ -360,7 +362,7 @@ class EmbeddingTraining:
     def calculateGlobalMetricsFromLocal(self, local_metrics):
         eps = 1e-5
 
-        total = sum([d['total']] for d in local_metrics)
+        total = sum([d['total'] for d in local_metrics])
         gl_metrics = {'mean loss':sum([d['loss'] for d in local_metrics]) / total}
 
         if self.task == 'classification':
@@ -385,7 +387,7 @@ class EmbeddingTraining:
                 gl_metrics['overall precision per class/{}'.format(cls)] = (tp + eps) / (tp + fp + eps)
                 gl_metrics['overall recall per class/{}'.format(cls)] = (tp + eps) / (tp + fn)
 
-                gl_metrics['avg dice per class/{}'.format(cls)] = sum([d[cls]['dice'] for d in local_metrics]) / cls_total
+                gl_metrics['avg dice per class/{}'.format(cls)] = sum([d[cls]['dice_score'] for d in local_metrics]) / cls_total
                 gl_metrics['avg precision per class/{}'.format(cls)] = sum([d[cls]['precision'] for d in local_metrics]) / cls_total
                 gl_metrics['avg recall per class/{}'.format(cls)] = sum([d[cls]['recall'] for d in local_metrics]) / cls_total
 
