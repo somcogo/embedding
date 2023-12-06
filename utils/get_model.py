@@ -6,7 +6,7 @@ from models.embedding_functionals import GeneralInstanceNorm2d, BatchNorm2d_noem
 from models.upernet import ModelAssembler
 from utils.config import get_model_config
 
-def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None, task=None):
+def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None, task=None, cifar=True):
     if dataset == 'cifar10':
         num_classes = 10
         in_channels = 3
@@ -25,7 +25,7 @@ def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None,
     elif dataset == 'celeba':
         num_classes = 18
         in_channels = 3
-    config = get_model_config(model_name, model_type, task)
+    config = get_model_config(model_name, model_type, task, cifar)
     models = []
     for _ in range(site_number):
         model = ModelAssembler(channels=in_channels, num_classes=num_classes, emb_dim=embed_dim, **config)

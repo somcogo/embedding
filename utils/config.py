@@ -1,12 +1,12 @@
 from models.embedding_functionals import GeneralBatchNorm2d
 
-def get_model_config(model_name, model_type, task):
+def get_model_config(model_name, model_type, task, cifar):
     if model_name == 'resnet18':
         config = {
             'backbone_name':'resnet',
             'layers':[2, 2, 2, 2],
             'norm_layer':GeneralBatchNorm2d,
-            'cifar':True,
+            'cifar':cifar,
         }
     elif model_name == 'internimage':
         config = {}

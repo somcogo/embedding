@@ -27,11 +27,12 @@ class EmbeddingTraining:
                  comment='dwlpt', dataset='cifar10', site_number=1,
                  model_name='resnet18emb', optimizer_type='newadam',
                  scheduler_mode='cosine', T_max=500, save_model=False,
-                 partition='regular', alpha=None, strategy='noembed',
+                 partition='dirichlet', alpha=1e7, strategy='noembed',
                  finetuning=False, embed_dim=2, model_path=None,
                  embedding_lr=None, ffwrd_lr=None, k_fold_val_id=None,
                  seed=None, site_indices=None, use_hdf5=False, sites=None,
-                 model_type=None, weight_decay=1e-5, task='classification'):
+                 model_type=None, weight_decay=1e-5, task='classification',
+                 cifar=True):
 
         comment = '{}-e{}-b{}-lr{}-{}-s{}-{}-{}-{}-{}-T{}-edim{}-genlr{}-wdecay{}-{}'.format(
             comment, epochs, batch_size, lr, dataset, site_number, model_name, model_type,
@@ -77,13 +78,13 @@ class EmbeddingTraining:
         else:
             self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
             self.site_number = len(site_indices)
-        self.models = self.initModels(embed_dim=embed_dim, model_type=model_type)
+        self.models = self.initModels(embed_dim=embed_dim, model_type=model_type, cifar=cifar)
         self.optims = self.initOptimizers(lr, finetuning, weight_decay=weight_decay, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
-    def initModels(self, embed_dim, model_type):
-        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, model_type, self.task)
+    def initModels(self, embed_dim, model_type, cifar):
+        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, model_type, self.task, cifar=cifar)
 
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
@@ -243,8 +244,8 @@ class EmbeddingTraining:
                         loss = closure()
                         self.optims[ndx].step()
                     # except:
-                    metrics.append(site_metrics)
-            trn_metrics = self.calculateGlobalMetricsFromLocal(metrics)
+            metrics.append(site_metrics)
+        trn_metrics = self.calculateGlobalMetricsFromLocal(metrics)
 
         return trn_metrics
 
@@ -268,7 +269,7 @@ class EmbeddingTraining:
                             'val',
                             ndx
                         )
-                        metrics.append(site_metrics)
+                metrics.append(site_metrics)
             val_metrics = self.calculateGlobalMetricsFromLocal(metrics)
 
         return val_metrics
@@ -341,10 +342,10 @@ class EmbeddingTraining:
                 cls_pred = pred_label == cls
                 cls_ndx_mask = torch.sum(cls_label, dim=[1, 2]) > 0
 
-                true_pos =  ( cls_label *  cls_pred).sum(dim=[1, 2])
+                true_pos  = ( cls_label *  cls_pred).sum(dim=[1, 2])
                 false_pos = (~cls_label *  cls_pred).sum(dim=[1, 2])
                 false_neg = ( cls_label * ~cls_pred).sum(dim=[1, 2])
-                true_neg =  (~cls_label * ~cls_pred).sum(dim=[1, 2])
+                true_neg  = (~cls_label * ~cls_pred).sum(dim=[1, 2])
 
                 dice_score = (2*true_pos + eps)/(2*true_pos + false_pos + false_neg + eps)
                 precision = (true_pos + eps)/(true_pos + false_pos + eps)
@@ -374,7 +375,7 @@ class EmbeddingTraining:
 
             for cls in range(self.num_classes):
                 cls_total = sum([d[cls]['total'] for d in local_metrics])
-                gl_metrics['accuracy by class/{}'.format(cls)] = sum([d[cls]['total'] for d in local_metrics]) / cls_total
+                gl_metrics['accuracy by class/{}'.format(cls)] = sum([d[cls]['correct'] for d in local_metrics]) / cls_total
 
         elif self.task == 'segmentation':
             for cls in range(self.num_classes):
