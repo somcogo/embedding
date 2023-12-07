@@ -27,7 +27,7 @@ class EmbeddingTraining:
                  comment='dwlpt', dataset='cifar10', site_number=1,
                  model_name='resnet18emb', optimizer_type='newadam',
                  scheduler_mode='cosine', T_max=500, save_model=False,
-                 partition='dirichlet', alpha=1e7, strategy='noembed',
+                 partition='regular', alpha=1e7, strategy='noembed',
                  finetuning=False, embed_dim=2, model_path=None,
                  embedding_lr=None, ffwrd_lr=None, k_fold_val_id=None,
                  seed=None, site_indices=None, use_hdf5=False, sites=None,
