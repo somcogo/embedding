@@ -118,11 +118,11 @@ def partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha, see
     rng = np.random.default_rng(seed)
 
     if dataset == 'cifar10':
-        train_ds, test_ds = get_cifar10_datasets(data_dir)
+        train_ds, test_ds = get_cifar10_datasets(data_dir, use_hdf5=True)
     if dataset == 'cifar100':
         train_ds, test_ds = get_cifar100_datasets(data_dir)
     if dataset == 'mnist':
-        train_ds, test_ds = get_mnist_datasets(data_dir)
+        train_ds, test_ds = get_mnist_datasets(data_dir, use_hdf5=True)
     if dataset == 'imagenet':
         train_ds, test_ds = get_image_net_dataset(data_dir)
     y_train = train_ds.targets

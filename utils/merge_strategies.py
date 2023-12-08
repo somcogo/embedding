@@ -15,4 +15,8 @@ def get_layer_list(model, strategy, original_list):
         layer_list = [name for name in original_list if 'embedding' in name.split('.')]
     elif strategy == 'l4-fc':
         layer_list = [name for name in original_list if 'fc' in name or 'layer4' in name.split('.')]
+    elif strategy == 'extra_conv':
+        layer_list = [name for name in original_list if 'conv0' in name or 'fc' in name]
+    elif strategy == 'onlyextra_conv':
+        layer_list = [name for name in original_list if 'conv0' in name]
     return layer_list
