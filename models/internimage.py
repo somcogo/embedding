@@ -13,7 +13,7 @@ import torch.utils.checkpoint as checkpoint
 from timm.models.layers import trunc_normal_, DropPath
 import torch.nn.functional as F
 
-from ops_dcnv3 import modules as opsm
+from .ops_dcnv3 import modules as opsm
 
 
 class to_channels_first(nn.Module):

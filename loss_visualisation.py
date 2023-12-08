@@ -3,7 +3,6 @@ import os
 import numpy as np
 import torch
 
-from models.model import ResNetWithEmbeddings
 from utils.data_loader import get_dl_lists
 from utils.logconf import logging
 
