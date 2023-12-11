@@ -59,14 +59,12 @@ class CustomResnet(nn.Module):
         x = self.relu(x)
         x = self.maxpool(x)
 
+        features = []
         for block in self.resnet_blocks:
             x = block(x, self.embedding)
+            features.append(x)
 
-        x = self.avgpool(x)
-        x = torch.flatten(x, 1)
-        x = self.fc(x, self.embedding)
-
-        return x
+        return features
 
 class ResnetBlock(nn.Module):
     def __init__(self, mode, in_channels, out_channels, stride=1, downsample=None, norm_layer=GeneralBatchNorm2d, weight_gen_args:dict =None):
@@ -104,6 +102,12 @@ class ResnetBlock(nn.Module):
         out = self.relu(out)
 
         return out
+    
+def get_backbone(model_name, **model_kwargs):
+    if model_name == 'resnet18':
+        backbone = CustomResnet(**model_kwargs)
+
+    return backbone
 
 class ResNetWithEmbeddings(nn.Module):
     def __init__(self, num_classes, in_channels=3, embed_dim=2, layers=[3, 4, 6, 3], site_number=1, use_hypnns=False, version=None, lightweight=False, affine=False, medium_ffwrd=False, extra_lightweight=False, layer_number=4, conv1_residual=True, fc_residual=True, cifar=False):
