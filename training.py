@@ -34,7 +34,8 @@ class EmbeddingTraining:
                  site_indices=None, input_perturbation=False, use_hdf5=False,
                  conv1_residual=True, fc_residual=True, colorjitter=False,
                  sites=None, model_type=None, weight_decay=1e-5, cifar=True,
-                 extra_conv=False, get_transforms=False, state_dict=None):
+                 extra_conv=False, get_transforms=False, state_dict=None,
+                 comm_frequency=1, inc_gpu_util=False):
 
         # self.settings = copy.deepcopy(locals())
         # del self.settings['self']
@@ -70,6 +71,8 @@ class EmbeddingTraining:
         self.cifar = cifar
         self.extra_conv = extra_conv
         self.state_dict = state_dict
+        self.comm_frequency = comm_frequency
+        self.inc_gpu_util = inc_gpu_util
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
@@ -234,7 +237,7 @@ class EmbeddingTraining:
                     scheduler.step()
                     # log.debug(self.scheduler.get_last_lr())
 
-            if self.site_number > 1 and not self.finetuning:
+            if self.site_number > 1 and not self.finetuning and (epoch_ndx % self.comm_frequency == 0 or epoch_ndx == self.epochs):
                 self.mergeModels()
 
         if hasattr(self, 'trn_writer'):
@@ -350,6 +353,9 @@ class EmbeddingTraining:
             perturb_mode = 'colorjitter' if self.colorjitter else 'default'
             batch = perturb(batch, self.site_indices[site_id], self.device, perturb_mode)
         if mode == 'trn':
+            if self.inc_gpu_util == True:
+                log.info('Artificially increasing batch size by stacking the batch 4 times and then augmenting')
+                batch = torch.concat([batch, batch, batch, batch], dim=0)
             batch = aug_image(batch, self.dataset)
         if self.model_name[:6] == 'maxvit':
             resize = Resize(224, antialias=True)
