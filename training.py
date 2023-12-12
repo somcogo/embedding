@@ -35,7 +35,8 @@ class EmbeddingTraining:
                  conv1_residual=True, fc_residual=True, colorjitter=False,
                  sites=None, model_type=None, weight_decay=1e-5, cifar=True,
                  extra_conv=False, get_transforms=False, state_dict=None,
-                 comm_frequency=1, inc_gpu_util=False):
+                 comm_frequency=1, inc_gpu_util=False, iterations=None,
+                 comm_rounds=500):
 
         # self.settings = copy.deepcopy(locals())
         # del self.settings['self']
@@ -73,6 +74,9 @@ class EmbeddingTraining:
         self.state_dict = state_dict
         self.comm_frequency = comm_frequency
         self.inc_gpu_util = inc_gpu_util
+        self.comm_rounds = comm_rounds
+        if self.inc_gpu_util:
+            log.info('Artificially increasing batch size by stacking the batch 4 times and then augmenting')
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
@@ -81,7 +85,6 @@ class EmbeddingTraining:
 
         self.trn_writer = None
         self.val_writer = None
-        self.totalTrainingSamples_count = 0
         if get_transforms:
             self.transforms = getTransformList('colorjitternoclip', site_number, seed=1)
         if sites is not None:
@@ -95,6 +98,9 @@ class EmbeddingTraining:
         self.models = self.initModels(embed_dim=embed_dim, layer_number=layer_number, model_type=model_type)
         self.optims = self.initOptimizers(lr, finetuning, weight_decay=weight_decay, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
+        if iterations is None:
+            iterations = math.ceil(self.trn_dls[0].dataset/batch_size)
+        self.iterations = iterations
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
     def initModels(self, embed_dim, layer_number, model_type):
@@ -206,38 +212,40 @@ class EmbeddingTraining:
         if self.finetuning:
             val_metrics, accuracy, loss = self.doValidation(0, val_dls)
             self.logMetrics(0, 'val', val_metrics)
-            log.info('Epoch {} of {}, accuracy {}, val loss {}'.format(0, self.epochs, accuracy, loss))
+            log.info('Round {} of {}, accuracy {}, val loss {}'.format(0, self.comm_rounds, accuracy, loss))
 
-        for epoch_ndx in range(1, self.epochs + 1):
+        for comm_round in range(1, self.comm_rounds):
 
-            if epoch_ndx == 1:
-                log.info("Epoch {} of {}, training on {} sites, using {} device".format(
-                    epoch_ndx,
-                    self.epochs,
+            if comm_round == 1:
+                log.info("Round {} of {}, training on {} sites, using {} device".format(
+                    comm_round,
+                    self.comm_rounds,
                     len(trn_dls),
                     (torch.cuda.device_count() if self.use_cuda else 1),
                 ))
 
-            trn_metrics = self.doTraining(epoch_ndx, trn_dls)
-            self.logMetrics(epoch_ndx, 'trn', trn_metrics)
+            trn_metrics = self.doTraining(trn_dls)
+            self.logMetrics(comm_round, 'trn', trn_metrics)
 
-            if epoch_ndx == 1 or epoch_ndx % validation_cadence == 0:
-                val_metrics, accuracy, loss = self.doValidation(epoch_ndx, val_dls)
-                self.logMetrics(epoch_ndx, 'val', val_metrics)
+            if comm_round == 1 or comm_round % validation_cadence == 0:
+                if comm_round == 1:
+                    log.warning('Round{} Validation starting'.format(comm_round))
+                val_metrics, accuracy, loss = self.doValidation(val_dls)
+                self.logMetrics(comm_round, 'val', val_metrics)
                 saving_criterion = max(accuracy, saving_criterion)
 
                 if self.save_model and accuracy==saving_criterion:
-                    self.saveModel(epoch_ndx, val_metrics, trn_dls, val_dls)
+                    self.saveModel(comm_round, val_metrics, trn_dls, val_dls)
 
-                if epoch_ndx < 51 or epoch_ndx % 100 == 0:
-                    log.info('Epoch {} of {}, accuracy {}, val loss {}'.format(epoch_ndx, self.epochs, accuracy, loss))            
+                if comm_round < 51 or comm_round % 100 == 0:
+                    log.info('Round {} of {}, accuracy {}, val loss {}'.format(comm_round, self.comm_rounds, accuracy, loss))            
             
             if self.scheduler_mode == 'cosine' and not self.finetuning:
                 for scheduler in self.schedulers:
                     scheduler.step()
                     # log.debug(self.scheduler.get_last_lr())
 
-            if self.site_number > 1 and not self.finetuning and (epoch_ndx % self.comm_frequency == 0 or epoch_ndx == self.epochs):
+            if self.site_number > 1 and not self.finetuning:
                 self.mergeModels()
 
         if hasattr(self, 'trn_writer'):
@@ -246,7 +254,7 @@ class EmbeddingTraining:
 
         return saving_criterion, self.models[0].state_dict()
 
-    def doTraining(self, epoch_ndx, trn_dls):
+    def doTraining(self, trn_dls):
         for model in self.models:
             model.train()
 
@@ -257,54 +265,46 @@ class EmbeddingTraining:
         correct_by_class = torch.zeros(self.num_classes, device=self.device)
         total_by_class = torch.zeros(self.num_classes, device=self.device)
         for ndx, trn_dl in enumerate(trn_dls):
-            local_trn_metrics = torch.zeros(2 + 2*self.num_classes, len(trn_dl), device=self.device)
+            iter_ndx = 0
+            local_trn_metrics = torch.zeros(2 + 2*self.num_classes, self.iterations, device=self.device)
+            while iter_ndx < self.iterations:
 
-            for batch_ndx, batch_tuple in enumerate(trn_dl):
-                # with torch.autograd.detect_anomaly():s
-                    def closure():
+                for batch_tuple in trn_dl:
+                    # with torch.autograd.detect_anomaly():
                         self.optims[ndx].zero_grad()
                         loss, _ = self.computeBatchLoss(
-                            batch_ndx,
+                            iter_ndx,
                             batch_tuple,
                             self.models[ndx],
                             local_trn_metrics,
                             'trn',
                             ndx)
                         loss.backward()
-                        return loss
-                    # try:
-                    if self.optimizer_type == 'lbfgs':
-                        self.optims[ndx].step(closure)
-                    else:
-                        loss = closure()
                         self.optims[ndx].step()
-                    # except:
-                    
+                        iter_ndx += 1
+                        if iter_ndx >= self.iterations:
+                            break
 
             loss += local_trn_metrics[-2].sum()
             correct += local_trn_metrics[-1].sum()
-            total += len(trn_dl.dataset)
+            total += local_trn_metrics[self.num_classes: 2*self.num_classes].sum()
 
             correct_by_class += local_trn_metrics[:self.num_classes].sum(dim=1)
             total_by_class += local_trn_metrics[self.num_classes: 2*self.num_classes].sum(dim=1)
 
-            trn_metrics[2*ndx] = local_trn_metrics[-2].sum() / len(trn_dl.dataset)
-            trn_metrics[2*ndx + 1] = local_trn_metrics[-1].sum() / len(trn_dl.dataset)
+            trn_metrics[2*ndx] = local_trn_metrics[-2].sum() / self.iterations
+            trn_metrics[2*ndx + 1] = local_trn_metrics[-1].sum() / self.iterations
 
         trn_metrics[2*self.site_number: 2*self.site_number + self.num_classes] = correct_by_class / total_by_class
         trn_metrics[-2] = loss / total
         trn_metrics[-1] = correct / total
 
-        self.totalTrainingSamples_count += len(trn_dls[0].dataset)
-
         return trn_metrics.to('cpu')
 
-    def doValidation(self, epoch_ndx, val_dls):
+    def doValidation(self, val_dls):
         with torch.no_grad():
             for model in self.models:
                 model.eval()
-            if epoch_ndx == 1:
-                log.warning('E{} Validation starting'.format(epoch_ndx))
 
             val_metrics = torch.zeros(2 + 2*self.site_number + self.num_classes, device=self.device)
             loss = 0
@@ -354,8 +354,8 @@ class EmbeddingTraining:
             batch = perturb(batch, self.site_indices[site_id], self.device, perturb_mode)
         if mode == 'trn':
             if self.inc_gpu_util == True:
-                log.info('Artificially increasing batch size by stacking the batch 4 times and then augmenting')
-                batch = torch.concat([batch, batch, batch, batch], dim=0)
+                batch = torch.concat([batch]*4, dim=0)
+                labels = torch.concat([labels]*4, dim=0)
             batch = aug_image(batch, self.dataset)
         if self.model_name[:6] == 'maxvit':
             resize = Resize(224, antialias=True)
@@ -395,10 +395,11 @@ class EmbeddingTraining:
 
     def logMetrics(
         self,
-        epoch_ndx,
+        comm_round,
         mode_str,
         metrics
     ):
+        iter_number = comm_round * self.iterations
         self.initTensorboardWriters()
 
         writer = getattr(self, mode_str + '_writer')
@@ -406,28 +407,28 @@ class EmbeddingTraining:
             writer.add_scalar(
                 'loss by site/site {}'.format(ndx),
                 scalar_value=metrics[2*ndx],
-                global_step=epoch_ndx
+                global_step=iter_number
             )
             writer.add_scalar(
                 'accuracy by site/site {}'.format(ndx),
                 scalar_value=metrics[2*ndx + 1],
-                global_step=epoch_ndx
+                global_step=iter_number
             )
         for ndx in range(self.num_classes):
             writer.add_scalar(
                 'accuracy by class/class {}'.format(ndx),
                 scalar_value=metrics[2*self.site_number + ndx],
-                global_step=epoch_ndx
+                global_step=iter_number
             )
         writer.add_scalar(
             'loss/overall',
             scalar_value=metrics[-2],
-            global_step=epoch_ndx
+            global_step=iter_number
         )
         writer.add_scalar(
             'accuracy/overall',
             scalar_value=metrics[-1],
-            global_step=epoch_ndx
+            global_step=iter_number
         )
         writer.flush()
 

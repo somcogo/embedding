@@ -59,12 +59,10 @@ class CustomResnet(nn.Module):
         x = self.relu(x)
         x = self.maxpool(x)
 
-        features = []
         for block in self.resnet_blocks:
             x = block(x, self.embedding)
-            features.append(x)
-
-        return features
+        x = self.fc(self.avgpool(x).reshape(x.shape[0], 512), self.embedding)
+        return x
 
 class ResnetBlock(nn.Module):
     def __init__(self, mode, in_channels, out_channels, stride=1, downsample=None, norm_layer=GeneralBatchNorm2d, weight_gen_args:dict =None):
