@@ -14,24 +14,24 @@ from timm.models.layers import trunc_normal_, DropPath
 import torch.nn.functional as F
 
 from .ops_dcnv3 import modules as opsm
-from embedding_functionals import GeneralConv2d
+from embedding_functionals import GeneralConv2d, GeneralBatchNorm2d, GeneralLinear
 
 
-class to_channels_first(nn.Module):
+class to_channels_first_emb(nn.Module):
 
     def __init__(self):
         super().__init__()
 
-    def forward(self, x):
+    def forward(self, x, emb):
         return x.permute(0, 3, 1, 2)
 
 
-class to_channels_last(nn.Module):
+class to_channels_last_emb(nn.Module):
 
     def __init__(self):
         super().__init__()
 
-    def forward(self, x):
+    def forward(self, x, emb):
         return x.permute(0, 2, 3, 1)
 
 
@@ -43,20 +43,20 @@ def build_norm_layer(dim,
     layers = []
     if norm_layer == 'BN':
         if in_format == 'channels_last':
-            layers.append(to_channels_first())
-        layers.append(nn.BatchNorm2d(dim))
+            layers.append(to_channels_first_emb())
+        layers.append(GeneralBatchNorm2d(dim))
         if out_format == 'channels_last':
-            layers.append(to_channels_last())
+            layers.append(to_channels_last_emb())
     elif norm_layer == 'LN':
         if in_format == 'channels_first':
-            layers.append(to_channels_last())
+            layers.append(to_channels_last_emb())
         layers.append(nn.LayerNorm(dim, eps=eps))
         if out_format == 'channels_first':
-            layers.append(to_channels_first())
+            layers.append(to_channels_first_emb())
     else:
         raise NotImplementedError(
             f'build_norm_layer does not support {norm_layer}')
-    return nn.Sequential(*layers)
+    return nn.ModuleList(layers)
 
 
 def build_act_layer(act_layer):
@@ -70,7 +70,7 @@ def build_act_layer(act_layer):
     raise NotImplementedError(f'build_act_layer does not support {act_layer}')
 
 
-class StemLayer(nn.Module):
+class StemLayerEmb(nn.Module):
     r""" Stem layer of InternImage
     Args:
         in_chans (int): number of input channels
@@ -101,16 +101,18 @@ class StemLayer(nn.Module):
         self.norm2 = build_norm_layer(out_chans, norm_layer, 'channels_first',
                                       'channels_last')
 
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.norm1(x)
+    def forward(self, x, emb):
+        x = self.conv1(x, emb)
+        for layer in self.norm1:
+            x = layer(x, emb)
         x = self.act(x)
-        x = self.conv2(x)
-        x = self.norm2(x)
+        x = self.conv2(x, emb)
+        for layer in self.norm2:
+            x = layer(x, emb)
         return x
 
 
-class DownsampleLayer(nn.Module):
+class DownsampleLayerEmb(nn.Module):
     r""" Downsample layer of InternImage
     Args:
         channels (int): number of input channels
@@ -119,7 +121,7 @@ class DownsampleLayer(nn.Module):
 
     def __init__(self, channels, norm_layer='LN'):
         super().__init__()
-        self.conv = nn.Conv2d(channels,
+        self.conv = GeneralConv2d(channels,
                               2 * channels,
                               kernel_size=3,
                               stride=2,
@@ -128,13 +130,14 @@ class DownsampleLayer(nn.Module):
         self.norm = build_norm_layer(2 * channels, norm_layer,
                                      'channels_first', 'channels_last')
 
-    def forward(self, x):
-        x = self.conv(x.permute(0, 3, 1, 2))
-        x = self.norm(x)
+    def forward(self, x, emb):
+        x = self.conv(x.permute(0, 3, 1, 2), emb)
+        for layer in self.norm:
+            x = layer(x)
         return x
 
 
-class MLPLayer(nn.Module):
+class MLPLayerEmb(nn.Module):
     r""" MLP layer of InternImage
     Args:
         in_features (int): number of input features
@@ -153,21 +156,21 @@ class MLPLayer(nn.Module):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
-        self.fc1 = nn.Linear(in_features, hidden_features)
+        self.fc1 = GeneralLinear(in_features, hidden_features)
         self.act = build_act_layer(act_layer)
-        self.fc2 = nn.Linear(hidden_features, out_features)
+        self.fc2 = GeneralLinear(hidden_features, out_features)
         self.drop = nn.Dropout(drop)
 
-    def forward(self, x):
-        x = self.fc1(x)
+    def forward(self, x, emb):
+        x = self.fc1(x, emb)
         x = self.act(x)
         x = self.drop(x)
-        x = self.fc2(x)
+        x = self.fc2(x, emb)
         x = self.drop(x)
         return x
 
 
-class InternImageLayer(nn.Module):
+class InternImageLayerEmb(nn.Module):
     r""" Basic layer of InternImage
     Args:
         core_op (nn.Module): core operation of InternImage
@@ -223,7 +226,7 @@ class InternImageLayer(nn.Module):
         self.drop_path = DropPath(drop_path) if drop_path > 0. \
             else nn.Identity()
         self.norm2 = build_norm_layer(channels, 'LN')
-        self.mlp = MLPLayer(in_features=channels,
+        self.mlp = MLPLayerEmb(in_features=channels,
                             hidden_features=int(channels * mlp_ratio),
                             act_layer=act_layer,
                             drop=drop)
@@ -238,26 +241,50 @@ class InternImageLayer(nn.Module):
             self.res_post_norm1 = build_norm_layer(channels, 'LN')
             self.res_post_norm2 = build_norm_layer(channels, 'LN')
 
-    def forward(self, x):
+    def forward(self, x, emb):
 
         def _inner_forward(x):
             if not self.layer_scale:
                 if self.post_norm:
-                    x = x + self.drop_path(self.norm1(self.dcn(x)))
-                    x = x + self.drop_path(self.norm2(self.mlp(x)))
+                    x = self.dcn(x, emb)
+                    for layer in self.norm1:
+                        x = layer(x, emb)
+                    x = x + self.drop_path(x)
+                    x = self.mlp(x, emb)
+                    for layer in self.norm2:
+                        x = layer(x, emb)
+                    x = x + self.drop_path(x)
                 elif self.res_post_norm: # for InternImage-H/G
                     x = x + self.drop_path(self.res_post_norm1(self.dcn(self.norm1(x))))
                     x = x + self.drop_path(self.res_post_norm2(self.mlp(self.norm2(x))))
                 else:
-                    x = x + self.drop_path(self.dcn(self.norm1(x)))
-                    x = x + self.drop_path(self.mlp(self.norm2(x)))
+                    for layer in self.norm1:
+                        x = layer(x, emb)
+                    x = self.dcn(x, emb)
+                    x = x + self.drop_path(x)
+                    for layer in self.norm2:
+                        x = layer(x, emb)
+                    x = self.mlp(x, emb)
+                    x = x + self.drop_path(x)
                 return x
             if self.post_norm:
-                x = x + self.drop_path(self.gamma1 * self.norm1(self.dcn(x)))
-                x = x + self.drop_path(self.gamma2 * self.norm2(self.mlp(x)))
+                x = self.dcn(x, emb)
+                for layer in self.norm1:
+                    x = layer(x, emb)
+                x = x + self.drop_path(self.gamma1 * x)
+                x = self.mlp(x, emb)
+                for layer in self.norm2:
+                    x = layer(x, emb)
+                x = x + self.drop_path(self.gamma2 * x)
             else:
-                x = x + self.drop_path(self.gamma1 * self.dcn(self.norm1(x)))
-                x = x + self.drop_path(self.gamma2 * self.mlp(self.norm2(x)))
+                for layer in self.norm1:
+                    x = layer(x, emb)
+                x = self.dcn(x, emb)
+                x = x + self.drop_path(self.gamma1 * x)
+                for layer in self.norm2:
+                    x = layer(x, emb)
+                x = self.mlp(x, emb)
+                x = x + self.drop_path(self.gamma2 * x)
             return x
 
         if self.with_cp and x.requires_grad:
@@ -267,7 +294,7 @@ class InternImageLayer(nn.Module):
         return x
 
 
-class InternImageBlock(nn.Module):
+class InternImageBlockEmb(nn.Module):
     r""" Block of InternImage
     Args:
         core_op (nn.Module): core operation of InternImage
@@ -311,7 +338,7 @@ class InternImageBlock(nn.Module):
         self.center_feature_scale = center_feature_scale
 
         self.blocks = nn.ModuleList([
-            InternImageLayer(
+            InternImageLayerEmb(
                 core_op=core_op,
                 channels=channels,
                 groups=groups,
@@ -337,28 +364,29 @@ class InternImageBlock(nn.Module):
             self.post_norms = nn.ModuleList(
                 [build_norm_layer(channels, 'LN', eps=1e-6) for _ in post_norm_block_ids]
             )
-        self.downsample = DownsampleLayer(
+        self.downsample = DownsampleLayerEmb(
             channels=channels, norm_layer=norm_layer) if downsample else None
 
-    def forward(self, x, return_wo_downsample=False):
+    def forward(self, x, emb, return_wo_downsample=False):
         for i, blk in enumerate(self.blocks):
-            x = blk(x)
+            x = blk(x, emb)
             if (self.post_norm_block_ids is not None) and (i in self.post_norm_block_ids):
                 index = self.post_norm_block_ids.index(i)
                 x = self.post_norms[index](x) # for InternImage-H/G
         if not self.post_norm or self.center_feature_scale:
-            x = self.norm(x)
+            for layer in self.norm:
+                x = layer(x)
         if return_wo_downsample:
             x_ = x
         if self.downsample is not None:
-            x = self.downsample(x)
+            x = self.downsample(x, emb)
 
         if return_wo_downsample:
             return x, x_
         return x
 
 
-class InternImage(nn.Module):
+class InternImageEmb(nn.Module):
     r""" InternImage
         A PyTorch impl of : `InternImage: Exploring Large-Scale Vision Foundation Models with Deformable Convolutions`  -
           https://arxiv.org/pdf/2103.14030
@@ -427,7 +455,7 @@ class InternImage(nn.Module):
         logger.info(f"res_post_norm: {res_post_norm}")
 
         in_chans = 3
-        self.patch_embed = StemLayer(in_chans=in_chans,
+        self.patch_embed = StemLayerEmb(in_chans=in_chans,
                                      out_chans=channels,
                                      act_layer=act_layer,
                                      norm_layer=norm_layer)
@@ -444,7 +472,7 @@ class InternImage(nn.Module):
         for i in range(self.num_levels):
             post_norm_block_ids = level2_post_norm_block_ids if level2_post_norm and (
                 i == 2) else None # for InternImage-H/G
-            level = InternImageBlock(
+            level = InternImageBlockEmb(
                 core_op=getattr(opsm, core_op),
                 channels=int(channels * 2**i),
                 depth=depths[i],
@@ -527,13 +555,13 @@ class InternImage(nn.Module):
         if isinstance(m, getattr(opsm, self.core_op)):
             m._reset_parameters()
 
-    def forward(self, x):
-        x = self.patch_embed(x)
+    def forward(self, x, emb):
+        x = self.patch_embed(x, emb)
         x = self.pos_drop(x)
 
         seq_out = []
         for level_idx, level in enumerate(self.levels):
-            x, x_ = level(x, return_wo_downsample=True)
+            x, x_ = level(x, emb, return_wo_downsample=True)
             if level_idx in self.out_indices:
                 seq_out.append(x_.permute(0, 3, 1, 2).contiguous())
         return seq_out
