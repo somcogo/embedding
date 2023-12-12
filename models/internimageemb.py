@@ -14,6 +14,7 @@ from timm.models.layers import trunc_normal_, DropPath
 import torch.nn.functional as F
 
 from .ops_dcnv3 import modules as opsm
+from embedding_functionals import GeneralConv2d
 
 
 class to_channels_first(nn.Module):
@@ -84,19 +85,19 @@ class StemLayer(nn.Module):
                  act_layer='GELU',
                  norm_layer='BN'):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_chans,
-                               out_chans // 2,
-                               kernel_size=3,
-                               stride=2,
-                               padding=1)
+        self.conv1 = GeneralConv2d(in_channels=in_chans,
+                                   out_channels=out_chans // 2,
+                                   kernel_size=3,
+                                   stride=2,
+                                   padding=1)
         self.norm1 = build_norm_layer(out_chans // 2, norm_layer,
                                       'channels_first', 'channels_first')
         self.act = build_act_layer(act_layer)
-        self.conv2 = nn.Conv2d(out_chans // 2,
-                               out_chans,
-                               kernel_size=3,
-                               stride=2,
-                               padding=1)
+        self.conv2 = GeneralConv2d(in_channels=out_chans // 2,
+                                  out_channels=out_chans,
+                                  kernel_size=3,
+                                  stride=2,
+                                  padding=1)
         self.norm2 = build_norm_layer(out_chans, norm_layer, 'channels_first',
                                       'channels_last')
 
