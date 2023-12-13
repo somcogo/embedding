@@ -1,6 +1,6 @@
 from models.embedding_functionals import GeneralBatchNorm2d
 
-def get_model_config(model_name, model_type, task, cifar):
+def get_model_config(model_name, model_type, task, cifar, logger):
     if model_name == 'resnet18':
         config = {
             'backbone_name':'resnet',
@@ -10,7 +10,7 @@ def get_model_config(model_name, model_type, task, cifar):
         }
     elif model_name == 'internimage':
         config = {
-            'backbone_name':'resnet',
+            'backbone_name':'internimage',
             'core_op':'DCNv3',
             'ii_channels':64,
             'depths':[4, 4, 18, 4],
@@ -23,6 +23,7 @@ def get_model_config(model_name, model_type, task, cifar):
             'post_norm':False,
             'with_cp':False,
             'out_indices':(0, 1, 2, 3),
+            'logger':logger
         }
 
     if task == 'classification':

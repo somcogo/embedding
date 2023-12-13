@@ -526,7 +526,7 @@ class InternImage(nn.Module):
         if isinstance(m, getattr(opsm, self.core_op)):
             m._reset_parameters()
 
-    def forward(self, x):
+    def forward(self, x, emb):
         x = self.patch_embed(x)
         x = self.pos_drop(x)
 
