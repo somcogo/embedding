@@ -17,7 +17,26 @@ def get_model_config(model_name, model_type, task, cifar, logger):
             'groups':[4, 8, 16, 32],
             'mlp_ratio':4.,
             'drop_path_rate':0.2,
-            'norm_layer':'BN',
+            'norm_layer':'LN',
+            'act_layer':'ReLU',
+            'layer_scale':1.0,
+            'offset_scale':1.0,
+            'post_norm':False,
+            'with_cp':False,
+            'out_indices':(0, 1, 2, 3),
+            'logger':logger
+        }
+    elif model_name == 'internimageemb':
+        config = {
+            'backbone_name':'internimageemb',
+            'core_op':'DCNv3Emb',
+            'ii_channels':64,
+            'depths':[4, 4, 18, 4],
+            'groups':[4, 8, 16, 32],
+            'mlp_ratio':4.,
+            'drop_path_rate':0.2,
+            'norm_layer':'LN',
+            'act_layer':'ReLU',
             'layer_scale':1.0,
             'offset_scale':1.0,
             'post_norm':False,

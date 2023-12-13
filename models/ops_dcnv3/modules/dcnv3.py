@@ -14,7 +14,7 @@ from torch import nn
 import torch.nn.functional as F
 from torch.nn.init import xavier_uniform_, constant_
 from ..functions import DCNv3Function, dcnv3_core_pytorch
-from models.embedding_functionals import GeneralLinear, GeneralConv2d, GeneralBatchNorm2d, GeneralReLU
+from models.embedding_functionals import GeneralLinear, GeneralConv2d, GeneralBatchNorm2d, GeneralReLU, GeneralLayerNorm
 
 
 class to_channels_first(nn.Module):
@@ -96,20 +96,20 @@ def build_norm_layer_emb(dim,
     layers = []
     if norm_layer == 'BN':
         if in_format == 'channels_last':
-            layers.append(to_channels_first())
+            layers.append(to_channels_first_emb())
         layers.append(GeneralBatchNorm2d(dim))
         if out_format == 'channels_last':
-            layers.append(to_channels_last())
-    # elif norm_layer == 'LN':
-    #     if in_format == 'channels_first':
-    #         layers.append(to_channels_last())
-    #     layers.append(nn.LayerNorm(dim, eps=eps))
-    #     if out_format == 'channels_first':
-    #         layers.append(to_channels_first())
+            layers.append(to_channels_last_emb())
+    elif norm_layer == 'LN':
+        if in_format == 'channels_first':
+            layers.append(to_channels_last_emb())
+        layers.append(GeneralLayerNorm(dim, eps=eps))
+        if out_format == 'channels_first':
+            layers.append(to_channels_first_emb())
     else:
         raise NotImplementedError(
             f'build_norm_layer does not support {norm_layer}')
-    return nn.ModuleList(*layers)
+    return nn.ModuleList(layers)
 
 
 def build_act_layer_emb(act_layer):
@@ -412,7 +412,8 @@ class DCNv3_pytorch_emb(nn.Module):
             offset_scale=1.0,
             act_layer='GELU',
             norm_layer='LN',
-            center_feature_scale=False):
+            center_feature_scale=False,
+            **kwargs):
         """
         DCNv3 Module
         :param channels
@@ -456,7 +457,8 @@ class DCNv3_pytorch_emb(nn.Module):
                 kernel_size=dw_kernel_size,
                 stride=1,
                 padding=(dw_kernel_size - 1) // 2,
-                groups=channels),
+                groups=channels,
+                **kwargs),
             build_norm_layer_emb(
                 channels,
                 norm_layer,
@@ -465,12 +467,14 @@ class DCNv3_pytorch_emb(nn.Module):
             build_act_layer_emb(act_layer))
         self.offset = GeneralLinear(
             channels,
-            group * kernel_size * kernel_size * 2)
+            group * kernel_size * kernel_size * 2,
+            **kwargs)
         self.mask = GeneralLinear(
             channels,
-            group * kernel_size * kernel_size)
-        self.input_proj = GeneralLinear(channels, channels)
-        self.output_proj = GeneralLinear(channels, channels)
+            group * kernel_size * kernel_size,
+            **kwargs)
+        self.input_proj = GeneralLinear(channels, channels, **kwargs)
+        self.output_proj = GeneralLinear(channels, channels, **kwargs)
         self._reset_parameters()
         
         if center_feature_scale:
@@ -540,7 +544,8 @@ class DCNv3Emb(nn.Module):
             offset_scale=1.0,
             act_layer='GELU',
             norm_layer='LN',
-            center_feature_scale=False):
+            center_feature_scale=False,
+            **kwargs):
         """
         DCNv3 Module
         :param channels
@@ -578,28 +583,31 @@ class DCNv3Emb(nn.Module):
         self.center_feature_scale = center_feature_scale
         
         self.dw_conv = nn.ModuleList(
-            GeneralConv2d(
+            [GeneralConv2d(
                 channels,
                 channels,
                 kernel_size=dw_kernel_size,
                 stride=1,
                 padding=(dw_kernel_size - 1) // 2,
-                groups=channels),
-            build_norm_layer_emb(
+                groups=channels,
+                **kwargs),
+            *build_norm_layer_emb(
                 channels,
                 norm_layer,
                 'channels_first',
                 'channels_last'),
-            build_act_layer_emb(act_layer))
+            build_act_layer_emb(act_layer)])
         self.offset = GeneralLinear(
             channels,
-            group * kernel_size * kernel_size * 2)
+            group * kernel_size * kernel_size * 2,
+            **kwargs)
         self.mask = GeneralLinear(
             channels,
-            group * kernel_size * kernel_size)
-        self.input_proj = GeneralLinear(channels, channels)
-        self.output_proj = GeneralLinear(channels, channels)
-        self._reset_parameters()
+            group * kernel_size * kernel_size,
+            **kwargs)
+        self.input_proj = GeneralLinear(channels, channels, **kwargs)
+        self.output_proj = GeneralLinear(channels, channels, **kwargs)
+        # self._reset_parameters()
         
         if center_feature_scale:
             self.center_feature_scale_proj_weight = nn.Parameter(
@@ -608,15 +616,15 @@ class DCNv3Emb(nn.Module):
                 torch.tensor(0.0, dtype=torch.float).view((1,)).repeat(group, ))
             self.center_feature_scale_module = CenterFeatureScaleModule()
 
-    def _reset_parameters(self):
-        constant_(self.offset.weight.data, 0.)
-        constant_(self.offset.bias.data, 0.)
-        constant_(self.mask.weight.data, 0.)
-        constant_(self.mask.bias.data, 0.)
-        xavier_uniform_(self.input_proj.weight.data)
-        constant_(self.input_proj.bias.data, 0.)
-        xavier_uniform_(self.output_proj.weight.data)
-        constant_(self.output_proj.bias.data, 0.)
+    # def _reset_parameters(self):
+    #     constant_(self.offset.weight.data, 0.)
+    #     constant_(self.offset.bias.data, 0.)
+    #     constant_(self.mask.weight.data, 0.)
+    #     constant_(self.mask.bias.data, 0.)
+    #     xavier_uniform_(self.input_proj.weight.data)
+    #     constant_(self.input_proj.bias.data, 0.)
+    #     xavier_uniform_(self.output_proj.weight.data)
+    #     constant_(self.output_proj.bias.data, 0.)
 
     def forward(self, input, emb):
         """

@@ -6,17 +6,17 @@ from torch import nn
 from .edmcode import UNetBlock, FeedForward
 from .embedding_functionals import MODE_NAMES, GeneralConv2d, GeneralConvTranspose2d, GeneralLinear, GeneralBatchNorm2d, WeightGenerator
 from .internimage import InternImage
-# from .internimageemb import InternImageEmb
+from .internimageemb import InternImageEmb
 
 ### ----- Based on the official PyTorch ResNet-18 implementation ----- ###
 class CustomResnet(nn.Module):
-    def __init__(self, channels=3, layers=[2, 2, 2, 2], norm_layer=GeneralBatchNorm2d, device=None, cifar=False, **kwargs):
+    def __init__(self, dataset_channels=3, layers=[2, 2, 2, 2], norm_layer=GeneralBatchNorm2d, device=None, cifar=False, **kwargs):
         super().__init__()
 
         if cifar:
-            self.conv1 = GeneralConv2d(channels, 64, kernel_size=3, stride=1, padding=1, bias=False, **kwargs)
+            self.conv1 = GeneralConv2d(dataset_channels, 64, kernel_size=3, stride=1, padding=1, bias=False, **kwargs)
         else:
-            self.conv1 = GeneralConv2d(channels, 64, kernel_size=7, stride=2, padding=3, bias=False, **kwargs)
+            self.conv1 = GeneralConv2d(dataset_channels, 64, kernel_size=7, stride=2, padding=3, bias=False, **kwargs)
         self.batch_norm1 = norm_layer(num_features=64, **kwargs)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -95,6 +95,8 @@ def get_backbone(backbone_name, **model_config):
         backbone = CustomResnet(**model_config)
     elif backbone_name == 'internimage':
         backbone = InternImage(**model_config)
+    elif backbone_name == 'internimageemb':
+        backbone = InternImageEmb(**model_config)
     return backbone
 
 class ResNetWithEmbeddings(nn.Module):

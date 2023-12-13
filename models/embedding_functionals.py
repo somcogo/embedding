@@ -9,20 +9,20 @@ MODE_NAMES = {'embedding': 'embedding_weights',
               'vanilla': 'vanilla'}
 
 class WeightGenerator(nn.Module):
-    def __init__(self, emb_dim, hidden_layer, out_channels, depth=None, target='const', **kwargs):
+    def __init__(self, emb_dim, gen_hidden_layer, out_channels, gen_depth=None, target='const', **kwargs):
         super().__init__()
-        self.depth = depth
+        self.gen_depth = gen_depth
         if target == 'const':
             init = nn.init.zeros_
         else:
             init = nn.init.ones_
-        if depth == 1:
+        if gen_depth == 1:
             self.lin1 = nn.Linear(in_features=emb_dim, out_features=out_channels)
             nn.init.zeros_(self.lin1.weight)
             init(self.lin1.bias)
-        if depth == 2:
-            self.lin1 = nn.Linear(in_features=emb_dim, out_features=hidden_layer)
-            self.lin2 = nn.Linear(in_features=hidden_layer, out_features=out_channels)
+        if gen_depth == 2:
+            self.lin1 = nn.Linear(in_features=emb_dim, out_features=gen_hidden_layer)
+            self.lin2 = nn.Linear(in_features=gen_hidden_layer, out_features=out_channels)
             nn.init.zeros_(self.lin1.weight)
             nn.init.zeros_(self.lin1.bias)
             nn.init.zeros_(self.lin2.weight)
@@ -30,9 +30,9 @@ class WeightGenerator(nn.Module):
     
     def forward(self, x):
         x = x.to(torch.float)
-        if self.depth == 1:
+        if self.gen_depth == 1:
             out = self.lin1(x)
-        if self.depth == 2:
+        if self.gen_depth == 2:
             x = self.lin1(x)
             x = nn.functional.relu(x)
             out = self.lin2(x)
@@ -75,10 +75,10 @@ class Conv2d_emb(nn.Module):
             gen_bias_const_size = out_channels if bias else None
             gen_bias_affine_size = 1 if bias and gen_affine else None
 
-        self.weight_const_generator = WeightGenerator(gen_weight_const_size, target='const', **kwargs)
-        self.weight_affine_generator = WeightGenerator(gen_weight_affine_size, target='affine', **kwargs) if gen_affine else None
-        self.bias_const_generator = WeightGenerator(gen_bias_const_size, target='const', **kwargs) if bias else None
-        self.bias_affine_generator = WeightGenerator(gen_bias_affine_size, target='affine', **kwargs) if bias and gen_affine else None
+        self.weight_const_generator = WeightGenerator(out_channels=gen_weight_const_size, target='const', **kwargs)
+        self.weight_affine_generator = WeightGenerator(out_channels=gen_weight_affine_size, target='affine', **kwargs) if gen_affine else None
+        self.bias_const_generator = WeightGenerator(out_channels=gen_bias_const_size, target='const', **kwargs) if bias else None
+        self.bias_affine_generator = WeightGenerator(out_channels=gen_bias_affine_size, target='affine', **kwargs) if bias and gen_affine else None
 
     def forward(self, x, emb):
         weight = self.weight.to(x.dtype)
@@ -135,10 +135,10 @@ class ConvTranspose2d_emb(nn.Module):
             gen_bias_const_size = out_channels if bias else None
             gen_bias_affine_size = 1 if bias and gen_affine else None
 
-        self.weight_const_generator = WeightGenerator(gen_weight_const_size, target='const', **kwargs)
-        self.weight_affine_generator = WeightGenerator(gen_weight_affine_size, target='affine', **kwargs) if gen_affine else None
-        self.bias_const_generator = WeightGenerator(gen_bias_const_size, target='const', **kwargs) if bias else None
-        self.bias_affine_generator = WeightGenerator(gen_bias_affine_size, target='affine', **kwargs) if bias and gen_affine else None
+        self.weight_const_generator = WeightGenerator(out_channels=gen_weight_const_size, target='const', **kwargs)
+        self.weight_affine_generator = WeightGenerator(out_channels=gen_weight_affine_size, target='affine', **kwargs) if gen_affine else None
+        self.bias_const_generator = WeightGenerator(out_channels=gen_bias_const_size, target='const', **kwargs) if bias else None
+        self.bias_affine_generator = WeightGenerator(out_channels=gen_bias_affine_size, target='affine', **kwargs) if bias and gen_affine else None
 
 
     def forward(self, x, emb):
@@ -189,10 +189,10 @@ class Linear_emb(nn.Module):
             gen_bias_const_size = 1 if bias else None
             gen_bias_affine_size = 1 if bias and gen_affine else None
 
-        self.weight_const_generator = WeightGenerator(gen_weight_const_size, target='const', **kwargs)
-        self.weight_affine_generator = WeightGenerator(gen_weight_affine_size, target='affine', **kwargs) if gen_affine else None
-        self.bias_const_generator = WeightGenerator(gen_bias_const_size, target='const', **kwargs) if bias else None
-        self.bias_affine_generator = WeightGenerator(gen_bias_affine_size, target='affine', **kwargs) if bias and gen_affine else None
+        self.weight_const_generator = WeightGenerator(out_channels=gen_weight_const_size, target='const', **kwargs)
+        self.weight_affine_generator = WeightGenerator(out_channels=gen_weight_affine_size, target='affine', **kwargs) if gen_affine else None
+        self.bias_const_generator = WeightGenerator(out_channels=gen_bias_const_size, target='const', **kwargs) if bias else None
+        self.bias_affine_generator = WeightGenerator(out_channels=gen_bias_affine_size, target='affine', **kwargs) if bias and gen_affine else None
 
     def forward(self, x, emb):
         weight = self.weight.to(x.dtype)
@@ -232,10 +232,10 @@ class BatchNorm2d_emb(nn.Module):
         gen_bias_const_size = 1 
         gen_bias_affine_size = 1 if gen_affine else None
 
-        self.weight_const_generator = WeightGenerator(gen_weight_const_size, target='const', **kwargs)
-        self.weight_affine_generator = WeightGenerator(gen_weight_affine_size, target='affine', **kwargs) if gen_affine else None
-        self.bias_const_generator = WeightGenerator(gen_bias_const_size, target='const', **kwargs)
-        self.bias_affine_generator = WeightGenerator(gen_bias_affine_size, target='affine', **kwargs) if gen_affine else None
+        self.weight_const_generator = WeightGenerator(out_channels=gen_weight_const_size, target='const', **kwargs)
+        self.weight_affine_generator = WeightGenerator(out_channels=gen_weight_affine_size, target='affine', **kwargs) if gen_affine else None
+        self.bias_const_generator = WeightGenerator(out_channels=gen_bias_const_size, target='const', **kwargs)
+        self.bias_affine_generator = WeightGenerator(out_channels=gen_bias_affine_size, target='affine', **kwargs) if gen_affine else None
 
     def forward(self, x, emb):
         weight = self.weight.to(x.dtype)
@@ -275,10 +275,10 @@ class InstanceNorm2d_emb(nn.Module):
         gen_bias_const_size = 1 if bias else None
         gen_bias_affine_size = 1 if bias and gen_affine else None
 
-        self.weight_const_generator = WeightGenerator(gen_weight_const_size, target='const', **kwargs)
-        self.weight_affine_generator = WeightGenerator(gen_weight_affine_size, target='affine', **kwargs) if gen_affine else None
-        self.bias_const_generator = WeightGenerator(gen_bias_const_size, target='const', **kwargs) if bias else None
-        self.bias_affine_generator = WeightGenerator(gen_bias_affine_size, target='affine', **kwargs) if bias and gen_affine else None
+        self.weight_const_generator = WeightGenerator(out_channels=gen_weight_const_size, target='const', **kwargs)
+        self.weight_affine_generator = WeightGenerator(out_channels=gen_weight_affine_size, target='affine', **kwargs) if gen_affine else None
+        self.bias_const_generator = WeightGenerator(out_channels=gen_bias_const_size, target='const', **kwargs) if bias else None
+        self.bias_affine_generator = WeightGenerator(out_channels=gen_bias_affine_size, target='affine', **kwargs) if bias and gen_affine else None
 
     def forward(self, x, emb):
         weight = self.weight.to(x.dtype)
@@ -296,6 +296,51 @@ class InstanceNorm2d_emb(nn.Module):
             bias = bias + bias_const
         
         x = F.instance_norm(x, weight=weight, bias=bias, momentum=self.momentum, eps=self.eps)
+        return x
+    
+class LayerNorm_emb(nn.Module):
+    def __init__(self, normalized_shape, eps=1e-5, bias=True, device=None, dtype=None, gen_affine=False, **kwargs):
+        super().__init__()
+        self.gen_affine = gen_affine
+        self.normalized_shape = normalized_shape
+        self.eps = eps
+
+        self.weight = nn.Parameter(torch.empty(normalized_shape, device=device, dtype=dtype))
+        if bias:
+            self.bias = nn.Parameter(torch.empty(normalized_shape, device=device, dtype=dtype ))
+        else:
+            self.register_parameter('bias', None)
+
+        nn.init.ones_(self.weight)
+        if self.bias is not None:
+            nn.init.zeros_(self.bias)
+
+        gen_weight_const_size = 1
+        gen_weight_affine_size = 1 if gen_affine else None
+        gen_bias_const_size = 1 if bias else None
+        gen_bias_affine_size = 1 if bias and gen_affine else None
+
+        self.weight_const_generator = WeightGenerator(out_channels=gen_weight_const_size, target='const', **kwargs)
+        self.weight_affine_generator = WeightGenerator(out_channels=gen_weight_affine_size, target='affine', **kwargs) if gen_affine else None
+        self.bias_const_generator = WeightGenerator(out_channels=gen_bias_const_size, target='const', **kwargs) if bias else None
+        self.bias_affine_generator = WeightGenerator(out_channels=gen_bias_affine_size, target='affine', **kwargs) if bias and gen_affine else None
+
+    def forward(self, x, emb):
+        weight = self.weight.to(x.dtype)
+        bias = self.bias.to(x.dtype) if self.bias is not None else None
+        if self.gen_affine:
+            weight_affine = self.weight_affine_generator(emb).expand(weight.shape)
+            weight = weight_affine*weight
+            if bias is not None:
+                bias_affine = self.bias_affine_generator(emb).expand(bias.shape)
+                bias = bias_affine*bias
+        weight_const = self.weight_const_generator(emb).expand(weight.shape)
+        weight = weight+weight_const
+        if bias is not None:
+            bias_const = self.bias_const_generator(emb).expand(bias.shape)
+            bias = bias + bias_const
+        
+        x = F.layer_norm(x, normalized_shape=self.normalized_shape, weight=weight, bias=bias, eps=self.eps)
         return x
     
 class GeneralConv2d(nn.Module):
@@ -335,7 +380,7 @@ class GeneralLinear(nn.Module):
         super().__init__()
         self.mode = mode
         if mode == MODE_NAMES['embedding']:
-            self.linear = Linear_emb(in_features=in_channels, out_features=out_channels, bias=bias, device=device, **kwargs)
+            self.linear = Linear_emb(in_channels=in_channels, out_channels=out_channels, bias=bias, device=device, **kwargs)
         else:
             self.linear = nn.Linear(in_features=in_channels, out_features=out_channels, bias=bias, device=device)
 
@@ -385,6 +430,22 @@ class GeneralInstanceNorm2d(nn.Module):
             out = self.instance_norm(x, emb)
         else:
             out = self.instance_norm(x)
+        return out
+    
+class GeneralLayerNorm(nn.Module):
+    def __init__(self, normalized_shape, mode='vanilla', eps=1e-5, bias=True, device=None, dtype=None, **kwargs):
+        super().__init__()
+        self.mode = mode
+        if mode == MODE_NAMES['embedding']:
+            self.layer_norm = LayerNorm_emb(normalized_shape=normalized_shape, eps=eps, bias=bias, device=device, dtype=dtype, **kwargs)
+        else:
+            self.layer_norm = nn.LayerNorm(normalized_shape=normalized_shape, eps=eps, device=device, dtype=dtype)
+
+    def forward(self, x, emb):
+        if self.mode == MODE_NAMES['embedding']:
+            out = self.layer_norm(x, emb)
+        else:
+            out = self.layer_norm(x)
         return out
     
 class GeneralAdaptiveAvgPool2d(nn.Module):

@@ -27,7 +27,7 @@ def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None,
     config = get_model_config(model_name, model_type, task, cifar, logger)
     models = []
     for _ in range(site_number):
-        model = ModelAssembler(channels=in_channels, num_classes=num_classes, emb_dim=embed_dim, **config)
+        model = ModelAssembler(dataset_channels=in_channels, num_classes=num_classes, emb_dim=embed_dim, **config)
         models.append(model)
     
     if config['mode'] != 'vanilla':

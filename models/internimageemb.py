@@ -14,7 +14,7 @@ from timm.models.layers import trunc_normal_, DropPath
 import torch.nn.functional as F
 
 from .ops_dcnv3 import modules as opsm
-from embedding_functionals import GeneralConv2d, GeneralBatchNorm2d, GeneralLinear
+from .embedding_functionals import GeneralConv2d, GeneralBatchNorm2d, GeneralLinear, GeneralLayerNorm
 
 
 class to_channels_first_emb(nn.Module):
@@ -50,7 +50,7 @@ def build_norm_layer(dim,
     elif norm_layer == 'LN':
         if in_format == 'channels_first':
             layers.append(to_channels_last_emb())
-        layers.append(nn.LayerNorm(dim, eps=eps))
+        layers.append(GeneralLayerNorm(dim, eps=eps))
         if out_format == 'channels_first':
             layers.append(to_channels_first_emb())
     else:
@@ -83,13 +83,15 @@ class StemLayerEmb(nn.Module):
                  in_chans=3,
                  out_chans=96,
                  act_layer='GELU',
-                 norm_layer='BN'):
+                 norm_layer='BN',
+                 **kwargs):
         super().__init__()
         self.conv1 = GeneralConv2d(in_channels=in_chans,
                                    out_channels=out_chans // 2,
                                    kernel_size=3,
                                    stride=2,
-                                   padding=1)
+                                   padding=1,
+                                   **kwargs)
         self.norm1 = build_norm_layer(out_chans // 2, norm_layer,
                                       'channels_first', 'channels_first')
         self.act = build_act_layer(act_layer)
@@ -97,7 +99,8 @@ class StemLayerEmb(nn.Module):
                                   out_channels=out_chans,
                                   kernel_size=3,
                                   stride=2,
-                                  padding=1)
+                                  padding=1,
+                                  **kwargs)
         self.norm2 = build_norm_layer(out_chans, norm_layer, 'channels_first',
                                       'channels_last')
 
@@ -119,21 +122,22 @@ class DownsampleLayerEmb(nn.Module):
         norm_layer (str): normalization layer
     """
 
-    def __init__(self, channels, norm_layer='LN'):
+    def __init__(self, channels, norm_layer='LN', **kwargs):
         super().__init__()
         self.conv = GeneralConv2d(channels,
                               2 * channels,
                               kernel_size=3,
                               stride=2,
                               padding=1,
-                              bias=False)
+                              bias=False,
+                              **kwargs)
         self.norm = build_norm_layer(2 * channels, norm_layer,
                                      'channels_first', 'channels_last')
 
     def forward(self, x, emb):
         x = self.conv(x.permute(0, 3, 1, 2), emb)
         for layer in self.norm:
-            x = layer(x)
+            x = layer(x, emb)
         return x
 
 
@@ -152,13 +156,14 @@ class MLPLayerEmb(nn.Module):
                  hidden_features=None,
                  out_features=None,
                  act_layer='GELU',
-                 drop=0.):
+                 drop=0.,
+                 **kwargs):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
-        self.fc1 = GeneralLinear(in_features, hidden_features)
+        self.fc1 = GeneralLinear(in_features, hidden_features, **kwargs)
         self.act = build_act_layer(act_layer)
-        self.fc2 = GeneralLinear(hidden_features, out_features)
+        self.fc2 = GeneralLinear(hidden_features, out_features, **kwargs)
         self.drop = nn.Dropout(drop)
 
     def forward(self, x, emb):
@@ -202,7 +207,8 @@ class InternImageLayerEmb(nn.Module):
                  with_cp=False,
                  dw_kernel_size=None, # for InternImage-H/G
                  res_post_norm=False, # for InternImage-H/G
-                 center_feature_scale=False): # for InternImage-H/G
+                 center_feature_scale=False, # for InternImage-H/G
+                 **kwargs):
         super().__init__()
         self.channels = channels
         self.groups = groups
@@ -222,14 +228,16 @@ class InternImageLayerEmb(nn.Module):
             act_layer=act_layer,
             norm_layer=norm_layer,
             dw_kernel_size=dw_kernel_size, # for InternImage-H/G
-            center_feature_scale=center_feature_scale) # for InternImage-H/G
+            center_feature_scale=center_feature_scale, # for InternImage-H/G
+            **kwargs)
         self.drop_path = DropPath(drop_path) if drop_path > 0. \
             else nn.Identity()
         self.norm2 = build_norm_layer(channels, 'LN')
         self.mlp = MLPLayerEmb(in_features=channels,
                             hidden_features=int(channels * mlp_ratio),
                             act_layer=act_layer,
-                            drop=drop)
+                            drop=drop,
+                            **kwargs)
         self.layer_scale = layer_scale is not None
         if self.layer_scale:
             self.gamma1 = nn.Parameter(layer_scale * torch.ones(channels),
@@ -330,7 +338,8 @@ class InternImageBlockEmb(nn.Module):
                  dw_kernel_size=None, # for InternImage-H/G
                  post_norm_block_ids=None, # for InternImage-H/G
                  res_post_norm=False, # for InternImage-H/G
-                 center_feature_scale=False): # for InternImage-H/G
+                 center_feature_scale=False, # for InternImage-H/G
+                 **kwargs):
         super().__init__()
         self.channels = channels
         self.depth = depth
@@ -354,7 +363,8 @@ class InternImageBlockEmb(nn.Module):
                 with_cp=with_cp,
                 dw_kernel_size=dw_kernel_size, # for InternImage-H/G
                 res_post_norm=res_post_norm, # for InternImage-H/G
-                center_feature_scale=center_feature_scale # for InternImage-H/G
+                center_feature_scale=center_feature_scale, # for InternImage-H/G
+                **kwargs
             ) for i in range(depth)
         ])
         if not self.post_norm or center_feature_scale:
@@ -375,7 +385,7 @@ class InternImageBlockEmb(nn.Module):
                 x = self.post_norms[index](x) # for InternImage-H/G
         if not self.post_norm or self.center_feature_scale:
             for layer in self.norm:
-                x = layer(x)
+                x = layer(x, emb)
         if return_wo_downsample:
             x_ = x
         if self.downsample is not None:
@@ -412,7 +422,8 @@ class InternImageEmb(nn.Module):
 
     def __init__(self,
                  core_op='DCNv3',
-                 channels=64,
+                 dataset_channels=3,
+                 ii_channels=64,
                  depths=[3, 4, 18, 5],
                  groups=[3, 6, 12, 24],
                  mlp_ratio=4.,
@@ -438,8 +449,8 @@ class InternImageEmb(nn.Module):
         self.core_op = core_op
         self.num_levels = len(depths)
         self.depths = depths
-        self.channels = channels
-        self.num_features = int(channels * 2**(self.num_levels - 1))
+        self.channels = ii_channels
+        self.num_features = int(ii_channels * 2**(self.num_levels - 1))
         self.post_norm = post_norm
         self.mlp_ratio = mlp_ratio
         self.init_cfg = init_cfg
@@ -454,11 +465,12 @@ class InternImageEmb(nn.Module):
         logger.info(f"level2_post_norm_block_ids: {level2_post_norm_block_ids}")
         logger.info(f"res_post_norm: {res_post_norm}")
 
-        in_chans = 3
+        in_chans = dataset_channels
         self.patch_embed = StemLayerEmb(in_chans=in_chans,
-                                     out_chans=channels,
+                                     out_chans=ii_channels,
                                      act_layer=act_layer,
-                                     norm_layer=norm_layer)
+                                     norm_layer=norm_layer,
+                                     **kwargs)
         self.pos_drop = nn.Dropout(p=drop_rate)
 
         dpr = [
@@ -474,7 +486,7 @@ class InternImageEmb(nn.Module):
                 i == 2) else None # for InternImage-H/G
             level = InternImageBlockEmb(
                 core_op=getattr(opsm, core_op),
-                channels=int(channels * 2**i),
+                channels=int(ii_channels * 2**i),
                 depth=depths[i],
                 groups=groups[i],
                 mlp_ratio=self.mlp_ratio,
@@ -490,13 +502,14 @@ class InternImageEmb(nn.Module):
                 dw_kernel_size=dw_kernel_size,  # for InternImage-H/G
                 post_norm_block_ids=post_norm_block_ids, # for InternImage-H/G
                 res_post_norm=res_post_norm, # for InternImage-H/G
-                center_feature_scale=center_feature_scale # for InternImage-H/G
+                center_feature_scale=center_feature_scale, # for InternImage-H/G
+                **kwargs
             )
             self.levels.append(level)
 
         self.num_layers = len(depths)
         self.apply(self._init_weights)
-        self.apply(self._init_deform_weights)
+        # self.apply(self._init_deform_weights)
 
     def init_weights(self):
         if self.init_cfg is None:
@@ -551,9 +564,9 @@ class InternImageEmb(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    def _init_deform_weights(self, m):
-        if isinstance(m, getattr(opsm, self.core_op)):
-            m._reset_parameters()
+    # def _init_deform_weights(self, m):
+    #     if isinstance(m, getattr(opsm, self.core_op)):
+    #         m._reset_parameters()
 
     def forward(self, x, emb):
         x = self.patch_embed(x, emb)

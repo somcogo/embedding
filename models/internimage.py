@@ -383,6 +383,7 @@ class InternImage(nn.Module):
 
     def __init__(self,
                  core_op='DCNv3',
+                 dataset_channels=3,
                  ii_channels=64,
                  depths=[4, 4, 18, 4],
                  groups=[4, 8, 15, 32],
@@ -425,7 +426,7 @@ class InternImage(nn.Module):
         logger.info(f"level2_post_norm_block_ids: {level2_post_norm_block_ids}")
         logger.info(f"res_post_norm: {res_post_norm}")
 
-        in_chans = 3
+        in_chans = dataset_channels
         self.patch_embed = StemLayer(in_chans=in_chans,
                                      out_chans=ii_channels,
                                      act_layer=act_layer,
