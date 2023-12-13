@@ -168,11 +168,11 @@ def partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha, see
 
             idx_batch_train, idx_batch_test, min_size = partition_class_samples_with_dirichlet_distribution(N_train, alpha, n_sites, idx_batch_train, idx_batch_test, train_idx_k, test_idx_k, rng)
         
-        for j in range(n_sites):
-            rng.shuffle(idx_batch_train[j])
-            rng.shuffle(idx_batch_test[j])
-            net_dataidx_map_train[j] = idx_batch_train[j]
-            net_dataidx_map_test[j] = idx_batch_test[j]
+    for j in range(n_sites):
+        rng.shuffle(idx_batch_train[j])
+        rng.shuffle(idx_batch_test[j])
+        net_dataidx_map_train[j] = idx_batch_train[j]
+        net_dataidx_map_test[j] = idx_batch_test[j]
 
     return (net_dataidx_map_train, net_dataidx_map_test)
 
@@ -188,8 +188,8 @@ def partition_class_samples_with_dirichlet_distribution(N, alpha, n_sites, idx_b
         [p * (len(idx_j) < N / n_sites) for p, idx_j in zip(proportions, idx_batch_train)]
     )
     proportions = proportions / proportions.sum()
-    proportions_train = (np.cumsum(proportions) * len(train_idx_k)).astype(int)[:-1]
-    proportions_test = (np.cumsum(proportions) * len(test_idx_k)).astype(int)[:-1]
+    proportions_train = (np.cumsum(proportions) * len(train_idx_k)).round().astype(int)[:-1]
+    proportions_test = (np.cumsum(proportions) * len(test_idx_k)).round().astype(int)[:-1]
 
     idx_batch_train = [idx_j + idx.tolist() for idx_j, idx in zip(idx_batch_train, np.split(train_idx_k, proportions_train))]
     idx_batch_test = [idx_j + idx.tolist() for idx_j, idx in zip(idx_batch_test, np.split(test_idx_k, proportions_test))]

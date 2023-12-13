@@ -82,7 +82,7 @@ class EmbeddingTraining:
         self.device = 'cuda' if self.use_cuda else 'cpu'
         self.logdir = os.path.join('/home/hansel/developer/embedding/runs', self.logdir_name)
         os.makedirs(self.logdir, exist_ok=True)
-
+        
         self.trn_writer = None
         self.val_writer = None
         if get_transforms:
@@ -99,7 +99,7 @@ class EmbeddingTraining:
         self.optims = self.initOptimizers(lr, finetuning, weight_decay=weight_decay, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
         if iterations is None:
-            iterations = math.ceil(self.trn_dls[0].dataset/batch_size)
+            iterations = math.ceil(len(self.trn_dls[0].dataset)/batch_size)
         self.iterations = iterations
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
