@@ -9,7 +9,21 @@ def get_model_config(model_name, model_type, task, cifar):
             'cifar':cifar,
         }
     elif model_name == 'internimage':
-        config = {}
+        config = {
+            'backbone_name':'resnet',
+            'core_op':'DCNv3',
+            'ii_channels':64,
+            'depths':[4, 4, 18, 4],
+            'groups':[4, 8, 16, 32],
+            'mlp_ratio':4.,
+            'drop_path_rate':0.2,
+            'norm_layer':'BN',
+            'layer_scale':1.0,
+            'offset_scale':1.0,
+            'post_norm':False,
+            'with_cp':False,
+            'out_indices':(0, 1, 2, 3),
+        }
 
     if task == 'classification':
         config['head_name'] = 'classifier'

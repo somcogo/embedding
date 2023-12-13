@@ -5,6 +5,8 @@ from torch import nn
 
 from .edmcode import UNetBlock, FeedForward
 from .embedding_functionals import MODE_NAMES, GeneralConv2d, GeneralConvTranspose2d, GeneralLinear, GeneralBatchNorm2d, WeightGenerator
+from .internimage import InternImage
+# from .internimageemb import InternImageEmb
 
 ### ----- Based on the official PyTorch ResNet-18 implementation ----- ###
 class CustomResnet(nn.Module):
@@ -91,7 +93,8 @@ class ResnetBlock(nn.Module):
 def get_backbone(backbone_name, **model_config):
     if backbone_name == 'resnet':
         backbone = CustomResnet(**model_config)
-
+    elif backbone_name == 'internimage':
+        backbone = InternImage(**model_config)
     return backbone
 
 class ResNetWithEmbeddings(nn.Module):

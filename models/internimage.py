@@ -383,9 +383,9 @@ class InternImage(nn.Module):
 
     def __init__(self,
                  core_op='DCNv3',
-                 channels=64,
-                 depths=[3, 4, 18, 5],
-                 groups=[3, 6, 12, 24],
+                 ii_channels=64,
+                 depths=[4, 4, 18, 4],
+                 groups=[4, 8, 15, 32],
                  mlp_ratio=4.,
                  drop_rate=0.,
                  drop_path_rate=0.2,
@@ -409,8 +409,8 @@ class InternImage(nn.Module):
         self.core_op = core_op
         self.num_levels = len(depths)
         self.depths = depths
-        self.channels = channels
-        self.num_features = int(channels * 2**(self.num_levels - 1))
+        self.channels = ii_channels
+        self.num_features = int(ii_channels * 2**(self.num_levels - 1))
         self.post_norm = post_norm
         self.mlp_ratio = mlp_ratio
         self.init_cfg = init_cfg
@@ -427,7 +427,7 @@ class InternImage(nn.Module):
 
         in_chans = 3
         self.patch_embed = StemLayer(in_chans=in_chans,
-                                     out_chans=channels,
+                                     out_chans=ii_channels,
                                      act_layer=act_layer,
                                      norm_layer=norm_layer)
         self.pos_drop = nn.Dropout(p=drop_rate)
@@ -445,7 +445,7 @@ class InternImage(nn.Module):
                 i == 2) else None # for InternImage-H/G
             level = InternImageBlock(
                 core_op=getattr(opsm, core_op),
-                channels=int(channels * 2**i),
+                channels=int(ii_channels * 2**i),
                 depth=depths[i],
                 groups=groups[i],
                 mlp_ratio=self.mlp_ratio,

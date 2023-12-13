@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 
-from models.model import ResNet18Model, ResNet34Model, ResNetWithEmbeddings, CustomResnet
 from models.embedding_functionals import GeneralInstanceNorm2d, BatchNorm2d_noemb, GeneralBatchNorm2d
 from models.upernet import ModelAssembler
 from utils.config import get_model_config
