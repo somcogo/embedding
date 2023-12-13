@@ -399,6 +399,9 @@ class EmbeddingTraining:
             gl_metrics['average/mean dice'] = sum([gl_metrics['avg dice per class/{}'.format(cls)] for cls in range(self.num_classes)]) / self.num_classes
             gl_metrics['average/mean precision'] = sum([gl_metrics['avg precision per class/{}'.format(cls)] for cls in range(self.num_classes)]) / self.num_classes
             gl_metrics['average/mean recall'] = sum([gl_metrics['avg recall per class/{}'.format(cls)] for cls in range(self.num_classes)]) / self.num_classes
+        
+        for k in gl_metrics.keys():
+            gl_metrics[k] = gl_metrics[k].detach().cpu()
 
         return gl_metrics
 
@@ -435,7 +438,7 @@ class EmbeddingTraining:
         )
         os.makedirs(os.path.dirname(data_file_path), mode=0o755, exist_ok=True)
 
-        data_state = {'valmetrics':val_metrics.detach().cpu(),
+        data_state = {'valmetrics':val_metrics,
                       'epoch': epoch_ndx,}
                     #   'settings':self.settings}
         model_state = {'epoch': epoch_ndx,}
