@@ -448,11 +448,12 @@ class EmbeddingTraining:
             if isinstance(model, torch.nn.DataParallel):
                 model = model.module
             data_state[ndx] = {
-                'trn_labels': trn_dls[ndx].dataset.labels,
-                'val_labels': val_dls[ndx].dataset.labels,
                 'trn_indices': trn_dls[ndx].dataset.indices,
                 'val_indices': val_dls[ndx].dataset.indices,
             }
+            if self.dataset != 'celeba':
+                data_state[ndx]['trn_labels'] = trn_dls[ndx].dataset.labels
+                data_state[ndx]['val_labels'] = val_dls[ndx].dataset.labels
             state_dict = model.state_dict()
             site_state_dict = {key: state_dict[key] for key in state_dict.keys() if key not in layer_list}
             model_state[ndx] = {
@@ -465,7 +466,7 @@ class EmbeddingTraining:
                 }
             if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
                 data_state[ndx]['emb_vector'] = model.state_dict()['embedding.weight'][ndx].detach().cpu()
-            elif hasattr(model, 'embedding'):
+            elif hasattr(model, 'embedding') and model.embedding is not None:
                 data_state[ndx]['emb_vector'] = model.embedding.detach().cpu()
 
         torch.save(model_state, model_file_path)
