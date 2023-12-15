@@ -36,7 +36,7 @@ class EmbeddingTraining:
                  sites=None, model_type=None, weight_decay=1e-5, cifar=True,
                  extra_conv=False, get_transforms=False, state_dict=None,
                  comm_frequency=1, inc_gpu_util=False, iterations=None,
-                 comm_rounds=500):
+                 comm_rounds=500, fedprox=False, fedprox_mu=0.):
 
         # self.settings = copy.deepcopy(locals())
         # del self.settings['self']
@@ -75,6 +75,8 @@ class EmbeddingTraining:
         self.comm_frequency = comm_frequency
         self.inc_gpu_util = inc_gpu_util
         self.comm_rounds = comm_rounds
+        self.fedprox = fedprox
+        self.fedprox_mu = fedprox_mu
         if self.inc_gpu_util:
             log.info('Artificially increasing batch size by stacking the batch 4 times and then augmenting')
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
@@ -202,6 +204,8 @@ class EmbeddingTraining:
         log.info("Starting {}".format(type(self).__name__))
         state_dict = self.state_dict if self.state_dict is not None else state_dict
         self.mergeModels(is_init=True, model_path=self.model_path, state_dict=state_dict)
+        if self.fedprox:
+            self.global_model = copy.deepcopy(self.models[0])
 
         trn_dls = self.trn_dls
         val_dls = self.val_dls
@@ -374,7 +378,14 @@ class EmbeddingTraining:
             pred = model(batch)
         pred_label = torch.argmax(pred, dim=1)
         loss_fn = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
-        loss = loss_fn(pred, labels)
+        proximal_term = 0.0
+        if self.fedprox and not self.finetuning:
+            original_list = [name for name, _ in self.models[0].named_parameters()]
+            layer_list = get_layer_list(model=self.model_name, strategy=self.strategy, original_list=original_list)
+            for (name, w), w_t in zip(model.named_parameters(), self.global_model.parameters()):
+                if name in layer_list:
+                    proximal_term += (w - w_t).norm(2)
+        loss = loss_fn(pred, labels) + self.fedprox_mu * 0.5 * proximal_term
 
         correct_mask = pred_label == labels
         correct = torch.sum(correct_mask)
@@ -524,6 +535,9 @@ class EmbeddingTraining:
 
             for model in self.models:
                 model.load_state_dict(param_dict, strict=False)
+
+            if self.fedprox:
+                self.global_model.load_state_dict(param_dict, strict=False)
 
 
 if __name__ == '__main__':
