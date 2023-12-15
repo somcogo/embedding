@@ -36,7 +36,7 @@ class EmbeddingTraining:
                  sites=None, model_type=None, weight_decay=1e-5, cifar=True,
                  extra_conv=False, get_transforms=False, state_dict=None,
                  comm_frequency=1, inc_gpu_util=False, iterations=None,
-                 comm_rounds=500, fedprox=False, fedprox_mu=0.):
+                 comm_rounds=500, fedprox=False, fedprox_mu=0., arma_mu=1.):
 
         # self.settings = copy.deepcopy(locals())
         # del self.settings['self']
@@ -77,6 +77,7 @@ class EmbeddingTraining:
         self.comm_rounds = comm_rounds
         self.fedprox = fedprox
         self.fedprox_mu = fedprox_mu
+        self.arma_mu = arma_mu
         if self.inc_gpu_util:
             log.info('Artificially increasing batch size by stacking the batch 4 times and then augmenting')
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
@@ -204,8 +205,7 @@ class EmbeddingTraining:
         log.info("Starting {}".format(type(self).__name__))
         state_dict = self.state_dict if self.state_dict is not None else state_dict
         self.mergeModels(is_init=True, model_path=self.model_path, state_dict=state_dict)
-        if self.fedprox:
-            self.global_model = copy.deepcopy(self.models[0])
+        self.global_model = copy.deepcopy(self.models[0])
 
         trn_dls = self.trn_dls
         val_dls = self.val_dls
@@ -526,18 +526,19 @@ class EmbeddingTraining:
             original_list = [name for name, _ in self.models[0].named_parameters()]
             layer_list = get_layer_list(model=self.model_name, strategy=self.strategy, original_list=original_list)
             state_dicts = [model.state_dict() for model in self.models]
-            param_dict = {layer: torch.zeros(state_dicts[0][layer].shape, device=self.device) for layer in layer_list}
+            global_state_dict = self.global_model.state_dict()
+            updated_params = {layer: torch.zeros_like(state_dicts[0][layer]) for layer in layer_list}
 
             for layer in layer_list:
                 for state_dict in state_dicts:
-                    param_dict[layer] += state_dict[layer]
-                param_dict[layer] /= len(state_dicts)
+                    updated_params[layer] += state_dict[layer]
+                updated_params[layer] /= len(state_dicts)
+                updated_params[layer] = (1 - self.arma_mu)*global_state_dict[layer] + self.arma_mu*updated_params[layer] 
 
             for model in self.models:
-                model.load_state_dict(param_dict, strict=False)
+                model.load_state_dict(updated_params, strict=False)
 
-            if self.fedprox:
-                self.global_model.load_state_dict(param_dict, strict=False)
+            self.global_model.load_state_dict(updated_params, strict=False)
 
 
 if __name__ == '__main__':
