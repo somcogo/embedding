@@ -37,7 +37,7 @@ class EmbeddingTraining:
                  extra_conv=False, get_transforms=False, state_dict=None,
                  comm_frequency=1, inc_gpu_util=False, iterations=None,
                  comm_rounds=500, fedprox=False, fedprox_mu=0., arma_mu=1.,
-                 one_hot_emb=False):
+                 one_hot_emb=False, emb_trn_cycle=False):
 
         # self.settings = copy.deepcopy(locals())
         # del self.settings['self']
@@ -79,6 +79,7 @@ class EmbeddingTraining:
         self.fedprox_mu = fedprox_mu
         self.arma_mu = arma_mu
         self.one_hot_emb = one_hot_emb
+        self.emb_trn_cycle = emb_trn_cycle
         if self.inc_gpu_util:
             log.info('Artificially increasing batch size by stacking the batch 4 times and then augmenting')
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
@@ -136,6 +137,8 @@ class EmbeddingTraining:
 
     def initOptimizers(self, lr, finetuning, weight_decay=None, embedding_lr=None, ffwrd_lr=None):
         optims = []
+        if self.emb_trn_cycle:
+            self.emb_optims = []
         for ndx, model in enumerate(self.models):
             params_to_update = []
             if finetuning:
@@ -153,14 +156,18 @@ class EmbeddingTraining:
                 all_names = [name for name, _ in model.named_parameters()]
                 embedding_names = []
                 ffwrd_names = []
-                if embedding_lr is not None or self.one_hot_emb:
+                if embedding_lr is not None or self.one_hot_emb or self.emb_trn_cycle:
                     embedding_names = [name for name in all_names if name.split('.')[0] == 'embedding']
-                    if embedding_lr is not None:
-                        params_to_update.append({'params':[param for name, param in model.named_parameters() if name in embedding_names], 'lr':embedding_lr})
-                    else:
+                    if self.one_hot_emb:
                         for name, param in model.named_parameters():
                             if name in embedding_names:
                                 param.requires_grad = False
+                    elif self.emb_trn_cycle:
+                        emb_params_to_update = [{'params':[param for name, param in model.named_parameters() if name in embedding_names], 'lr':embedding_lr if embedding_lr is not None else lr}]
+                        for param in emb_params_to_update[0]['params']:
+                            param.requires_grad = False
+                    elif embedding_lr is not None:
+                        params_to_update.append({'params':[param for name, param in model.named_parameters() if name in embedding_names], 'lr':embedding_lr})
                 if ffwrd_lr is not None:
                     ffwrd_names = [name for name in all_names if 'generator' in name]
                     params_to_update.append({'params':[param for name, param in model.named_parameters() if name in ffwrd_names], 'lr':ffwrd_lr})
@@ -176,6 +183,17 @@ class EmbeddingTraining:
                 optim = SGD(params=params_to_update, lr=lr, weight_decay=weight_decay, momentum=0.9)
             elif self.optimizer_type == 'lbfgs':
                 optim = LBFGS(params=params_to_update, lr=lr, line_search_fn='strong_wolfe')
+            if self.emb_trn_cycle:
+                if self.optimizer_type == 'adam':
+                    emb_optim = Adam(params=emb_params_to_update, lr=embedding_lr if embedding_lr is not None else lr, weight_decay=weight_decay)
+                elif self.optimizer_type == 'newadam':
+                    emb_optim = Adam(params=emb_params_to_update, lr=embedding_lr if embedding_lr is not None else lr, weight_decay=weight_decay, betas=(0.5,0.9))
+                elif self.optimizer_type == 'adamw':
+                    emb_optim = AdamW(params=emb_params_to_update, lr=embedding_lr if embedding_lr is not None else lr, weight_decay=weight_decay)
+                elif self.optimizer_type == 'sgd':
+                    emb_optim = SGD(params=emb_params_to_update, lr=embedding_lr if embedding_lr is not None else lr, weight_decay=weight_decay, momentum=0.9)
+                self.emb_optims.append(emb_optim)
+
             optims.append(optim)
         return optims
     
@@ -270,6 +288,8 @@ class EmbeddingTraining:
         for model in self.models:
             model.train()
 
+        if self.emb_trn_cycle:
+            self.optimize_emb(trn_dls)
         trn_metrics = torch.zeros(2 + 2*self.site_number + self.num_classes, device=self.device)
         loss = 0
         correct = 0
@@ -312,6 +332,32 @@ class EmbeddingTraining:
         trn_metrics[-1] = correct / total
 
         return trn_metrics.to('cpu')
+    
+    def optimize_emb(self, trn_dls):
+        for optim in self.optims:
+            for p_group in optim.param_groups:
+                for p in p_group['params']:
+                    p.requires_grad = False
+        for optim in self.emb_optims:
+            for p_group in optim.param_groups:
+                for p in p_group['params']:
+                    p.requires_grad = True
+
+        for site, trn_dl in enumerate(trn_dls):
+            for batch_tuple in trn_dl:
+                self.emb_optims[site].zero_grad()
+                loss, _ = self.computeBatchLoss(None, batch_tuple, self.models[site], None, 'trn', site)
+                loss.backward()
+                self.emb_optims[site].step()
+        
+        for optim in self.optims:
+            for p_group in optim.param_groups:
+                for p in p_group['params']:
+                    p.requires_grad = True
+        for optim in self.emb_optims:
+            for p_group in optim.param_groups:
+                for p in p_group['params']:
+                    p.requires_grad = False
 
     def doValidation(self, val_dls):
         with torch.no_grad():
@@ -399,16 +445,17 @@ class EmbeddingTraining:
         correct = torch.sum(correct_mask)
         accuracy = correct / batch.shape[0] * 100
 
-        for cls in range(self.num_classes):
-            class_mask = labels == cls
-            correct_in_cls = torch.sum(correct_mask[class_mask])
-            total_in_cls = torch.sum(class_mask)
-            metrics[cls, batch_ndx] = correct_in_cls
-            metrics[self.num_classes + cls, batch_ndx] = total_in_cls
+        if metrics is not None:
+            for cls in range(self.num_classes):
+                class_mask = labels == cls
+                correct_in_cls = torch.sum(correct_mask[class_mask])
+                total_in_cls = torch.sum(class_mask)
+                metrics[cls, batch_ndx] = correct_in_cls
+                metrics[self.num_classes + cls, batch_ndx] = total_in_cls
 
 
-        metrics[-2, batch_ndx] = loss.detach()
-        metrics[-1, batch_ndx] = correct
+            metrics[-2, batch_ndx] = loss.detach()
+            metrics[-1, batch_ndx] = correct
 
         return loss.sum(), accuracy
 
