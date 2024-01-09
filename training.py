@@ -36,7 +36,8 @@ class EmbeddingTraining:
                  sites=None, model_type=None, weight_decay=1e-5, cifar=True,
                  extra_conv=False, get_transforms=False, state_dict=None,
                  comm_frequency=1, inc_gpu_util=False, iterations=None,
-                 comm_rounds=500, fedprox=False, fedprox_mu=0., arma_mu=1.):
+                 comm_rounds=500, fedprox=False, fedprox_mu=0., arma_mu=1.,
+                 one_hot_emb=False):
 
         # self.settings = copy.deepcopy(locals())
         # del self.settings['self']
@@ -59,7 +60,6 @@ class EmbeddingTraining:
         self.save_model = save_model
         self.strategy = strategy
         self.finetuning = finetuning
-        self.embed_dim = embed_dim
         self.model_path = model_path
         self.input_perturbation = input_perturbation
         if site_indices is None:
@@ -78,6 +78,7 @@ class EmbeddingTraining:
         self.fedprox = fedprox
         self.fedprox_mu = fedprox_mu
         self.arma_mu = arma_mu
+        self.one_hot_emb = one_hot_emb
         if self.inc_gpu_util:
             log.info('Artificially increasing batch size by stacking the batch 4 times and then augmenting')
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
@@ -98,6 +99,7 @@ class EmbeddingTraining:
         else:
             self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
             self.site_number = len(site_indices)
+        self.embed_dim = self.site_number if one_hot_emb else embed_dim
         self.models = self.initModels(embed_dim=embed_dim, layer_number=layer_number, model_type=model_type)
         self.optims = self.initOptimizers(lr, finetuning, weight_decay=weight_decay, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
@@ -151,9 +153,14 @@ class EmbeddingTraining:
                 all_names = [name for name, _ in model.named_parameters()]
                 embedding_names = []
                 ffwrd_names = []
-                if embedding_lr is not None:
+                if embedding_lr is not None or self.one_hot_emb:
                     embedding_names = [name for name in all_names if name.split('.')[0] == 'embedding']
-                    params_to_update.append({'params':[param for name, param in model.named_parameters() if name in embedding_names], 'lr':embedding_lr})
+                    if embedding_lr is not None:
+                        params_to_update.append({'params':[param for name, param in model.named_parameters() if name in embedding_names], 'lr':embedding_lr})
+                    else:
+                        for name, param in model.named_parameters():
+                            if name in embedding_names:
+                                param.requires_grad = False
                 if ffwrd_lr is not None:
                     ffwrd_names = [name for name in all_names if 'generator' in name]
                     params_to_update.append({'params':[param for name, param in model.named_parameters() if name in ffwrd_names], 'lr':ffwrd_lr})
@@ -219,6 +226,7 @@ class EmbeddingTraining:
             log.info('Round {} of {}, accuracy {}, val loss {}'.format(0, self.comm_rounds, accuracy, loss))
 
         for comm_round in range(1, self.comm_rounds):
+            logging_index = comm_round % 10**(math.floor(math.log(comm_round, 10))) == 0
 
             if comm_round == 1:
                 log.info("Round {} of {}, training on {} sites, using {} device".format(
@@ -241,7 +249,7 @@ class EmbeddingTraining:
                 if self.save_model and accuracy==saving_criterion:
                     self.saveModel(comm_round, val_metrics, trn_dls, val_dls)
 
-                if comm_round < 51 or comm_round % 100 == 0:
+                if logging_index:
                     log.info('Round {} of {}, accuracy {}, val loss {}'.format(comm_round, self.comm_rounds, accuracy, loss))            
             
             if self.scheduler_mode == 'cosine' and not self.finetuning:
@@ -349,7 +357,7 @@ class EmbeddingTraining:
     def computeBatchLoss(self, batch_ndx, batch_tup, model, metrics, mode, site_id):
         batch, labels, img_id = batch_tup
         batch = batch.to(device=self.device, non_blocking=True).float()
-        if self.dataset == 'imagenet':
+        if self.dataset in ['imagenet', 'cifar10']:
             batch = batch.permute(0, 3, 1, 2)
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
 
