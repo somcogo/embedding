@@ -19,7 +19,7 @@ def get_datasets(data_dir, dataset, use_hdf5=False):
         trn_dataset, val_dataset = get_celeba_dataset(data_dir=data_dir)
     return trn_dataset, val_dataset
 
-def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, net_dataidx_map_train=None, net_dataidx_map_test=None, shuffle=True, k_fold_val_id=None, seed=None, site_indices=None, use_hdf5=False):
+def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, net_dataidx_map_train=None, net_dataidx_map_test=None, shuffle=True, k_fold_val_id=None, seed=None, site_indices=None, use_hdf5=True):
     trn_dataset, val_dataset = get_datasets(data_dir=data_path, dataset=dataset, use_hdf5=use_hdf5)
 
     if partition == 'regular':
@@ -46,8 +46,8 @@ def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, n
         trn_ds_list = [TruncatedDataset(merged_ds_list[i], dataset, idx_map[0]) for i, idx_map in enumerate(indices)]
         val_ds_list = [TruncatedDataset(merged_ds_list[i], dataset, idx_map[1]) for i, idx_map in enumerate(indices)]
 
-    trn_dl_list = [DataLoader(dataset=trn_ds, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=0, persistent_workers=False) for trn_ds in trn_ds_list]
-    val_dl_list = [DataLoader(dataset=val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=0, persistent_workers=False) for val_ds in val_ds_list]
+    trn_dl_list = [DataLoader(dataset=trn_ds, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=0) for trn_ds in trn_ds_list]
+    val_dl_list = [DataLoader(dataset=val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=0) for val_ds in val_ds_list]
     if site_indices is not None:
         trn_dl_list = [trn_dl_list[i] for i in site_indices]
         val_dl_list = [val_dl_list[i] for i in site_indices]

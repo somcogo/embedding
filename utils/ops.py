@@ -1,3 +1,4 @@
+from typing import Any
 import numpy as np
 import torch
 from torchvision.transforms import (
@@ -11,7 +12,8 @@ from torchvision.transforms import (
      RandomErasing,
      RandomResizedCrop,
      ColorJitter,
-     Grayscale)
+     Grayscale,
+     ConvertImageDtype,)
 from torchvision.transforms import functional as F
 
 def aug_image(batch: torch.Tensor, labels, dataset):
@@ -118,18 +120,155 @@ def getTransformList(degradation, site_number, seed):
     rng = np.random.default_rng(seed)
     if degradation == 'colorjitter':
         endpoints = np.linspace(0.5, 1.5, site_number+1)
-        brightness_ndx = rng.permutation(np.arange(site_number))
-        contrast_ndx = rng.permutation(np.arange(site_number))
-        saturation_ndx = rng.permutation(np.arange(site_number))
+        bri_ndx = rng.permutation(np.arange(site_number))
+        con_ndx = rng.permutation(np.arange(site_number))
+        sat_ndx = rng.permutation(np.arange(site_number))
         hue_ndx = rng.permutation(np.arange(site_number))
         for site in range(site_number):
-            brightness = rng.uniform(endpoints[brightness_ndx[site]], endpoints[brightness_ndx[site]+1])
-            contrast = rng.uniform(endpoints[contrast_ndx[site]], endpoints[contrast_ndx[site]+1])
-            saturation = rng.uniform(endpoints[saturation_ndx[site]], endpoints[saturation_ndx[site]+1])
+            bri = rng.uniform(endpoints[bri_ndx[site]], endpoints[bri_ndx[site]+1])
+            con = rng.uniform(endpoints[con_ndx[site]], endpoints[con_ndx[site]+1])
+            sat = rng.uniform(endpoints[sat_ndx[site]], endpoints[sat_ndx[site]+1])
             hue = rng.uniform(endpoints[hue_ndx[site]], endpoints[hue_ndx[site]+1]) - 1
-            transforms.append(ColorJitter((brightness, brightness),
-                                          (contrast, contrast),
-                                          (saturation, saturation),
+            transforms.append(ColorJitter((bri, bri),
+                                          (con, con),
+                                          (sat, sat),
                                           (hue, hue)))
+    elif degradation == 'colorjitternoclip':
+        endpoints = np.linspace(0.5, 1.5, site_number+1)
+        bri_ndx = rng.permutation(np.arange(site_number))
+        con_ndx = rng.permutation(np.arange(site_number))
+        sat_ndx = rng.permutation(np.arange(site_number))
+        hue_ndx = rng.permutation(np.arange(site_number))
+        for site in range(site_number):
+            bri = rng.uniform(endpoints[bri_ndx[site]], endpoints[bri_ndx[site]+1])
+            con = rng.uniform(endpoints[con_ndx[site]], endpoints[con_ndx[site]+1])
+            sat = rng.uniform(endpoints[sat_ndx[site]], endpoints[sat_ndx[site]+1])
+            hue = rng.uniform(endpoints[hue_ndx[site]], endpoints[hue_ndx[site]+1]) - 1
+            transforms.append(ColorjitterWithoutClip(bri,
+                                                     con,
+                                                     sat,
+                                                     hue))
+    elif degradation == 'nothing':
+        for site in range(site_number):
+            transforms.append(ConvertImageDtype(torch.float))
             
     return transforms
+
+class ColorjitterWithoutClip:
+    def __init__(self, bri, con, sat, hue):
+        self.bri = bri
+        self.con = con
+        self.sat = sat
+        self.hue = hue
+
+    def __call__(self, img:torch.Tensor):
+        return do_colorjitter(img, self.bri, self.con, self.sat, self.hue)
+
+
+# TODO: based on the PyTorch Colorjitter implementation
+def do_colorjitter(img, bri, con, sat, hue):
+    img = blend_without_clip(img, torch.zeros_like(img), bri)
+
+    dtype = img.dtype if torch.is_floating_point(img) else torch.float32
+    mean = torch.mean(rgb_to_grayscale(img).to(dtype), dim=(-3, -2, -1), keepdim=True)
+    img = blend_without_clip(img, mean, con)
+
+    img = blend_without_clip(img, rgb_to_grayscale(img), sat)
+
+
+    orig_dtype = img.dtype
+    img = img.to(torch.float32)
+
+    hsv_img = _rgb2hsv(img)
+    h, s, v = hsv_img.unbind(dim=-3)
+    h = (h + hue) % 1.0
+    hsv_img = torch.stack((h, s, v), dim=-3)
+    img_hue_adj = _hsv2rgb(hsv_img)
+    img = img_hue_adj.to(orig_dtype)
+
+    return img
+
+def blend_without_clip(img1: torch.Tensor, img2: torch.Tensor, ratio: float) -> torch.Tensor:
+    ratio = float(ratio)
+    return (ratio * img1 + (1.0 - ratio) * img2).to(img1.dtype)
+
+def rgb_to_grayscale(img: torch.Tensor, num_output_channels: int = 1) -> torch.Tensor:
+    if img.ndim < 3:
+        raise TypeError(f"Input image tensor should have at least 3 dimensions, but found {img.ndim}")
+
+    if num_output_channels not in (1, 3):
+        raise ValueError("num_output_channels should be either 1 or 3")
+
+    if img.shape[-3] == 3:
+        r, g, b = img.unbind(dim=-3)
+        # This implementation closely follows the TF one:
+        # https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/ops/image_ops_impl.py#L2105-L2138
+        l_img = (0.2989 * r + 0.587 * g + 0.114 * b).to(img.dtype)
+        l_img = l_img.unsqueeze(dim=-3)
+    else:
+        l_img = img.clone()
+
+    if num_output_channels == 3:
+        return l_img.expand(img.shape)
+
+    return l_img
+
+def _rgb2hsv(img: torch.Tensor) -> torch.Tensor:
+    r, g, b = img.unbind(dim=-3)
+
+    # Implementation is based on https://github.com/python-pillow/Pillow/blob/4174d4267616897df3746d315d5a2d0f82c656ee/
+    # src/libImaging/Convert.c#L330
+    maxc = torch.max(img, dim=-3).values
+    minc = torch.min(img, dim=-3).values
+
+    # The algorithm erases S and H channel where `maxc = minc`. This avoids NaN
+    # from happening in the results, because
+    #   + S channel has division by `maxc`, which is zero only if `maxc = minc`
+    #   + H channel has division by `(maxc - minc)`.
+    #
+    # Instead of overwriting NaN afterwards, we just prevent it from occurring, so
+    # we don't need to deal with it in case we save the NaN in a buffer in
+    # backprop, if it is ever supported, but it doesn't hurt to do so.
+    eqc = maxc == minc
+
+    cr = maxc - minc
+    # Since `eqc => cr = 0`, replacing denominator with 1 when `eqc` is fine.
+    ones = torch.ones_like(maxc)
+    s = cr / torch.where(eqc, ones, maxc)
+    # Note that `eqc => maxc = minc = r = g = b`. So the following calculation
+    # of `h` would reduce to `bc - gc + 2 + rc - bc + 4 + rc - bc = 6` so it
+    # would not matter what values `rc`, `gc`, and `bc` have here, and thus
+    # replacing denominator with 1 when `eqc` is fine.
+    cr_divisor = torch.where(eqc, ones, cr)
+    rc = (maxc - r) / cr_divisor
+    gc = (maxc - g) / cr_divisor
+    bc = (maxc - b) / cr_divisor
+
+    hr = (maxc == r) * (bc - gc)
+    hg = ((maxc == g) & (maxc != r)) * (2.0 + rc - bc)
+    hb = ((maxc != g) & (maxc != r)) * (4.0 + gc - rc)
+    h = hr + hg + hb
+    h = torch.fmod((h / 6.0 + 1.0), 1.0)
+    return torch.stack((h, s, maxc), dim=-3)
+
+
+def _hsv2rgb(img: torch.Tensor) -> torch.Tensor:
+    h, s, v = img.unbind(dim=-3)
+    i = torch.floor(h * 6.0)
+    f = (h * 6.0) - i
+    i = i.to(dtype=torch.int32)
+
+    p = torch.clamp((v * (1.0 - s)), 0.0, 1.0)
+    q = torch.clamp((v * (1.0 - s * f)), 0.0, 1.0)
+    t = torch.clamp((v * (1.0 - s * (1.0 - f))), 0.0, 1.0)
+    i = i % 6
+
+    mask = i.unsqueeze(dim=-3) == torch.arange(6, device=i.device).view(-1, 1, 1)
+
+    a1 = torch.stack((v, q, p, p, t, v), dim=-3)
+    a2 = torch.stack((t, v, v, q, p, p), dim=-3)
+    a3 = torch.stack((p, p, t, v, v, q), dim=-3)
+    a4 = torch.stack((a1, a2, a3), dim=-4)
+
+    return torch.einsum("...ijk, ...xijk -> ...xjk", mask.to(dtype=img.dtype), a4)
+

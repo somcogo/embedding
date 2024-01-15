@@ -13,7 +13,7 @@ import numpy as np
 
 from utils.logconf import logging
 from utils.data_loader import get_dl_lists
-from utils.ops import aug_image, perturb
+from utils.ops import aug_image, perturb, getTransformList
 from utils.merge_strategies import get_layer_list
 from utils.get_model import get_model
 
@@ -26,13 +26,16 @@ class EmbeddingTraining:
     def __init__(self, epochs=500, batch_size=128, logdir='test', lr=1e-3,
                  comment='dwlpt', dataset='cifar10', site_number=1,
                  model_name='resnet18emb', optimizer_type='newadam',
-                 scheduler_mode='cosine', T_max=500, save_model=False,
-                 partition='regular', alpha=1e7, strategy='noembed',
-                 finetuning=False, embed_dim=2, model_path=None,
-                 embedding_lr=None, ffwrd_lr=None, k_fold_val_id=None,
-                 seed=None, site_indices=None, use_hdf5=False, sites=None,
-                 model_type=None, weight_decay=1e-5, task='classification',
-                 cifar=True):
+                 scheduler_mode='cosine', T_max=500,
+                 save_model=False, partition='dirichlet',
+                 alpha=1e7, strategy='noembed', finetuning=False, embed_dim=2,
+                 model_path=None, embedding_lr=None, ffwrd_lr=None,
+                 k_fold_val_id=None, seed=None,
+                 site_indices=None, use_hdf5=False,
+                 colorjitter=False, task='classification',
+                 sites=None, model_type=None, weight_decay=1e-5, cifar=True, get_transforms=False, state_dict=None, comm_frequency=1, iterations=None,
+                 comm_rounds=500, fedprox=False, fedprox_mu=0., arma_mu=1.,
+                 one_hot_emb=False, emb_trn_cycle=False):
 
         comment = '{}-e{}-b{}-lr{}-{}-s{}-{}-{}-{}-{}-T{}-edim{}-genlr{}-wdecay{}-{}'.format(
             comment, epochs, batch_size, lr, dataset, site_number, model_name, model_type,
@@ -53,23 +56,34 @@ class EmbeddingTraining:
         self.save_model = save_model
         self.strategy = strategy
         self.finetuning = finetuning
-        self.embed_dim = embed_dim
         self.model_path = model_path
         if site_indices is None:
             site_indices = range(site_number)
         self.site_indices = site_indices
         self.use_hdf5 = use_hdf5
+        self.colorjitter = colorjitter
         self.task = task
+        self.cifar = cifar
+        self.state_dict = state_dict
+        self.comm_frequency = comm_frequency
+        self.comm_rounds = comm_rounds
+        self.fedprox = fedprox
+        self.fedprox_mu = fedprox_mu
+        self.arma_mu = arma_mu
+        self.one_hot_emb = one_hot_emb
+        self.emb_trn_cycle = emb_trn_cycle
+        if self.inc_gpu_util:
+            log.info('Artificially increasing batch size by stacking the batch 4 times and then augmenting')
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
         self.logdir = os.path.join('/home/hansel/developer/embedding/runs', self.logdir_name)
         os.makedirs(self.logdir, exist_ok=True)
-
+        
         self.trn_writer = None
         self.val_writer = None
-        self.totalTrainingSamples_count = 0
-
+        if get_transforms:
+            self.transforms = getTransformList('colorjitter', site_number, seed=1)
         if sites is not None:
             self.trn_dls = [site['trn_dl'] for site in sites]
             self.val_dls = [site['val_dl'] for site in sites]
@@ -78,13 +92,17 @@ class EmbeddingTraining:
         else:
             self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
             self.site_number = len(site_indices)
+        self.embed_dim = self.site_number if one_hot_emb else embed_dim
         self.models = self.initModels(embed_dim=embed_dim, model_type=model_type, cifar=cifar)
         self.optims = self.initOptimizers(lr, finetuning, weight_decay=weight_decay, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
+        if iterations is None:
+            iterations = math.ceil(len(self.trn_dls[0].dataset)/batch_size)
+        self.iterations = iterations
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
-    def initModels(self, embed_dim, model_type, cifar):
-        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, model_type, self.task, cifar=cifar)
+    def initModels(self, embed_dim, layer_number, model_type):
+        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, layer_number, model_type=model_type)
 
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
@@ -96,23 +114,37 @@ class EmbeddingTraining:
 
     def initOptimizers(self, lr, finetuning, weight_decay=None, embedding_lr=None, ffwrd_lr=None):
         optims = []
-        for model in self.models:
+        if self.emb_trn_cycle:
+            self.emb_optims = []
+        for ndx, model in enumerate(self.models):
             params_to_update = []
             if finetuning:
-                assert self.strategy in ['finetuning', 'affinetoo', 'onlyfc', 'onlyemb']
+                assert self.strategy in ['finetuning', 'affinetoo', 'onlyfc', 'onlyemb', 'extra_conv', 'onlyextra_conv']
                 layer_list = get_layer_list(self.model_name, strategy=self.strategy, original_list=model.state_dict().keys())
                 for name, param in model.named_parameters():
                     if name in layer_list:
                         params_to_update.append(param)
                     else:
                         param.requires_grad = False
+
+                if ndx == 0:
+                    log.debug('Finetuning layers {}'.format(layer_list))
             else:
                 all_names = [name for name, _ in model.named_parameters()]
                 embedding_names = []
                 ffwrd_names = []
-                if embedding_lr is not None:
+                if embedding_lr is not None or self.one_hot_emb or self.emb_trn_cycle:
                     embedding_names = [name for name in all_names if name.split('.')[0] == 'embedding']
-                    params_to_update.append({'params':[param for name, param in model.named_parameters() if name in embedding_names], 'lr':embedding_lr})
+                    if self.one_hot_emb:
+                        for name, param in model.named_parameters():
+                            if name in embedding_names:
+                                param.requires_grad = False
+                    elif self.emb_trn_cycle:
+                        emb_params_to_update = [{'params':[param for name, param in model.named_parameters() if name in embedding_names], 'lr':embedding_lr if embedding_lr is not None else lr}]
+                        for param in emb_params_to_update[0]['params']:
+                            param.requires_grad = False
+                    elif embedding_lr is not None:
+                        params_to_update.append({'params':[param for name, param in model.named_parameters() if name in embedding_names], 'lr':embedding_lr})
                 if ffwrd_lr is not None:
                     ffwrd_names = [name for name in all_names if 'generator' in name]
                     params_to_update.append({'params':[param for name, param in model.named_parameters() if name in ffwrd_names], 'lr':ffwrd_lr})
@@ -128,6 +160,17 @@ class EmbeddingTraining:
                 optim = SGD(params=params_to_update, lr=lr, weight_decay=weight_decay, momentum=0.9)
             elif self.optimizer_type == 'lbfgs':
                 optim = LBFGS(params=params_to_update, lr=lr, line_search_fn='strong_wolfe')
+            if self.emb_trn_cycle:
+                if self.optimizer_type == 'adam':
+                    emb_optim = Adam(params=emb_params_to_update, lr=embedding_lr if embedding_lr is not None else lr, weight_decay=weight_decay)
+                elif self.optimizer_type == 'newadam':
+                    emb_optim = Adam(params=emb_params_to_update, lr=embedding_lr if embedding_lr is not None else lr, weight_decay=weight_decay, betas=(0.5,0.9))
+                elif self.optimizer_type == 'adamw':
+                    emb_optim = AdamW(params=emb_params_to_update, lr=embedding_lr if embedding_lr is not None else lr, weight_decay=weight_decay)
+                elif self.optimizer_type == 'sgd':
+                    emb_optim = SGD(params=emb_params_to_update, lr=embedding_lr if embedding_lr is not None else lr, weight_decay=weight_decay, momentum=0.9)
+                self.emb_optims.append(emb_optim)
+
             optims.append(optim)
         return optims
     
@@ -162,7 +205,9 @@ class EmbeddingTraining:
 
     def train(self, state_dict=None):
         log.info("Starting {}".format(type(self).__name__))
+        state_dict = self.state_dict if self.state_dict is not None else state_dict
         self.mergeModels(is_init=True, model_path=self.model_path, state_dict=state_dict)
+        self.global_model = copy.deepcopy(self.models[0])
 
         trn_dls = self.trn_dls
         val_dls = self.val_dls
@@ -176,31 +221,30 @@ class EmbeddingTraining:
             metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['overall/mean dice']
             log.info('Epoch {} of {}, accuracy/dice {}, val loss {}'.format(0, self.epochs, metric_to_report, val_metrics['mean loss']))
 
-        for epoch_ndx in range(1, self.epochs + 1):
+        for comm_round in range(1, self.comm_rounds):
+            logging_index = comm_round % 10**(math.floor(math.log(comm_round, 10))) == 0
 
-            if epoch_ndx == 1:
-                log.info("Epoch {} of {}, training on {} sites, using {} device".format(
-                    epoch_ndx,
-                    self.epochs,
+            if comm_round == 1:
+                log.info("Round {} of {}, training on {} sites, using {} device".format(
+                    comm_round,
+                    self.comm_rounds,
                     len(trn_dls),
                     (torch.cuda.device_count() if self.use_cuda else 1),
                 ))
 
-            trn_metrics = self.doTraining(epoch_ndx, trn_dls)
-            self.logMetrics(epoch_ndx, 'trn', trn_metrics)
+            trn_metrics = self.doTraining(trn_dls)
+            self.logMetrics(comm_round, 'trn', trn_metrics)
 
-            if epoch_ndx == 1 or epoch_ndx % validation_cadence == 0:
-                val_metrics = self.doValidation(epoch_ndx, val_dls)
-                self.logMetrics(epoch_ndx, 'val', val_metrics)
-
+            if comm_round == 1 or comm_round % validation_cadence == 0:
+                val_metrics = self.doValidation(comm_round, val_dls)
+                self.logMetrics(comm_round, 'val', val_metrics)
                 metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['overall/mean dice']
                 saving_criterion = max(metric_to_report, saving_criterion)
 
                 if self.save_model and metric_to_report==saving_criterion:
-                    self.saveModel(epoch_ndx, val_metrics, trn_dls, val_dls)
-
-                if epoch_ndx < 51 or epoch_ndx % 100 == 0:
-                    log.info('Epoch {} of {}, accuracy/dice {}, val loss {}'.format(epoch_ndx, self.epochs, metric_to_report, val_metrics['mean loss']))
+                    self.saveModel(comm_round, val_metrics, trn_dls, val_dls)
+                if logging_index:
+                    log.info('Epoch {} of {}, accuracy/dice {}, val loss {}'.format(comm_round, self.epochs, metric_to_report, val_metrics['mean loss']))
             
             if self.scheduler_mode == 'cosine' and not self.finetuning:
                 for scheduler in self.schedulers:
@@ -216,45 +260,70 @@ class EmbeddingTraining:
 
         return saving_criterion, self.models[0].state_dict()
 
-    def doTraining(self, epoch_ndx, trn_dls):
+    def doTraining(self, trn_dls):
         for model in self.models:
             model.train()
 
+        if self.emb_trn_cycle:
+            self.optimize_emb(trn_dls)
         metrics = []
-        for ndx, trn_dl in enumerate(trn_dls):
-            site_metrics = self.get_empty_metrics()
 
-            for batch_ndx, batch_tuple in enumerate(trn_dl):
-                # with torch.autograd.detect_anomaly():s
-                    def closure():
+        for ndx, trn_dl in enumerate(trn_dls):
+            iter_ndx = 0
+            site_metrics = self.get_empty_metrics()
+            while iter_ndx < self.iterations:
+
+                for batch_tuple in trn_dl:
+                    # with torch.autograd.detect_anomaly():
                         self.optims[ndx].zero_grad()
                         loss = self.computeBatchLoss(
-                            batch_ndx,
+                            iter_ndx,
                             batch_tuple,
                             self.models[ndx],
                             site_metrics,
                             'trn',
                             ndx)
                         loss.backward()
-                        return loss
-                    # try:
-                    if self.optimizer_type == 'lbfgs':
-                        self.optims[ndx].step(closure)
-                    else:
-                        loss = closure()
                         self.optims[ndx].step()
-                    # except:
+                        iter_ndx += 1
+                        if iter_ndx >= self.iterations:
+                            break
+
             metrics.append(site_metrics)
         trn_metrics = self.calculateGlobalMetricsFromLocal(metrics)
 
         return trn_metrics
+    
+    def optimize_emb(self, trn_dls):
+        for optim in self.optims:
+            for p_group in optim.param_groups:
+                for p in p_group['params']:
+                    p.requires_grad = False
+        for optim in self.emb_optims:
+            for p_group in optim.param_groups:
+                for p in p_group['params']:
+                    p.requires_grad = True
 
-    def doValidation(self, epoch_ndx, val_dls):
+        for site, trn_dl in enumerate(trn_dls):
+            for batch_tuple in trn_dl:
+                self.emb_optims[site].zero_grad()
+                loss, _ = self.computeBatchLoss(None, batch_tuple, self.models[site], None, 'trn', site)
+                loss.backward()
+                self.emb_optims[site].step()
+        
+        for optim in self.optims:
+            for p_group in optim.param_groups:
+                for p in p_group['params']:
+                    p.requires_grad = True
+        for optim in self.emb_optims:
+            for p_group in optim.param_groups:
+                for p in p_group['params']:
+                    p.requires_grad = False
+
+    def doValidation(self, val_dls):
         with torch.no_grad():
             for model in self.models:
                 model.eval()
-            if epoch_ndx == 1:
-                log.warning('E{} Validation starting'.format(epoch_ndx))
 
             metrics = []
             for ndx, val_dl in enumerate(val_dls):
@@ -276,7 +345,9 @@ class EmbeddingTraining:
 
     def computeBatchLoss(self, batch_ndx, batch_tup, model, metrics, mode, site_id):
         batch, labels, img_id = batch_tup
-        batch = batch.to(device=self.device, non_blocking=True).float().permute(0, 3, 1, 2)
+        batch = batch.to(device=self.device, non_blocking=True).float()
+        if self.dataset in ['imagenet', 'cifar10']:
+            batch = batch.permute(0, 3, 1, 2)
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
 
         if mode == 'trn':
@@ -285,7 +356,12 @@ class EmbeddingTraining:
             resize = Resize(224, antialias=True)
             batch = resize(batch)
         if hasattr(self, 'transforms'):
-            batch = self.transforms[site_id](batch)
+            b_max = torch.amax(batch, dim=(1, 2, 3), keepdim=True)
+            b_min = torch.amin(batch, dim=(1, 2, 3), keepdim=True)
+            batch = (batch - b_min) / (b_max - b_min)
+            if len(self.transforms) > site_id:
+                batch = self.transforms[site_id](batch)
+            batch = (b_max - b_min) * batch + b_min
 
         if 'embedding.weight' in '\t'.join(model.state_dict().keys()):
             pred = model(batch, torch.tensor(site_id, device=self.device, dtype=torch.int))
@@ -293,7 +369,14 @@ class EmbeddingTraining:
             pred = model(batch)
         pred_label = torch.argmax(pred, dim=1)
         loss_fn = nn.CrossEntropyLoss()
-        loss = loss_fn(pred, labels)
+        proximal_term = 0.0
+        if self.fedprox and not self.finetuning:
+            original_list = [name for name, _ in self.models[0].named_parameters()]
+            layer_list = get_layer_list(model=self.model_name, strategy=self.strategy, original_list=original_list)
+            for (name, w), w_t in zip(model.named_parameters(), self.global_model.parameters()):
+                if name in layer_list:
+                    proximal_term += (w - w_t).norm(2)
+        loss = loss_fn(pred, labels) + self.fedprox_mu * 0.5 * proximal_term
 
         metrics = self.calculateLocalMetrics(pred_label, labels, loss, metrics)
 
@@ -408,14 +491,15 @@ class EmbeddingTraining:
 
     def logMetrics(
         self,
-        epoch_ndx,
+        comm_round,
         mode_str,
         metrics
     ):
+        iter_number = comm_round * self.iterations
         self.initTensorboardWriters()
         writer = getattr(self, mode_str + '_writer')
         for k, v in metrics.items():
-            writer.add_scalar(k, scalar_value=v, global_step=epoch_ndx)
+            writer.add_scalar(k, scalar_value=v, global_step=iter_number)
         writer.flush()
 
     def saveModel(self, epoch_ndx, val_metrics, trn_dls, val_dls):
@@ -455,7 +539,10 @@ class EmbeddingTraining:
                 data_state[ndx]['trn_labels'] = trn_dls[ndx].dataset.labels
                 data_state[ndx]['val_labels'] = val_dls[ndx].dataset.labels
             state_dict = model.state_dict()
-            site_state_dict = {key: state_dict[key] for key in state_dict.keys() if key not in layer_list}
+            if self.finetuning:
+                site_state_dict = {key: state_dict[key] for key in state_dict.keys() if key in layer_list}
+            else:
+                site_state_dict = {key: state_dict[key] for key in state_dict.keys() if key not in layer_list}
             model_state[ndx] = {
                 'site_model_state': site_state_dict,
                 'model_name': type(model).__name__,
@@ -481,6 +568,14 @@ class EmbeddingTraining:
                     state_dict = loaded_dict['model_state']
                 else:
                     state_dict = loaded_dict[0]['model_state']
+
+                # log.debug('Also loading {}'.format(loaded_dict[0]['site_model_state'].keys()))
+                # for ndx, model in enumerate(self.models):
+                #     try:
+                #         model.load_state_dict(loaded_dict[0]['site_model_state'], strict=False)
+                #     except:
+                #         log.info('Not enough models to load. # of models:{}, # of loaded models: {}'.format(len(self.models), ndx))
+                #         break
             elif state_dict is None:
                 state_dict = self.models[0].state_dict()
             if 'embedding.weight' in '\t'.join(state_dict.keys()):
@@ -491,15 +586,19 @@ class EmbeddingTraining:
             original_list = [name for name, _ in self.models[0].named_parameters()]
             layer_list = get_layer_list(model=self.model_name, strategy=self.strategy, original_list=original_list)
             state_dicts = [model.state_dict() for model in self.models]
-            param_dict = {layer: torch.zeros(state_dicts[0][layer].shape, device=self.device) for layer in layer_list}
+            global_state_dict = self.global_model.state_dict()
+            updated_params = {layer: torch.zeros_like(state_dicts[0][layer]) for layer in layer_list}
 
             for layer in layer_list:
                 for state_dict in state_dicts:
-                    param_dict[layer] += state_dict[layer]
-                param_dict[layer] /= len(state_dicts)
+                    updated_params[layer] += state_dict[layer]
+                updated_params[layer] /= len(state_dicts)
+                updated_params[layer] = (1 - self.arma_mu)*global_state_dict[layer] + self.arma_mu*updated_params[layer] 
 
             for model in self.models:
-                model.load_state_dict(param_dict, strict=False)
+                model.load_state_dict(updated_params, strict=False)
+
+            self.global_model.load_state_dict(updated_params, strict=False)
 
 
 if __name__ == '__main__':
