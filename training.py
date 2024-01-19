@@ -26,16 +26,17 @@ class EmbeddingTraining:
     def __init__(self, epochs=500, batch_size=128, logdir='test', lr=1e-3,
                  comment='dwlpt', dataset='cifar10', site_number=1,
                  model_name='resnet18emb', optimizer_type='newadam',
-                 scheduler_mode='cosine', T_max=500,
-                 save_model=False, partition='dirichlet',
-                 alpha=1e7, strategy='noembed', finetuning=False, embed_dim=2,
-                 model_path=None, embedding_lr=None, ffwrd_lr=None,
-                 k_fold_val_id=None, seed=None,
-                 site_indices=None, use_hdf5=False,
-                 colorjitter=False, task='classification',
-                 sites=None, model_type=None, weight_decay=1e-5, cifar=True, get_transforms=False, state_dict=None, comm_frequency=1, iterations=None,
-                 comm_rounds=500, fedprox=False, fedprox_mu=0., arma_mu=1.,
-                 one_hot_emb=False, emb_trn_cycle=False):
+                 scheduler_mode='cosine', T_max=500, save_model=False,
+                 partition='dirichlet', alpha=1e7, strategy='noembed',
+                 finetuning=False, embed_dim=2, model_path=None,
+                 embedding_lr=None, ffwrd_lr=None, k_fold_val_id=None,
+                 seed=None, site_indices=None, use_hdf5=False,
+                 colorjitter=False, task='classification', sites=None,
+                 model_type=None, weight_decay=1e-5, cifar=True,
+                 get_transforms=False, state_dict=None, comm_frequency=1,
+                 iterations=None, comm_rounds=500, fedprox=False,
+                 fedprox_mu=0., arma_mu=1., one_hot_emb=False,
+                 emb_trn_cycle=False):
 
         comment = '{}-e{}-b{}-lr{}-{}-s{}-{}-{}-{}-{}-T{}-edim{}-genlr{}-wdecay{}-{}'.format(
             comment, epochs, batch_size, lr, dataset, site_number, model_name, model_type,
@@ -72,8 +73,6 @@ class EmbeddingTraining:
         self.arma_mu = arma_mu
         self.one_hot_emb = one_hot_emb
         self.emb_trn_cycle = emb_trn_cycle
-        if self.inc_gpu_util:
-            log.info('Artificially increasing batch size by stacking the batch 4 times and then augmenting')
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
@@ -101,8 +100,8 @@ class EmbeddingTraining:
         self.iterations = iterations
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
-    def initModels(self, embed_dim, layer_number, model_type):
-        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, layer_number, model_type=model_type)
+    def initModels(self, embed_dim, model_type, cifar):
+        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, model_type=model_type, task=self.task, cifar=cifar)
 
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
@@ -219,7 +218,7 @@ class EmbeddingTraining:
             val_metrics = self.doValidation(0, val_dls)
             self.logMetrics(0, 'val', val_metrics)
             metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['overall/mean dice']
-            log.info('Epoch {} of {}, accuracy/dice {}, val loss {}'.format(0, self.epochs, metric_to_report, val_metrics['mean loss']))
+            log.info('Round {} of {}, accuracy/dice {}, val loss {}'.format(0, self.comm_rounds, metric_to_report, val_metrics['mean loss']))
 
         for comm_round in range(1, self.comm_rounds):
             logging_index = comm_round % 10**(math.floor(math.log(comm_round, 10))) == 0
@@ -236,7 +235,7 @@ class EmbeddingTraining:
             self.logMetrics(comm_round, 'trn', trn_metrics)
 
             if comm_round == 1 or comm_round % validation_cadence == 0:
-                val_metrics = self.doValidation(comm_round, val_dls)
+                val_metrics = self.doValidation(val_dls)
                 self.logMetrics(comm_round, 'val', val_metrics)
                 metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['overall/mean dice']
                 saving_criterion = max(metric_to_report, saving_criterion)
@@ -244,7 +243,7 @@ class EmbeddingTraining:
                 if self.save_model and metric_to_report==saving_criterion:
                     self.saveModel(comm_round, val_metrics, trn_dls, val_dls)
                 if logging_index:
-                    log.info('Epoch {} of {}, accuracy/dice {}, val loss {}'.format(comm_round, self.epochs, metric_to_report, val_metrics['mean loss']))
+                    log.info('Round {} of {}, accuracy/dice {}, val loss {}'.format(comm_round, self.comm_rounds, metric_to_report, val_metrics['mean loss']))
             
             if self.scheduler_mode == 'cosine' and not self.finetuning:
                 for scheduler in self.schedulers:
@@ -378,7 +377,7 @@ class EmbeddingTraining:
                     proximal_term += (w - w_t).norm(2)
         loss = loss_fn(pred, labels) + self.fedprox_mu * 0.5 * proximal_term
 
-        metrics = self.calculateLocalMetrics(pred_label, labels, loss, metrics)
+        metrics = self.calculateLocalMetrics(pred_label, labels, loss, metrics) if metrics is not None else None
 
         return loss.sum()
     

@@ -9,20 +9,20 @@ MODE_NAMES = {'embedding': 'embedding_weights',
               'vanilla': 'vanilla'}
 
 class WeightGenerator(nn.Module):
-    def __init__(self, emb_dim, hidden_layer, out_channels, depth=None, target='const', **kwargs):
+    def __init__(self, emb_dim, gen_hidden_layer, out_channels, gen_depth=None, target='const', **kwargs):
         super().__init__()
-        self.depth = depth
+        self.gen_depth = gen_depth
         # if target == 'const':
         #     init = nn.init.zeros_
         # else:
         #     init = nn.init.ones_
-        if depth == 1:
+        if gen_depth == 1:
             self.lin1 = nn.Linear(in_features=emb_dim, out_features=out_channels)
             # nn.init.zeros_(self.lin1.weight)
             # init(self.lin1.bias)
-        if depth == 2:
-            self.lin1 = nn.Linear(in_features=emb_dim, out_features=hidden_layer)
-            self.lin2 = nn.Linear(in_features=hidden_layer, out_features=out_channels)
+        if gen_depth == 2:
+            self.lin1 = nn.Linear(in_features=emb_dim, out_features=gen_hidden_layer)
+            self.lin2 = nn.Linear(in_features=gen_hidden_layer, out_features=out_channels)
             # nn.init.zeros_(self.lin1.weight)
             # nn.init.zeros_(self.lin1.bias)
             # nn.init.zeros_(self.lin2.weight)
@@ -30,9 +30,9 @@ class WeightGenerator(nn.Module):
     
     def forward(self, x):
         x = x.to(torch.float)
-        if self.depth == 1:
+        if self.gen_depth == 1:
             out = self.lin1(x)
-        if self.depth == 2:
+        if self.gen_depth == 2:
             x = self.lin1(x)
             x = nn.functional.relu(x)
             out = self.lin2(x)
