@@ -27,7 +27,7 @@ class EmbeddingTraining:
                  comment='dwlpt', dataset='cifar10', site_number=1,
                  model_name='resnet18emb', optimizer_type='newadam',
                  scheduler_mode='cosine', T_max=500, save_model=False,
-                 partition='regular', alpha=1e7, strategy='noembed',
+                 partition='dirichlet', alpha=1e7, strategy='noembed',
                  finetuning=False, embed_dim=2, model_path=None,
                  embedding_lr=None, ffwrd_lr=None, k_fold_val_id=None,
                  seed=None, site_indices=None, use_hdf5=False, sites=None,
@@ -84,7 +84,7 @@ class EmbeddingTraining:
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
     def initModels(self, embed_dim, model_type, cifar):
-        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, model_type, self.task, cifar=cifar)
+        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, model_type, self.task, cifar=cifar, logger=log)
 
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
@@ -244,6 +244,8 @@ class EmbeddingTraining:
                         loss = closure()
                         self.optims[ndx].step()
                     # except:
+                    if batch_ndx % 100 == 0:
+                        log.info('site {}, epoch {}, batch {}'.format(ndx, epoch_ndx, batch_ndx))
             metrics.append(site_metrics)
         trn_metrics = self.calculateGlobalMetricsFromLocal(metrics)
 
