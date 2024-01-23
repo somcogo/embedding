@@ -90,8 +90,8 @@ class EmbeddingTraining:
         
         self.trn_writer = None
         self.val_writer = None
-        if get_transforms:
-            self.transforms = getTransformList('colorjitter', site_number, seed=1)
+        if get_transforms is not None:
+            self.transforms = getTransformList(get_transforms, site_number, seed=1, device=self.device, var=(0.001, 0.01), blur_var=(0.1, 5), patch_size=3, swap_count=1)
         if sites is not None:
             self.trn_dls = [site['trn_dl'] for site in sites]
             self.val_dls = [site['val_dl'] for site in sites]

@@ -103,7 +103,7 @@ def principle_comp_analysis(data:torch.Tensor):
 
     return transformed_data, evector, evalue
 
-def getTransformList(degradation, site_number, seed):
+def getTransformList(degradation, site_number, seed, device, **kwargs):
     transforms = []
     rng = np.random.default_rng(seed)
     if degradation == 'colorjitter':
@@ -136,11 +136,65 @@ def getTransformList(degradation, site_number, seed):
                                                      con,
                                                      sat,
                                                      hue))
+    elif degradation == 'noise':
+        indices = rng.permutation(np.arange(site_number)/site_number)
+        var = (indices * kwargs['var'][1]) + kwargs['var'][0]
+        blur_var = (indices * kwargs['blur_var'][1]) + kwargs['blur_var'][0]
+        sigma = var**0.5
+        blur_sigma = blur_var**0.5
+        for site in range(site_number):
+            transforms.append(NoiseTransform(rng=rng, device=device, mean=0, sigma=sigma[site], blur_kernel=11, blur_sigma=blur_sigma[site]))
+    elif degradation == 'patchswap':
+        indices = rng.permutation(np.arange(site_number))
+        swap_count = np.arange(1, site_number+1) * kwargs['swap_count']
+        patch_size = np.arange(site_number, 0, -1) * kwargs['patch_size']
+        for site in range(site_number):
+            transforms.append(PatchSwap(rng=rng, patch_size=patch_size[indices[site]], swap_count=swap_count[indices[site]]))
     elif degradation == 'nothing':
         for site in range(site_number):
             transforms.append(ConvertImageDtype(torch.float))
             
     return transforms
+
+class NoiseTransform:
+    def __init__(self, rng, device, **kwargs):
+        self.rng = rng
+        self.device = device
+        self.kwargs = kwargs
+
+    def __call__(self, img:torch.Tensor):
+        B, C, H, W = img.shape
+        blur_sigma = self.kwargs['blur_sigma']
+        kernel = self.kwargs['blur_kernel']
+        img = F.gaussian_blur(img=img, kernel_size=kernel, sigma=blur_sigma)
+        mean = self.kwargs['mean']
+        sigma = self.kwargs['sigma']
+        gauss = self.rng.normal(mean, sigma, (B, C, H, W))
+        gauss = torch.tensor(gauss, device=self.device)
+        img = img + gauss
+        return img.float()
+
+class PatchSwap:
+    def __init__(self, rng, patch_size, swap_count):
+        self.rng = rng
+        self.patch_size = patch_size
+        self.swap_count = swap_count
+
+    def __call__(self, img:torch.Tensor):
+        B, C, H, W = img.shape
+        for _ in range(self.swap_count):
+            for batch_i in range(B):
+                overlap = True
+                while overlap:
+                    x1, x2 = self.rng.integers(0, H - self.patch_size, size=(2))
+                    y1, y2 = self.rng.integers(0, W - self.patch_size, size=(2))
+                    if (x1 -x2) > self.patch_size or (y1 - y2) > self.patch_size:
+                        overlap = False
+
+                patch = img[batch_i, :, x1:x1 + self.patch_size, y1:y1 + self.patch_size].clone()
+                img[batch_i, :, x1:x1 + self.patch_size, y1:y1 + self.patch_size] = img[batch_i, :, x2:x2 + self.patch_size, y2:y2 + self.patch_size]
+                img[batch_i, :, x2:x2 + self.patch_size, y2:y2 + self.patch_size] = patch
+        return img
 
 class ColorjitterWithoutClip:
     def __init__(self, bri, con, sat, hue):
