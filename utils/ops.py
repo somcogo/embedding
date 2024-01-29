@@ -121,6 +121,7 @@ def getTransformList(degradation, site_number, seed, device, **kwargs):
                                           (con, con),
                                           (sat, sat),
                                           (hue, hue)))
+
     elif degradation == 'colorjitternoclip':
         endpoints = np.linspace(0.5, 1.5, site_number+1)
         bri_ndx = rng.permutation(np.arange(site_number))
@@ -132,24 +133,33 @@ def getTransformList(degradation, site_number, seed, device, **kwargs):
             con = rng.uniform(endpoints[con_ndx[site]], endpoints[con_ndx[site]+1])
             sat = rng.uniform(endpoints[sat_ndx[site]], endpoints[sat_ndx[site]+1])
             hue = rng.uniform(endpoints[hue_ndx[site]], endpoints[hue_ndx[site]+1]) - 1
-            transforms.append(ColorjitterWithoutClip(bri,
-                                                     con,
-                                                     sat,
-                                                     hue))
-    elif degradation == 'noise':
-        indices = rng.permutation(np.arange(site_number)/site_number)
-        var = (indices * kwargs['var'][1]) + kwargs['var'][0]
-        blur_var = (indices * kwargs['blur_var'][1]) + kwargs['blur_var'][0]
-        sigma = var**0.5
-        blur_sigma = blur_var**0.5
-        for site in range(site_number):
-            transforms.append(NoiseTransform(rng=rng, device=device, mean=0, sigma=sigma[site], blur_kernel=11, blur_sigma=blur_sigma[site]))
+            transforms.append(ColorjitterWithoutClip(bri, con, sat, hue))
+
+    elif degradation == '3noises':
+        var_add = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], site_number//3)
+        var_mul = np.linspace(kwargs['var_mul'][0], kwargs['var_mul'][1], site_number//3)
+        alphas = np.linspace(kwargs['alpha'][1], kwargs['alpha'][0], site_number - len(var_add) - len(var_mul))
+        for var in var_add:
+            transforms.append(NoiseTransform(rng=rng, device=device, var_add=var, choice=0))
+        for var in var_mul:
+            transforms.append(NoiseTransform(rng=rng, device=device, var_mul=var, choice=1))
+        for alpha in alphas:
+            transforms.append(NoiseTransform(rng=rng, device=device, alpha=alpha, choice=2))
+        transforms = rng.permutation(transforms)
+
+    elif degradation == 'addgauss':
+        var_add = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], site_number)
+        for var in var_add:
+            transforms.append(NoiseTransform(rng=rng, device=device, var_add=var, choice=0))
+        transforms = rng.permutation(transforms)
+
     elif degradation == 'patchswap':
         indices = rng.permutation(np.arange(site_number))
         swap_count = np.arange(1, site_number+1) * kwargs['swap_count']
         patch_size = np.arange(site_number, 0, -1) * kwargs['patch_size']
         for site in range(site_number):
             transforms.append(PatchSwap(rng=rng, patch_size=patch_size[indices[site]], swap_count=swap_count[indices[site]]))
+
     elif degradation == 'nothing':
         for site in range(site_number):
             transforms.append(ConvertImageDtype(torch.float))
@@ -164,14 +174,20 @@ class NoiseTransform:
 
     def __call__(self, img:torch.Tensor):
         B, C, H, W = img.shape
-        blur_sigma = self.kwargs['blur_sigma']
-        kernel = self.kwargs['blur_kernel']
-        img = F.gaussian_blur(img=img, kernel_size=kernel, sigma=blur_sigma)
-        mean = self.kwargs['mean']
-        sigma = self.kwargs['sigma']
-        gauss = self.rng.normal(mean, sigma, (B, C, H, W))
-        gauss = torch.tensor(gauss, device=self.device)
-        img = img + gauss
+        if self.kwargs['choice'] == 0:
+            sigma = self.kwargs['var_add']**0.5
+            gauss = self.rng.normal(0, sigma, img.shape)
+            gauss = torch.tensor(gauss, device=self.device)
+            img = img + gauss
+        elif self.kwargs['choice'] == 1:
+            sigma = self.kwargs['var_mul']**0.5
+            gauss = self.rng.normal(1, sigma, img.shape)
+            gauss = torch.tensor(gauss, device=self.device)
+            img = img * gauss
+        elif self.kwargs['choice'] == 2:
+            alpha = self.kwargs['alpha']
+            noise = self.rng.poisson(lam=img*10**alpha)/10**alpha
+            img = torch.tensor(noise, device=self.device)
         return img.float()
 
 class PatchSwap:
