@@ -26,19 +26,22 @@ class EmbeddingTraining:
     def __init__(self, comm_rounds=500, batch_size=128, logdir='test', lr=1e-3,
                  comment='dwlpt', dataset='cifar10', site_number=1,
                  model_name='resnet18emb', optimizer_type='newadam',
-                 scheduler_mode='cosine', pretrained=False, T_max=500,
-                 label_smoothing=0.0, save_model=False, partition='dirichlet',
+                 scheduler_mode='cosine', T_max=500,
+                 save_model=False, partition='dirichlet',
                  alpha=1e7, strategy='noembed', finetuning=False, embed_dim=2,
                  model_path=None, embedding_lr=None, ffwrd_lr=None,
-                 layer_number=4, k_fold_val_id=None, seed=0,
-                 site_indices=None, input_perturbation=False, use_hdf5=True,
-                 conv1_residual=True, fc_residual=True, colorjitter=False,
+                 k_fold_val_id=None, seed=0,
+                 site_indices=None, use_hdf5=True,
+                 colorjitter=False, task='classification',
                  sites=None, model_type=None, weight_decay=1e-5, cifar=True,
-                 extra_conv=False, get_transforms=False, state_dict=None,
-                 comm_frequency=1, inc_gpu_util=False, iterations=None,
+                 get_transforms=False, state_dict=None,
+                 comm_frequency=1, iterations=None,
                  fedprox=False, fedprox_mu=0., arma_mu=1.,
                  one_hot_emb=False, emb_trn_cycle=False):
 
+        comment = '{}-e{}-b{}-lr{}-{}-s{}-{}-{}-{}-{}-T{}-edim{}-genlr{}-wdecay{}-{}'.format(
+            comment, comm_rounds, batch_size, lr, dataset, site_number, model_name, model_type,
+            optimizer_type, scheduler_mode, T_max, embed_dim, ffwrd_lr, weight_decay, task)
         log.info(comment)
         self.logdir_name = logdir
         self.comment = comment
@@ -47,37 +50,29 @@ class EmbeddingTraining:
         self.model_name = model_name
         self.optimizer_type = optimizer_type
         self.scheduler_mode = scheduler_mode
-        self.pretrained = pretrained
         if T_max is None or comm_rounds > T_max:
             self.T_max = comm_rounds
         else:
             self.T_max = T_max
-        self.label_smoothing = label_smoothing
         self.save_model = save_model
         self.strategy = strategy
         self.finetuning = finetuning
         self.model_path = model_path
-        self.input_perturbation = input_perturbation
         if site_indices is None:
             site_indices = range(site_number)
         self.site_indices = site_indices
         self.use_hdf5 = use_hdf5
-        self.conv1_residual = conv1_residual
-        self.fc_residual = fc_residual
         self.colorjitter = colorjitter
+        self.task = task
         self.cifar = cifar
-        self.extra_conv = extra_conv
         self.state_dict = state_dict
         self.comm_frequency = comm_frequency
-        self.inc_gpu_util = inc_gpu_util
         self.comm_rounds = comm_rounds
         self.fedprox = fedprox
         self.fedprox_mu = fedprox_mu
         self.arma_mu = arma_mu
         self.one_hot_emb = one_hot_emb
         self.emb_trn_cycle = emb_trn_cycle
-        if self.inc_gpu_util:
-            log.info('Artificially increasing batch size by stacking the batch 4 times and then augmenting')
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.use_cuda = torch.cuda.is_available()
         self.device = 'cuda' if self.use_cuda else 'cpu'
@@ -97,7 +92,7 @@ class EmbeddingTraining:
             self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
             self.site_number = len(site_indices)
         self.embed_dim = self.site_number if one_hot_emb else embed_dim
-        self.models = self.initModels(embed_dim=embed_dim, layer_number=layer_number, model_type=model_type)
+        self.models = self.initModels(embed_dim=embed_dim, model_type=model_type, cifar=cifar)
         self.optims = self.initOptimizers(lr, finetuning, weight_decay=weight_decay, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
         if iterations is None:
@@ -105,23 +100,8 @@ class EmbeddingTraining:
         self.iterations = iterations
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
-    def initModels(self, embed_dim, layer_number, model_type):
-        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, layer_number, self.pretrained, conv1_residual=self.conv1_residual, fc_residual=self.fc_residual, model_type=model_type, cifar=self.cifar, extra_conv=self.extra_conv)
-
-        if 'embedding.weight' in '\t'.join(models[0].state_dict().keys()) or (hasattr(models[0], 'embedding') and models[0].embedding is not None):
-            if embed_dim > 2:
-                self.mu_init = np.eye(self.site_number, embed_dim)
-            else:
-                mu_init = np.exp((2 * np.pi * 1j/ self.site_number)*np.arange(0,self.site_number))
-                self.mu_init = np.stack([np.real(mu_init), np.imag(mu_init)], axis=1)
-            if 'embedding.weight' in '\t'.join(models[0].state_dict().keys()):
-                for i, model in enumerate(models):
-                    init_weight = torch.from_numpy(self.mu_init[i]).repeat(self.site_number).reshape(self.site_number, embed_dim)
-                    model.embedding.weight = nn.Parameter(init_weight)
-            else:
-                for i, model in enumerate(models):
-                    init_weight = torch.from_numpy(self.mu_init[i])
-                    model.embedding = nn.Parameter(init_weight)
+    def initModels(self, embed_dim, model_type, cifar):
+        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, model_type=model_type, task=self.task, cifar=cifar)
 
         if self.use_cuda:
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
@@ -235,9 +215,10 @@ class EmbeddingTraining:
         validation_cadence = 5
 
         if self.finetuning:
-            val_metrics, accuracy, loss = self.doValidation(val_dls)
+            val_metrics = self.doValidation(0, val_dls)
             self.logMetrics(0, 'val', val_metrics)
-            log.info('Round {} of {}, accuracy {}, val loss {}'.format(0, self.comm_rounds, accuracy, loss))
+            metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['overall/mean dice']
+            log.info('Round {} of {}, accuracy/dice {}, val loss {}'.format(0, self.comm_rounds, metric_to_report, val_metrics['mean loss']))
 
         for comm_round in range(1, self.comm_rounds):
             logging_index = comm_round % 10**(math.floor(math.log(comm_round, 10))) == 0
@@ -254,17 +235,15 @@ class EmbeddingTraining:
             self.logMetrics(comm_round, 'trn', trn_metrics)
 
             if comm_round == 1 or comm_round % validation_cadence == 0:
-                if comm_round == 1:
-                    log.warning('Round{} Validation starting'.format(comm_round))
-                val_metrics, accuracy, loss = self.doValidation(val_dls)
+                val_metrics = self.doValidation(val_dls)
                 self.logMetrics(comm_round, 'val', val_metrics)
-                saving_criterion = max(accuracy, saving_criterion)
+                metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['overall/mean dice']
+                saving_criterion = max(metric_to_report, saving_criterion)
 
-                if self.save_model and accuracy==saving_criterion:
+                if self.save_model and metric_to_report==saving_criterion:
                     self.saveModel(comm_round, val_metrics, trn_dls, val_dls)
-
                 if logging_index:
-                    log.info('Round {} of {}, accuracy {}, val loss {}'.format(comm_round, self.comm_rounds, accuracy, loss))            
+                    log.info('Round {} of {}, accuracy/dice {}, val loss {}'.format(comm_round, self.comm_rounds, metric_to_report, val_metrics['mean loss']))
             
             if self.scheduler_mode == 'cosine' and not self.finetuning:
                 for scheduler in self.schedulers:
@@ -286,25 +265,21 @@ class EmbeddingTraining:
 
         if self.emb_trn_cycle:
             self.optimize_emb(trn_dls)
-        trn_metrics = torch.zeros(2 + 2*self.site_number + self.num_classes, device=self.device)
-        loss = 0
-        correct = 0
-        total = 0
-        correct_by_class = torch.zeros(self.num_classes, device=self.device)
-        total_by_class = torch.zeros(self.num_classes, device=self.device)
+        metrics = []
+
         for ndx, trn_dl in enumerate(trn_dls):
             iter_ndx = 0
-            local_trn_metrics = torch.zeros(2 + 2*self.num_classes, self.iterations, device=self.device)
+            site_metrics = self.get_empty_metrics()
             while iter_ndx < self.iterations:
 
                 for batch_tuple in trn_dl:
                     # with torch.autograd.detect_anomaly():
                         self.optims[ndx].zero_grad()
-                        loss, _ = self.computeBatchLoss(
+                        loss = self.computeBatchLoss(
                             iter_ndx,
                             batch_tuple,
                             self.models[ndx],
-                            local_trn_metrics,
+                            site_metrics,
                             'trn',
                             ndx)
                         loss.backward()
@@ -313,21 +288,10 @@ class EmbeddingTraining:
                         if iter_ndx >= self.iterations:
                             break
 
-            loss += local_trn_metrics[-2].sum()
-            correct += local_trn_metrics[-1].sum()
-            total += local_trn_metrics[self.num_classes: 2*self.num_classes].sum()
+            metrics.append(site_metrics)
+        trn_metrics = self.calculateGlobalMetricsFromLocal(metrics)
 
-            correct_by_class += local_trn_metrics[:self.num_classes].sum(dim=1)
-            total_by_class += local_trn_metrics[self.num_classes: 2*self.num_classes].sum(dim=1)
-
-            trn_metrics[2*ndx] = local_trn_metrics[-2].sum() / local_trn_metrics[self.num_classes: 2*self.num_classes].sum()
-            trn_metrics[2*ndx + 1] = local_trn_metrics[-1].sum() / local_trn_metrics[self.num_classes: 2*self.num_classes].sum()
-
-        trn_metrics[2*self.site_number: 2*self.site_number + self.num_classes] = correct_by_class / total_by_class
-        trn_metrics[-2] = loss / total
-        trn_metrics[-1] = correct / total
-
-        return trn_metrics.to('cpu')
+        return trn_metrics
     
     def optimize_emb(self, trn_dls):
         for optim in self.optims:
@@ -360,41 +324,23 @@ class EmbeddingTraining:
             for model in self.models:
                 model.eval()
 
-            val_metrics = torch.zeros(2 + 2*self.site_number + self.num_classes, device=self.device)
-            loss = 0
-            correct = 0
-            total = 0
-            correct_by_class = torch.zeros(self.num_classes, device=self.device)
-            total_by_class = torch.zeros(self.num_classes, device=self.device)
+            metrics = []
             for ndx, val_dl in enumerate(val_dls):
-                local_val_metrics = torch.zeros(2 + 2*self.num_classes, len(val_dl), device=self.device)
-
+                site_metrics = self.get_empty_metrics()
                 for batch_ndx, batch_tuple in enumerate(val_dl):
                     # with torch.autograd.detect_anomaly():
-                        _, accuracy = self.computeBatchLoss(
+                        _ = self.computeBatchLoss(
                             batch_ndx,
                             batch_tuple,
                             self.models[ndx],
-                            local_val_metrics,
+                            site_metrics,
                             'val',
                             ndx
                         )
-                
-                loss += local_val_metrics[-2].sum()
-                correct += local_val_metrics[-1].sum()
-                total += local_val_metrics[self.num_classes: 2*self.num_classes].sum()
+                metrics.append(site_metrics)
+            val_metrics = self.calculateGlobalMetricsFromLocal(metrics)
 
-                correct_by_class += local_val_metrics[:self.num_classes].sum(dim=1)
-                total_by_class += local_val_metrics[self.num_classes: 2*self.num_classes].sum(dim=1)
-
-                val_metrics[2*ndx] = local_val_metrics[-2].sum() / len(val_dl.dataset)
-                val_metrics[2*ndx + 1] = local_val_metrics[-1].sum() / len(val_dl.dataset)
-
-            val_metrics[2*self.site_number: 2*self.site_number + self.num_classes] = correct_by_class / total_by_class
-            val_metrics[-2] = loss / total
-            val_metrics[-1] = correct / total
-
-        return val_metrics.to('cpu'), correct / total, loss / total
+        return val_metrics
 
     def computeBatchLoss(self, batch_ndx, batch_tup, model, metrics, mode, site_id):
         batch, labels, img_id = batch_tup
@@ -403,14 +349,8 @@ class EmbeddingTraining:
             batch = batch.permute(0, 3, 1, 2)
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
 
-        if self.input_perturbation:
-            perturb_mode = 'colorjitter' if self.colorjitter else 'default'
-            batch = perturb(batch, self.site_indices[site_id], self.device, perturb_mode)
         if mode == 'trn':
-            if self.inc_gpu_util == True:
-                batch = torch.concat([batch]*4, dim=0)
-                labels = torch.concat([labels]*4, dim=0)
-            batch = aug_image(batch, self.dataset)
+            batch, labels = aug_image(batch, labels, self.dataset)
         if self.model_name[:6] == 'maxvit':
             resize = Resize(224, antialias=True)
             batch = resize(batch)
@@ -427,7 +367,7 @@ class EmbeddingTraining:
         else:
             pred = model(batch)
         pred_label = torch.argmax(pred, dim=1)
-        loss_fn = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
+        loss_fn = nn.CrossEntropyLoss()
         proximal_term = 0.0
         if self.fedprox and not self.finetuning:
             original_list = [name for name, _ in self.models[0].named_parameters()]
@@ -437,23 +377,116 @@ class EmbeddingTraining:
                     proximal_term += (w - w_t).norm(2)
         loss = loss_fn(pred, labels) + self.fedprox_mu * 0.5 * proximal_term
 
-        correct_mask = pred_label == labels
-        correct = torch.sum(correct_mask)
-        accuracy = correct / batch.shape[0] * 100
+        metrics = self.calculateLocalMetrics(pred_label, labels, loss, metrics) if metrics is not None else None
 
-        if metrics is not None:
+        return loss.sum()
+    
+    def get_empty_metrics(self):
+        metrics = {'loss':0,
+                   'total':0}
+        if self.task == 'classification':
+            metrics['correct'] = 0
+            for cls in range(self.num_classes):
+                metrics[cls] = {'correct':0,
+                                'total':0}
+        elif self.task == 'segmentation':
+            for cls in range(self.num_classes):
+                metrics[cls] = {
+                    'dice_score':0,
+                    'precision':0,
+                    'recall':0,
+                    'true_pos':0,
+                    'false_pos':0,
+                    'false_neg':0,
+                    'true_neg':0,
+                    'total':0
+                }
+        return metrics
+    
+    def calculateLocalMetrics(self, pred_label, labels, loss, local_metrics):
+        local_metrics['loss'] += loss.sum()
+        local_metrics['total'] += pred_label.shape[0]
+        if self.task == 'classification':
+            correct_mask = pred_label == labels
+            correct = torch.sum(correct_mask)
+            local_metrics['correct'] += correct
+
             for cls in range(self.num_classes):
                 class_mask = labels == cls
-                correct_in_cls = torch.sum(correct_mask[class_mask])
-                total_in_cls = torch.sum(class_mask)
-                metrics[cls, batch_ndx] = correct_in_cls
-                metrics[self.num_classes + cls, batch_ndx] = total_in_cls
+                local_metrics[cls]['correct'] += torch.sum(correct_mask[class_mask])
+                local_metrics[cls]['total'] += torch.sum(class_mask)
 
+        elif self.task == 'segmentation':
+            eps = 1e-5
 
-            metrics[-2, batch_ndx] = loss.detach()
-            metrics[-1, batch_ndx] = correct
+            for cls in range(self.num_classes):
+                cls_label = labels == cls
+                cls_pred = pred_label == cls
+                cls_ndx_mask = torch.sum(cls_label, dim=[1, 2]) > 0
 
-        return loss.sum(), accuracy
+                true_pos  = ( cls_label *  cls_pred).sum(dim=[1, 2])
+                false_pos = (~cls_label *  cls_pred).sum(dim=[1, 2])
+                false_neg = ( cls_label * ~cls_pred).sum(dim=[1, 2])
+                true_neg  = (~cls_label * ~cls_pred).sum(dim=[1, 2])
+
+                dice_score = (2*true_pos + eps)/(2*true_pos + false_pos + false_neg + eps)
+                precision = (true_pos + eps)/(true_pos + false_pos + eps)
+                recall = (true_pos + eps)/(true_pos + false_neg + eps)
+
+                local_metrics[cls]['dice_score'] += dice_score[cls_ndx_mask].sum()
+                local_metrics[cls]['precision'] += precision[cls_ndx_mask].sum()
+                local_metrics[cls]['recall'] += recall[cls_ndx_mask].sum()
+                local_metrics[cls]['true_pos'] += true_pos[cls_ndx_mask].sum()
+                local_metrics[cls]['false_pos'] += false_pos[cls_ndx_mask].sum()
+                local_metrics[cls]['false_neg'] += false_neg[cls_ndx_mask].sum()
+                local_metrics[cls]['true_neg'] += true_neg[cls_ndx_mask].sum()
+                local_metrics[cls]['total'] += cls_ndx_mask.sum()
+
+    def calculateGlobalMetricsFromLocal(self, local_metrics):
+        eps = 1e-5
+
+        total = sum([d['total'] for d in local_metrics])
+        gl_metrics = {'mean loss':sum([d['loss'] for d in local_metrics]) / total}
+
+        if self.task == 'classification':
+            gl_metrics['overall/accuracy'] = sum([d['correct'] for d in local_metrics]) / total
+
+            for site_ndx, local_m in enumerate(local_metrics):
+                gl_metrics['accuracy_by_site/{}'.format(site_ndx)] = local_m['correct'] / local_m['total']
+                gl_metrics['loss by site/{}'.format(site_ndx)] = local_m['loss'] / local_m['total']
+
+            for cls in range(self.num_classes):
+                cls_total = sum([d[cls]['total'] for d in local_metrics])
+                gl_metrics['accuracy by class/{}'.format(cls)] = sum([d[cls]['correct'] for d in local_metrics]) / cls_total
+
+        elif self.task == 'segmentation':
+            for cls in range(self.num_classes):
+                cls_total = sum([d[cls]['total'] for d in local_metrics])
+                tp = sum([d[cls]['true_pos'] for d in local_metrics])
+                fp = sum([d[cls]['false_pos'] for d in local_metrics])
+                fn = sum([d[cls]['false_neg'] for d in local_metrics])
+                
+                gl_metrics['overall dice per class/{}'.format(cls)] = (2*tp + eps) / (2*tp + fp + fn + eps)
+                gl_metrics['overall precision per class/{}'.format(cls)] = (tp + eps) / (tp + fp + eps)
+                gl_metrics['overall recall per class/{}'.format(cls)] = (tp + eps) / (tp + fn)
+
+                gl_metrics['avg dice per class/{}'.format(cls)] = sum([d[cls]['dice_score'] for d in local_metrics]) / cls_total
+                gl_metrics['avg precision per class/{}'.format(cls)] = sum([d[cls]['precision'] for d in local_metrics]) / cls_total
+                gl_metrics['avg recall per class/{}'.format(cls)] = sum([d[cls]['recall'] for d in local_metrics]) / cls_total
+
+            gl_metrics['overall/mean dice'] = sum([gl_metrics['overall dice per class/{}'.format(cls)] for cls in range(self.num_classes)]) / self.num_classes
+            gl_metrics['overall/mean precision'] = sum([gl_metrics['overall precision per class/{}'.format(cls)] for cls in range(self.num_classes)]) / self.num_classes
+            gl_metrics['overall/mean recall'] = sum([gl_metrics['overall recall per class/{}'.format(cls)] for cls in range(self.num_classes)]) / self.num_classes
+
+            gl_metrics['average/mean dice'] = sum([gl_metrics['avg dice per class/{}'.format(cls)] for cls in range(self.num_classes)]) / self.num_classes
+            gl_metrics['average/mean precision'] = sum([gl_metrics['avg precision per class/{}'.format(cls)] for cls in range(self.num_classes)]) / self.num_classes
+            gl_metrics['average/mean recall'] = sum([gl_metrics['avg recall per class/{}'.format(cls)] for cls in range(self.num_classes)]) / self.num_classes
+        
+        for k in gl_metrics.keys():
+            gl_metrics[k] = gl_metrics[k].detach().cpu()
+
+        return gl_metrics
+
 
     def logMetrics(
         self,
@@ -463,35 +496,9 @@ class EmbeddingTraining:
     ):
         iter_number = comm_round * self.iterations
         self.initTensorboardWriters()
-
         writer = getattr(self, mode_str + '_writer')
-        for ndx in range(self.site_number):
-            writer.add_scalar(
-                'loss by site/site {}'.format(ndx),
-                scalar_value=metrics[2*ndx],
-                global_step=iter_number
-            )
-            writer.add_scalar(
-                'accuracy by site/site {}'.format(ndx),
-                scalar_value=metrics[2*ndx + 1],
-                global_step=iter_number
-            )
-        for ndx in range(self.num_classes):
-            writer.add_scalar(
-                'accuracy by class/class {}'.format(ndx),
-                scalar_value=metrics[2*self.site_number + ndx],
-                global_step=iter_number
-            )
-        writer.add_scalar(
-            'loss/overall',
-            scalar_value=metrics[-2],
-            global_step=iter_number
-        )
-        writer.add_scalar(
-            'accuracy/overall',
-            scalar_value=metrics[-1],
-            global_step=iter_number
-        )
+        for k, v in metrics.items():
+            writer.add_scalar(k, scalar_value=v, global_step=iter_number)
         writer.flush()
 
     def saveModel(self, epoch_ndx, val_metrics, trn_dls, val_dls):
@@ -514,7 +521,7 @@ class EmbeddingTraining:
         )
         os.makedirs(os.path.dirname(data_file_path), mode=0o755, exist_ok=True)
 
-        data_state = {'valmetrics':val_metrics.detach().cpu(),
+        data_state = {'valmetrics':val_metrics,
                       'epoch': epoch_ndx,}
                     #   'settings':self.settings}
         model_state = {'epoch': epoch_ndx,}
@@ -524,11 +531,12 @@ class EmbeddingTraining:
             if isinstance(model, torch.nn.DataParallel):
                 model = model.module
             data_state[ndx] = {
-                'trn_labels': trn_dls[ndx].dataset.labels,
-                'val_labels': val_dls[ndx].dataset.labels,
                 'trn_indices': trn_dls[ndx].dataset.indices,
                 'val_indices': val_dls[ndx].dataset.indices,
             }
+            if self.dataset != 'celeba':
+                data_state[ndx]['trn_labels'] = trn_dls[ndx].dataset.labels
+                data_state[ndx]['val_labels'] = val_dls[ndx].dataset.labels
             state_dict = model.state_dict()
             if self.finetuning:
                 site_state_dict = {key: state_dict[key] for key in state_dict.keys() if key in layer_list}

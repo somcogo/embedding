@@ -1,9 +1,12 @@
+import numpy as np
+import torch
+
 from models.model import ResNet18Model, ResNet34Model, ResNetWithEmbeddings, CustomResnet
 from models.embedding_functionals import GeneralInstanceNorm2d, BatchNorm2d_noemb, GeneralBatchNorm2d
-# from models.maxvit import MaxViT
-# from models.maxvitemb import MaxViTEmb
+from models.upernet import ModelAssembler
+from utils.config import get_model_config
 
-def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=None, pretrained=False, conv1_residual=True, fc_residual=True, model_type=None, cifar=True, extra_conv=False):
+def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None, task=None, cifar=True):
     if dataset == 'cifar10':
         num_classes = 10
         in_channels = 3
@@ -19,42 +22,26 @@ def get_model(dataset, model_name, site_number, embed_dim=None, layer_number=Non
     elif dataset == 'imagenet':
         num_classes = 200
         in_channels = 3
+    elif dataset == 'celeba':
+        num_classes = 18
+        in_channels = 3
+    config = get_model_config(model_name, model_type, task, cifar)
     models = []
     for _ in range(site_number):
-        if model_name == 'resnet34emb':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[3, 4, 6, 3], site_number=site_number, embed_dim=embed_dim, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
-        elif model_name == 'resnet18emb':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
-        elif model_name == 'resnet18embhypnn1':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=1, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
-        elif model_name == 'resnet18embhypnn2':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=2, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
-        elif model_name == 'resnet18lightweight1':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
-        elif model_name == 'resnet18lightweight2':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
-        elif model_name == 'resnet18affine1':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, affine=True, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
-        elif model_name == 'resnet18affine2':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, affine=True, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
-        elif model_name == 'resnet18medium1':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, affine=True, medium_ffwrd=True, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
-        elif model_name == 'resnet18medium2':
-            model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=2, lightweight=True, affine=True, medium_ffwrd=True, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual)
-        elif model_name == 'resnet34':
-            model = ResNet34Model(num_classes=num_classes, in_channels=in_channels, pretrained=pretrained)
-        elif model_name == 'resnet18':
-            if model_type == 'vanilla_old':
-                model = ResNet18Model(num_classes=num_classes, in_channels=in_channels, cifar=cifar)
-            elif model_type == 'emb_old':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual, cifar=cifar)
-            elif model_type == 'lightweight_old':
-                model = ResNetWithEmbeddings(num_classes=num_classes, in_channels=in_channels, layers=[2, 2, 2, 2], site_number=site_number, embed_dim=embed_dim, use_hypnns=True, version=1, lightweight=True, layer_number=layer_number, conv1_residual=conv1_residual, fc_residual=fc_residual, cifar=cifar)
-            else:
-                weight_gen_args, mode, norm_layer = get_gen_args(model_type, embed_dim)
-                model = CustomResnet(num_classes=num_classes, in_channels=in_channels, mode=mode, weight_gen_args=weight_gen_args, norm_layer=norm_layer, cifar=cifar, extra_conv=extra_conv)
+        model = ModelAssembler(channels=in_channels, num_classes=num_classes, emb_dim=embed_dim, **config)
         models.append(model)
+    
+    if config['mode'] != 'vanilla':
+        if embed_dim > 2:
+            mu_init = np.eye(site_number, embed_dim)
+        else:
+            mu_init = np.exp((2 * np.pi * 1j/ site_number)*np.arange(0,site_number))
+            mu_init = np.stack([np.real(mu_init), np.imag(mu_init)], axis=1)
+        for i, model in enumerate(models):
+            init_weight = torch.from_numpy(mu_init[i])
+            model.embedding = torch.nn.Parameter(init_weight)
     return models, num_classes
+
 
 def get_gen_args(model_type, emb_dim):
     if model_type == 'embv1':

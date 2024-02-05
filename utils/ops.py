@@ -17,11 +17,11 @@ from torchvision.transforms import (
      ConvertImageDtype,)
 from torchvision.transforms import functional as F
 
-def aug_image(batch: torch.Tensor, dataset):
-    batch = aug_crop_rotate_flip_erase(batch, dataset)
+def aug_image(batch: torch.Tensor, labels, dataset):
+    batch = aug_crop_rotate_flip_erase(batch, labels, dataset)
     return batch
 
-def aug_crop_rotate_flip_erase(batch, dataset):
+def aug_crop_rotate_flip_erase(batch, labels, dataset):
     if dataset in ['mnist', 'cifar10', 'cifar100']:
         trans = Compose([
             Pad(4),
@@ -32,6 +32,7 @@ def aug_crop_rotate_flip_erase(batch, dataset):
             ]), p=0.25),
             RandomErasing(p=0.5, scale=(0.015625, 0.25), ratio=(0.25, 4))
         ])
+        batch = trans(batch)
     elif dataset == 'imagenet':
         trans = Compose([
             Pad(4),
@@ -42,8 +43,19 @@ def aug_crop_rotate_flip_erase(batch, dataset):
             ]), p=0.25),
             RandomErasing(p=0.5, scale=(0.015625, 0.25), ratio=(0.25, 4))
         ])
-    batch = trans(batch)
-    return batch
+        batch = trans(batch)
+    elif dataset == 'celeba':
+        flip = torch.rand(size=[batch.shape[0]]) < 0.5
+        rotation = torch.randint(0, 5, [batch.shape[0]])
+        scales = torch.rand(size=[batch.shape[0]], device=batch.device) * 0.4 + 0.8
+        for ndx in range(batch.shape[0]):
+            if flip[ndx]:
+                batch[ndx] = torch.flip(batch[ndx], dims=(-2, -1))
+                labels[ndx] = torch.flip(labels[ndx], dims=(-2, -1))
+            batch[ndx] = torch.rot90(batch[ndx], rotation[ndx], dims=(-2, -1))
+            labels[ndx] = torch.rot90(labels[ndx], rotation[ndx], dims=(-2, -1))
+        batch = scales.reshape(-1, 1, 1, 1) * batch
+    return batch, labels
 
 def perturb_colorjitter(batch, site_id):
     rng = np.random.default_rng(seed=site_id)

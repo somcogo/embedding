@@ -1,7 +1,7 @@
 from torch.utils.data import DataLoader
 from sklearn.model_selection import KFold
 
-from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, get_image_net_dataset, TruncatedDataset, MergedDataset
+from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, get_image_net_dataset, TruncatedDataset, MergedDataset, get_celeba_dataset
 from .partition import partition_by_class, partition_with_dirichlet_distribution
 
 data_path = '/home/hansel/developer/embedding/data/'
@@ -15,6 +15,8 @@ def get_datasets(data_dir, dataset, use_hdf5=False):
         trn_dataset, val_dataset = get_mnist_datasets(data_dir=data_dir, use_hdf5=use_hdf5)
     elif dataset == 'imagenet':
         trn_dataset, val_dataset = get_image_net_dataset(data_dir=data_dir)
+    elif dataset == 'celeba':
+        trn_dataset, val_dataset = get_celeba_dataset(data_dir=data_dir)
     return trn_dataset, val_dataset
 
 def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, net_dataidx_map_train=None, net_dataidx_map_test=None, shuffle=True, k_fold_val_id=None, seed=None, site_indices=None, use_hdf5=True):

@@ -13,7 +13,7 @@ class TruncatedDataset(Dataset):
         self.data = dataset.data
         if dataset_name == 'mnist':
             self.data = np.expand_dims(self.data, axis=3)
-        if dataset_name == 'pascalvoc':
+        if dataset_name in ['pascalvoc', 'celeba']:
             self.labels = dataset.labels
         else:
             self.labels = dataset.targets
@@ -90,31 +90,35 @@ class MNISTDataSet(Dataset):
         return img, target
     
 class CelebAMask_HQDataset(Dataset):
-    def __init__(self, data_dir, img_tr, mask_tr, mode):
+    def __init__(self, data_dir, img_tr=None, mask_tr=None, mode='trn'):
         super().__init__()
         self.img_tr = img_tr
         self.mask_tr = mask_tr
 
-        h5_file = h5py.File(os.path.join(data_dir, 'celeba.hdf5'), 'r')
+        h5_file = h5py.File(os.path.join(data_dir, 'CelebAMask-HQ/celeba.hdf5'), 'r')
         if mode == 'trn':
             start_ndx = 0
             end_ndx = 24000
         else:
             start_ndx = 24000
             end_ndx = 30000
-        self.data = h5_file['img'][start_ndx:end_ndx]
-        self.labels = h5_file['mask'][start_ndx:end_ndx]
-        self.img_ids = h5_file['img_id'][start_ndx:end_ndx]
+        self.indicies = list(range(start_ndx, end_ndx))
+        self.data = h5_file['img']
+        self.labels = h5_file['mask']
+        self.img_ids = h5_file['img_id']
 
     def __len__(self):
-        return len(self.img_ids)
+        return len(self.indicies)
 
     def __getitem__(self, index):
+        index = self.indicies[index]
         img = self.data[index]
         mask = self.labels[index]
 
-        img = self.img_tr(img)
-        mask = self.mask_tr(mask)
+        if self.img_tr is not None:
+            img = self.img_tr(img)
+        if self.mask_tr is not None:
+            mask = self.mask_tr(mask)
         return img, mask
 
 def get_cifar10_datasets(data_dir, use_hdf5=False):
@@ -174,7 +178,7 @@ def get_image_net_dataset(data_dir):
     val_dataset = ImageNetDataSet(data_dir=data_dir, mode='val')
     return dataset, val_dataset
 
-def get_celeba_dataset(data_dir, img_tr, mask_tr):
+def get_celeba_dataset(data_dir, img_tr=None, mask_tr=None):
     dataset = CelebAMask_HQDataset(data_dir, img_tr, mask_tr, 'trn')
     val_dataset = CelebAMask_HQDataset(data_dir, img_tr, mask_tr, 'val')
     return dataset, val_dataset
