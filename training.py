@@ -23,26 +23,26 @@ log.setLevel(logging.INFO)
 # log.setLevel(logging.DEBUG)
 
 class EmbeddingTraining:
-    def __init__(self, epochs=500, batch_size=128, logdir='test', lr=1e-3,
+    def __init__(self, comm_rounds=500, batch_size=128, logdir='test', lr=1e-3,
                  comment='dwlpt', dataset='cifar10', site_number=1,
                  model_name='resnet18emb', optimizer_type='newadam',
-                 scheduler_mode='cosine', T_max=500, save_model=False,
-                 partition='dirichlet', alpha=1e7, strategy='noembed',
-                 finetuning=False, embed_dim=2, model_path=None,
-                 embedding_lr=None, ffwrd_lr=None, k_fold_val_id=None,
-                 seed=None, site_indices=None, use_hdf5=False,
-                 colorjitter=False, task='classification', sites=None,
-                 model_type=None, weight_decay=1e-5, cifar=True,
-                 get_transforms=False, state_dict=None, comm_frequency=1,
-                 iterations=None, comm_rounds=500, fedprox=False,
-                 fedprox_mu=0., arma_mu=1., one_hot_emb=False,
-                 emb_trn_cycle=False):
+                 scheduler_mode='cosine', T_max=500,
+                 save_model=False, partition='dirichlet',
+                 alpha=1e7, strategy='noembed', finetuning=False, embed_dim=2,
+                 model_path=None, embedding_lr=None, ffwrd_lr=None,
+                 k_fold_val_id=None, seed=0,
+                 site_indices=None, use_hdf5=True,
+                 colorjitter=False, task='classification',
+                 sites=None, model_type=None, weight_decay=1e-5, cifar=True,
+                 get_transforms=False, state_dict=None,
+                 comm_frequency=1, iterations=None,
+                 fedprox=False, fedprox_mu=0., arma_mu=1.,
+                 one_hot_emb=False, emb_trn_cycle=False):
 
         comment = '{}-e{}-b{}-lr{}-{}-s{}-{}-{}-{}-{}-T{}-edim{}-genlr{}-wdecay{}-{}'.format(
-            comment, epochs, batch_size, lr, dataset, site_number, model_name, model_type,
+            comment, comm_rounds, batch_size, lr, dataset, site_number, model_name, model_type,
             optimizer_type, scheduler_mode, T_max, embed_dim, ffwrd_lr, weight_decay, task)
         log.info(comment)
-        self.epochs = epochs
         self.logdir_name = logdir
         self.comment = comment
         self.dataset = dataset
@@ -50,8 +50,8 @@ class EmbeddingTraining:
         self.model_name = model_name
         self.optimizer_type = optimizer_type
         self.scheduler_mode = scheduler_mode
-        if T_max is None or epochs > T_max:
-            self.T_max = epochs
+        if T_max is None or comm_rounds > T_max:
+            self.T_max = comm_rounds
         else:
             self.T_max = T_max
         self.save_model = save_model
@@ -81,8 +81,8 @@ class EmbeddingTraining:
         
         self.trn_writer = None
         self.val_writer = None
-        if get_transforms:
-            self.transforms = getTransformList('colorjitter', site_number, seed=1)
+        if get_transforms is not None:
+            self.transforms = getTransformList(get_transforms, site_number, seed=1, device=self.device, var_add=(0.005, 0.05), alpha=(1.2, 2), var_mul=(0.01, 0.05), patch_size=3, swap_count=1)
         if sites is not None:
             self.trn_dls = [site['trn_dl'] for site in sites]
             self.val_dls = [site['val_dl'] for site in sites]
@@ -118,7 +118,7 @@ class EmbeddingTraining:
         for ndx, model in enumerate(self.models):
             params_to_update = []
             if finetuning:
-                assert self.strategy in ['finetuning', 'affinetoo', 'onlyfc', 'onlyemb', 'extra_conv', 'onlyextra_conv']
+                assert self.strategy in ['finetuning', 'affinetoo', 'onlyfc', 'onlyemb', 'extra_conv', 'onlyextra_conv', 'fffinetuning']
                 layer_list = get_layer_list(self.model_name, strategy=self.strategy, original_list=model.state_dict().keys())
                 for name, param in model.named_parameters():
                     if name in layer_list:
@@ -345,7 +345,7 @@ class EmbeddingTraining:
     def computeBatchLoss(self, batch_ndx, batch_tup, model, metrics, mode, site_id):
         batch, labels, img_id = batch_tup
         batch = batch.to(device=self.device, non_blocking=True).float()
-        if self.dataset in ['imagenet', 'cifar10']:
+        if self.dataset in ['imagenet', 'cifar100']:
             batch = batch.permute(0, 3, 1, 2)
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
 
@@ -555,9 +555,16 @@ class EmbeddingTraining:
             elif hasattr(model, 'embedding') and model.embedding is not None:
                 data_state[ndx]['emb_vector'] = model.embedding.detach().cpu()
 
-        torch.save(model_state, model_file_path)
-        torch.save(data_state, data_file_path)
-        log.debug("Saved model params to {}".format(model_file_path))
+        try:
+            torch.save(model_state, model_file_path)
+            log.debug("Saved model params to {}".format(model_file_path))
+        except:
+            log.info('Failed to save model')
+        try:
+            torch.save(data_state, data_file_path)
+            log.debug("Saved training metrics to {}".format(data_file_path))
+        except:
+            log.info('Failed to save metrics')
 
     def mergeModels(self, is_init=False, model_path=None, state_dict=None):
         if is_init:
