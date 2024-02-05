@@ -72,7 +72,7 @@ class EmbeddingTask:
         self.initSites(data_part_seed, transform_gen_seed, alpha=alpha, tr_config=tr_config)
         self.initTrainer(comm_rounds=comm_rounds, logdir=logdir, lr=lr, ff_lr=ff_lr, emb_lr=emb_lr, weight_decay=weight_decay, comment=comment, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max,save_model=save_model, strategy=strategy, cifar=cifar, model_path=model_path, extra_conv=extra_conv, iterations=iterations, one_hot_emb=one_hot_emb, emb_trn_cycle=emb_trn_cycle)
         if site_number > trn_site_number:
-            self.initFineTuner(comm_rounds=ft_comm_rounds, logdir=logdir, lr=lr, ff_lr=ff_lr, emb_lr=emb_lr, weight_decay=weight_decay, comment=comment, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max, save_model=save_model, strategies=ft_strategies, cifar=cifar, iterations=iterations, one_hot_emb=one_hot_emb, emb_trn_cycle=emb_trn_cycle)
+            self.initFineTuner(comm_rounds=ft_comm_rounds, logdir=logdir, lr=lr, ff_lr=ff_lr, emb_lr=emb_lr, weight_decay=weight_decay, comment=comment, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max, save_model=save_model, strategies=ft_strategies, cifar=cifar, iterations=iterations)
 
     def initVariables(self, dataset):
         if self.task == 'classification':
@@ -94,12 +94,12 @@ class EmbeddingTask:
     def initTrainer(self, comm_rounds, logdir, lr, ff_lr, emb_lr, weight_decay, comment, model_name, model_type, optimizer_type, scheduler_mode, T_max, save_model, strategy, cifar, model_path, extra_conv, iterations, one_hot_emb, emb_trn_cycle):
         self.trainer = EmbeddingTraining(comm_rounds=comm_rounds, logdir=logdir, lr=lr, ffwrd_lr=ff_lr, embedding_lr=emb_lr, weight_decay=weight_decay, comment=comment, dataset=self.dataset, site_number=self.trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max, save_model=save_model, strategy=strategy, finetuning=False, sites=self.sites[:self.trn_site_number], cifar=cifar, model_path=model_path, extra_conv=extra_conv, iterations=iterations, one_hot_emb=one_hot_emb, emb_trn_cycle=emb_trn_cycle)
 
-    def initFineTuner(self, comm_rounds, logdir, lr, ff_lr, emb_lr, weight_decay, comment, model_name, model_type, optimizer_type, scheduler_mode, T_max, save_model, strategies, cifar, iterations, one_hot_emb, emb_trn_cycle):
+    def initFineTuner(self, comm_rounds, logdir, lr, ff_lr, emb_lr, weight_decay, comment, model_name, model_type, optimizer_type, scheduler_mode, T_max, save_model, strategies, cifar, iterations):
         ft_trainers = []
         logdir = os.path.join(logdir, 'finetuning')
         for strategy in strategies:
             str_comment = comment + strategy
-            ft_trainers.append(EmbeddingTraining(comm_rounds=comm_rounds, logdir=logdir, lr=lr, ffwrd_lr=ff_lr, embedding_lr=emb_lr, weight_decay=weight_decay, comment=str_comment, dataset=self.dataset, site_number=self.site_number-self.trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, save_model=save_model, strategy=strategy, finetuning=True, sites=self.sites[self.trn_site_number:], cifar=cifar, iterations=iterations, one_hot_emb=one_hot_emb, emb_trn_cycle=emb_trn_cycle))
+            ft_trainers.append(EmbeddingTraining(comm_rounds=comm_rounds, logdir=logdir, lr=lr, ffwrd_lr=ff_lr, embedding_lr=emb_lr, weight_decay=weight_decay, comment=str_comment, dataset=self.dataset, site_number=self.site_number-self.trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, save_model=save_model, strategy=strategy, finetuning=True, sites=self.sites[self.trn_site_number:], cifar=cifar, iterations=iterations, one_hot_emb=False, emb_trn_cycle=False))
         self.ft_trainers = ft_trainers
 
     def main(self):

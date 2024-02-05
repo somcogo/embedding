@@ -138,7 +138,7 @@ class EmbeddingTraining:
         for ndx, model in enumerate(self.models):
             params_to_update = []
             if finetuning:
-                assert self.strategy in ['finetuning', 'affinetoo', 'onlyfc', 'onlyemb', 'extra_conv', 'onlyextra_conv']
+                assert self.strategy in ['finetuning', 'affinetoo', 'onlyfc', 'onlyemb', 'extra_conv', 'onlyextra_conv', 'fffinetuning']
                 layer_list = get_layer_list(self.model_name, strategy=self.strategy, original_list=model.state_dict().keys())
                 for name, param in model.named_parameters():
                     if name in layer_list:
@@ -399,7 +399,7 @@ class EmbeddingTraining:
     def computeBatchLoss(self, batch_ndx, batch_tup, model, metrics, mode, site_id):
         batch, labels, img_id = batch_tup
         batch = batch.to(device=self.device, non_blocking=True).float()
-        if self.dataset in ['imagenet', ]:
+        if self.dataset in ['imagenet', 'cifar100']:
             batch = batch.permute(0, 3, 1, 2)
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
 
