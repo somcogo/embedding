@@ -38,10 +38,7 @@ class EmbeddingTraining:
                  comm_frequency=1, iterations=None,
                  fedprox=False, fedprox_mu=0., arma_mu=1.,
                  one_hot_emb=False, emb_trn_cycle=False):
-
-        comment = '{}-e{}-b{}-lr{}-{}-s{}-{}-{}-{}-{}-T{}-edim{}-genlr{}-wdecay{}-{}'.format(
-            comment, comm_rounds, batch_size, lr, dataset, site_number, model_name, model_type,
-            optimizer_type, scheduler_mode, T_max, embed_dim, ffwrd_lr, weight_decay, task)
+        
         log.info(comment)
         self.logdir_name = logdir
         self.comment = comment
@@ -215,7 +212,7 @@ class EmbeddingTraining:
         validation_cadence = 5
 
         if self.finetuning:
-            val_metrics = self.doValidation(0, val_dls)
+            val_metrics = self.doValidation(val_dls)
             self.logMetrics(0, 'val', val_metrics)
             metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['overall/mean dice']
             log.info('Round {} of {}, accuracy/dice {}, val loss {}'.format(0, self.comm_rounds, metric_to_report, val_metrics['mean loss']))

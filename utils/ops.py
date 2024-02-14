@@ -167,7 +167,8 @@ def getTransformList(degradation, site_number, seed, device, **kwargs):
         #     transforms.append(NoiseTransform(rng=rng, device=device, var_mul=var, choice=1))
         # for alpha in alphas:
         #     transforms.append(NoiseTransform(rng=rng, device=device, alpha=alpha, choice=2))
-        # transforms = rng.permutation(transforms)
+        if site_number > 5:
+            transforms = rng.permutation(transforms)
 
     elif degradation == 'addgauss':
         var_add = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], site_number)
