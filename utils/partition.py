@@ -3,7 +3,7 @@ import random
 
 import numpy as np
 
-from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, get_image_net_dataset
+from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, get_image_net_dataset, get_celeba_dataset
 
 def partition(data_dir, dataset, partition, n_sites, alpha=None, seed=None):
 
@@ -24,8 +24,15 @@ def partition_by_class(data_dir, dataset, n_sites, seed=None):
         train_ds, test_ds = get_mnist_datasets(data_dir)
     if dataset == 'imagenet':
         train_ds, test_ds = get_image_net_dataset(data_dir)
-    y_train = train_ds.targets
-    y_test = test_ds.targets
+    if dataset == 'celeba':
+        train_ds, test_ds = get_celeba_dataset(data_dir)
+
+    if dataset == 'celeba':
+        y_train = train_ds.labels
+        y_test = test_ds.labels
+    else:
+        y_train = train_ds.targets
+        y_test = test_ds.targets
 
     if dataset == "cifar10":
         K = 10
@@ -33,8 +40,8 @@ def partition_by_class(data_dir, dataset, n_sites, seed=None):
     elif dataset == "cifar100":
         K = 100
         num = K // n_sites
-    elif dataset == 'pascalvoc':
-        K = 20
+    elif dataset == 'celeba':
+        K = 18
         num = K // n_sites
     elif dataset == 'imagenet':
         K = 200
@@ -73,9 +80,9 @@ def partition_by_class(data_dir, dataset, n_sites, seed=None):
     # -------------------------- #
     # Create class index mapping #
     # -------------------------- #
-    if dataset == 'pascalvoc':
-        data_class_idx_train = {i: np.where([i in img_labels for img_labels in y_train])[0] for i in range(K)}
-        data_class_idx_test = {i: np.where([i in img_labels for img_labels in y_test])[0] for i in range(K)}
+    if dataset == 'celeba':
+        data_class_idx_train = {i: np.where([pres_cl[i] for pres_cl in y_train])[0] for i in range(K)}
+        data_class_idx_test = {i: np.where([pres_cl[i] for pres_cl in y_test])[0] for i in range(K)}
     else:
         data_class_idx_train = {i: np.where(y_train == i)[0] for i in range(K)}
         data_class_idx_test = {i: np.where(y_test == i)[0] for i in range(K)}
@@ -125,8 +132,15 @@ def partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha, see
         train_ds, test_ds = get_mnist_datasets(data_dir, use_hdf5=True)
     if dataset == 'imagenet':
         train_ds, test_ds = get_image_net_dataset(data_dir)
-    y_train = train_ds.targets
-    y_test = test_ds.targets
+    if dataset == 'celeba':
+        train_ds, test_ds = get_celeba_dataset(data_dir)
+
+    if dataset == 'celeba':
+        y_train = train_ds.labels
+        y_test = test_ds.labels
+    else:
+        y_train = train_ds.targets
+        y_test = test_ds.targets
 
     min_size = 0
     min_require_size = 10
@@ -134,8 +148,8 @@ def partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha, see
         K = 10
     elif dataset == 'cifar100':
         K = 100
-    elif dataset == 'pascalvoc':
-        K = 20
+    elif dataset == 'celeba':
+        K = 18
     elif dataset == 'mnist':
         K = 10
     elif dataset == 'imagenet':
@@ -149,23 +163,27 @@ def partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha, see
         idx_batch_train = [[] for _ in range(n_sites)]
         idx_batch_test = [[] for _ in range(n_sites)]
         for k in range(K):
-            if dataset == 'pascalvoc':
+            if dataset == 'celeba':
                 if k == 0:
-                    train_idx_k = np.asarray([np.any(y_train[i] == k) for i in range(len(y_train))])
-                    test_idx_k = np.asarray([np.any(y_test[i] == k) for i in range(len(y_test))])
+                    train_idx_k = y_train[:, 0]
+                    test_idx_k = y_test[:, 0]
+                    # train_idx_k = np.asarray([np.any(y_train[i] == k) for i in range(len(y_train))])
+                    # test_idx_k = np.asarray([np.any(y_test[i] == k) for i in range(len(y_test))])
                 else:
-                    train_idx_k = np.asarray([np.any(y_train[i] == k)
-                                                and not np.any(np.in1d(y_train[i], range(k - 1)))
-                                                for i in range(len(y_train))])
-                    test_idx_k = np.asarray([np.any(y_test[i] == k)
-                                                and not np.any(np.in1d(y_test[i], range(k - 1)))
-                                                for i in range(len(y_test))])
+                    train_idx_k = np.logical_and(y_train[:, k], np.logical_not(y_train[:, :k].any(axis=1)))
+                    test_idx_k = np.logical_and(y_test[:, k], np.logical_not(y_test[:, :k].any(axis=1)))
+                    # train_idx_k = np.asarray([np.any(y_train[i] == k)
+                    #                             and not np.any(np.in1d(y_train[i], range(k - 1)))
+                    #                             for i in range(len(y_train))])
+                    # test_idx_k = np.asarray([np.any(y_test[i] == k)
+                    #                             and not np.any(np.in1d(y_test[i], range(k - 1)))
+                    #                             for i in range(len(y_test))])
                 train_idx_k = np.where(train_idx_k)[0]
                 test_idx_k = np.where(test_idx_k)[0]
             else:
                 train_idx_k = np.where(y_train == k)[0]
                 test_idx_k = np.where(y_test == k)[0]
-
+            
             idx_batch_train, idx_batch_test, min_size = partition_class_samples_with_dirichlet_distribution(N_train, alpha, n_sites, idx_batch_train, idx_batch_test, train_idx_k, test_idx_k, rng)
         
     for j in range(n_sites):

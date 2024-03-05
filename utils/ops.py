@@ -17,6 +17,16 @@ from torchvision.transforms import (
      ConvertImageDtype,)
 from torchvision.transforms import functional as F
 
+def get_class_list(task, site_number, class_number, class_seed):
+    rng = np.random.default_rng(seed=class_seed)
+    if task == 'segmentation':
+        class_range = rng.permutation(class_number)
+        classes = np.array_split(class_range, site_number)
+    else:
+        classes = [None for i in range(site_number)]
+
+    return classes
+
 def aug_image(batch: torch.Tensor, labels, dataset):
     batch = aug_crop_rotate_flip_erase(batch, labels, dataset)
     return batch

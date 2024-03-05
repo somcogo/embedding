@@ -13,7 +13,7 @@ class TruncatedDataset(Dataset):
         self.data = dataset.data
         if dataset_name == 'mnist':
             self.data = np.expand_dims(self.data, axis=3)
-        if dataset_name in ['pascalvoc', 'celeba']:
+        if dataset_name in ['pascalvoc']:
             self.labels = dataset.labels
         else:
             self.labels = dataset.targets
@@ -104,8 +104,9 @@ class CelebAMask_HQDataset(Dataset):
             end_ndx = 30000
         self.indicies = list(range(start_ndx, end_ndx))
         self.data = h5_file['img']
-        self.labels = h5_file['mask']
+        self.targets = h5_file['mask_one_hot']
         self.img_ids = h5_file['img_id']
+        self.labels = h5_file['present_classes']
 
     def __len__(self):
         return len(self.indicies)
@@ -113,7 +114,7 @@ class CelebAMask_HQDataset(Dataset):
     def __getitem__(self, index):
         index = self.indicies[index]
         img = self.data[index]
-        mask = self.labels[index]
+        mask = self.targets[index] > 0
 
         if self.img_tr is not None:
             img = self.img_tr(img)
