@@ -95,7 +95,7 @@ class CelebAMask_HQDataset(Dataset):
         self.img_tr = img_tr
         self.mask_tr = mask_tr
 
-        h5_file = h5py.File(os.path.join(data_dir, 'CelebAMask-HQ/celeba.hdf5'), 'r')
+        h5_file = h5py.File(os.path.join(data_dir, 'CelebAMask-HQ/celeba2.hdf5'), 'r')
         if mode == 'trn':
             start_ndx = 0
             end_ndx = 24000

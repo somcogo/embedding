@@ -1,10 +1,8 @@
 import numpy as np
 import torch
 
-from models.model import ResNet18Model, ResNet34Model, ResNetWithEmbeddings, CustomResnet
-from models.embedding_functionals import GeneralInstanceNorm2d, BatchNorm2d_noemb, GeneralBatchNorm2d
+from models.embedding_functionals import GeneralBatchNorm2d
 from models.upernet import ModelAssembler
-from utils.config import get_model_config
 
 def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None, task=None, cifar=True):
     if dataset == 'cifar10':
@@ -23,7 +21,7 @@ def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None,
         num_classes = 200
         in_channels = 3
     elif dataset == 'celeba':
-        num_classes = 18
+        num_classes = 19
         in_channels = 3
     config = get_model_config(model_name, model_type, task, cifar)
     models = []
@@ -42,183 +40,44 @@ def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None,
             model.embedding = torch.nn.Parameter(init_weight)
     return models, num_classes
 
+def get_model_config(model_name, model_type, task, cifar):
+    if model_name == 'resnet18':
+        config = {
+            'backbone_name':'resnet',
+            'layers':[2, 2, 2, 2],
+            'norm_layer':GeneralBatchNorm2d,
+            'cifar':cifar,
+        }
+    elif model_name == 'internimage':
+        config = {}
 
-def get_gen_args(model_type, emb_dim):
-    if model_type == 'embv1':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':2,
-                            'gen_depth':2,
-                            'gen_affine':False,
-                            'hidden_layer':64}
-        mode = 'embedding_weights'
-        norm_layer = GeneralBatchNorm2d
+    if task == 'classification':
+        config['head_name'] = 'classifier'
+    elif task == 'segmentation':
+        config['head_name'] = 'upernet'
+        config['fpn_out'] = 64
+        config['feature_channels'] = [64, 128, 256, 512]
+        config['bin_sizes'] = [1, 2, 4, 6]
+
+    if model_type == 'vanilla':
+        config['mode'] = 'vanilla'
     elif model_type == 'embtiny':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':1,
-                            'gen_depth':1,
-                            'gen_affine':False,
-                            'hidden_layer':64}
-        mode = 'embedding_weights'
-        norm_layer = GeneralBatchNorm2d
+        config['mode'] = 'embedding_weights'
+        config['gen_size'] = 1
+        config['gen_depth'] = 1
+        config['gen_affine'] = False
+        config['gen_hidden_layer'] = 64
     elif model_type == 'embres1':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':1,
-                            'gen_depth':1,
-                            'gen_affine':False,
-                            'hidden_layer':64}
-        mode='embedding_residual'
-        norm_layer = GeneralBatchNorm2d
+        config['mode'] = 'embedding_residual'
+        config['gen_size'] = 1
+        config['gen_depth'] = 1
+        config['gen_affine'] = False
+        config['gen_hidden_layer'] = 64
     elif model_type == 'embres2':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':1,
-                            'gen_depth':2,
-                            'gen_affine':False,
-                            'hidden_layer':64}
-        mode='embedding_residual'
-        norm_layer = GeneralBatchNorm2d
-    elif model_type == 'embv1_bnormnoemb':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':2,
-                            'gen_depth':2,
-                            'gen_affine':False,
-                            'hidden_layer':64}
-        mode = 'embedding_weights'
-        norm_layer = BatchNorm2d_noemb
-    elif model_type == 'vanilla':
-        weight_gen_args = {'emb_dim':None,
-                            'size':None,
-                            'gen_depth':None,
-                            'gen_affine':None,
-                            'hidden_layer':None}
-        mode = 'vanilla'
-        norm_layer = GeneralBatchNorm2d
-    if model_type == 'embv2':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':1,
-                            'gen_depth':2,
-                            'gen_affine':False,
-                            'hidden_layer':64}
-        mode = 'embedding_weights'
-        norm_layer = GeneralBatchNorm2d
-    if model_type == 'embv3':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':1,
-                            'gen_depth':2,
-                            'gen_affine':False,
-                            'hidden_layer':8}
-        mode = 'embedding_weights'
-        norm_layer = GeneralBatchNorm2d
-    if model_type == 'embv4':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':1,
-                            'gen_depth':2,
-                            'gen_affine':False,
-                            'hidden_layer':emb_dim}
-        mode = 'embedding_weights'
-        norm_layer = GeneralBatchNorm2d
-    if model_type == 'embv5':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':1,
-                            'gen_depth':2,
-                            'gen_affine':True,
-                            'hidden_layer':64}
-        mode = 'embedding_weights'
-        norm_layer = GeneralBatchNorm2d
-    if model_type == 'embv6':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':1,
-                            'gen_depth':1,
-                            'gen_affine':True,
-                            'hidden_layer':64}
-        mode = 'embedding_weights'
-        norm_layer = GeneralBatchNorm2d
-    if model_type == 'embv7':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':2,
-                            'gen_depth':1,
-                            'gen_affine':False,
-                            'hidden_layer':64}
-        mode = 'embedding_weights'
-        norm_layer = GeneralBatchNorm2d
-    if model_type == 'embv8':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':2,
-                            'gen_depth':2,
-                            'gen_affine':False,
-                            'hidden_layer':64}
-        mode = 'embedding_weights'
-        norm_layer = GeneralBatchNorm2d
-    if model_type == 'embv9':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':1,
-                            'gen_depth':1,
-                            'gen_affine':False,
-                            'hidden_layer':128}
-        mode = 'embedding_weights'
-        norm_layer = GeneralBatchNorm2d
-    if model_type == 'embv10':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':1,
-                            'gen_depth':2,
-                            'gen_affine':False,
-                            'hidden_layer':128}
-        mode = 'embedding_weights'
-        norm_layer = GeneralBatchNorm2d
-    if model_type == 'embv11':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':2,
-                            'gen_depth':2,
-                            'gen_affine':False,
-                            'hidden_layer':128}
-        mode = 'embedding_weights'
-        norm_layer = GeneralBatchNorm2d
-    if model_type == 'embv12':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':2,
-                            'gen_depth':2,
-                            'gen_affine':False,
-                            'hidden_layer':256}
-        mode = 'embedding_weights'
-        norm_layer = GeneralBatchNorm2d
-    if model_type == 'embv13':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':1,
-                            'gen_depth':2,
-                            'gen_affine':False,
-                            'hidden_layer':256}
-        mode = 'embedding_weights'
-        norm_layer = GeneralBatchNorm2d
-    if model_type == 'embv14':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':1,
-                            'gen_depth':2,
-                            'gen_affine':False,
-                            'hidden_layer':512}
-        mode = 'embedding_weights'
-        norm_layer = GeneralBatchNorm2d
-    if model_type == 'embres5':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':2,
-                            'gen_depth':1,
-                            'gen_affine':False,
-                            'hidden_layer':256}
-        mode = 'embedding_residual'
-        norm_layer = GeneralBatchNorm2d
-    if model_type == 'embres6':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':2,
-                            'gen_depth':2,
-                            'gen_affine':False,
-                            'hidden_layer':256}
-        mode = 'embedding_residual'
-        norm_layer = GeneralBatchNorm2d
-    if model_type == 'embres4':
-        weight_gen_args = {'emb_dim':emb_dim,
-                            'size':2,
-                            'gen_depth':2,
-                            'gen_affine':False,
-                            'hidden_layer':256}
-        mode = 'embedding_residual'
-        norm_layer = GeneralBatchNorm2d
+        config['mode'] = 'embedding_residual'
+        config['gen_size'] = 1
+        config['gen_depth'] = 2
+        config['gen_affine'] = False
+        config['gen_hidden_layer'] = 64
 
-    return weight_gen_args, mode, norm_layer
+    return config
