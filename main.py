@@ -52,11 +52,11 @@ def main(logdir, comment, task, model_name, model_type, degradation,
         ft_trainers = None
     
     training_metrics, state_dict = trainer.train()
+    results = {'training':training_metrics}
     if ft_trainers is not None:
         fine_tuning_metrics = {}
         for trainer in ft_trainers:
             fine_tuning_metrics[trainer.strategy] = trainer.train(state_dict)[0]
+        results['fine_tuning'] = fine_tuning_metrics
 
-    results = {'training':training_metrics,
-                'fine_tuning':fine_tuning_metrics}
     torch.save(results, os.path.join(save_path, comment))
