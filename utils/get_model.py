@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from models.embedding_functionals import GeneralBatchNorm2d
-from models.upernet import ModelAssembler
+from models.assembler import ModelAssembler
 
 def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None, task=None, cifar=True):
     if dataset == 'cifar10':

@@ -32,8 +32,7 @@ class EmbeddingTraining:
                  embedding_lr=None, ffwrd_lr=None, k_fold_val_id=None, seed=0,
                  site_indices=None, task='classification', sites=None,
                  model_type=None, weight_decay=1e-5, cifar=True,
-                 get_transforms=False, state_dict=None, comm_frequency=1,
-                 iterations=None):
+                 get_transforms=False, state_dict=None, iterations=None):
         
         log.info(comment)
         self.logdir_name = logdir
@@ -51,7 +50,6 @@ class EmbeddingTraining:
         self.site_indices = range(site_number) if site_indices is None else site_indices
         self.task = task
         self.state_dict = state_dict
-        self.comm_frequency = comm_frequency
         self.comm_rounds = comm_rounds
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'

@@ -7,16 +7,23 @@ from models.embedding_functionals import (GeneralAdaptiveAvgPool2d, GeneralBatch
                                           WeightGenerator, MODE_NAMES)
     
 class ClassifierHead(nn.Module):
-    def __init__(self, num_classes, **kwargs):
+    def __init__(self, num_classes, mode, **kwargs):
         super().__init__()
 
         self.avgpool = GeneralAdaptiveAvgPool2d((1, 1))
         self.fc = GeneralLinear(in_channels=512, out_channels=num_classes, **kwargs)
 
+        self.residual_affine_generator = WeightGenerator(out_channels=512, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
+        self.residual_const_generator = WeightGenerator(out_channels=512, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
+
     def forward(self, _,  features, emb):
         x = features[-1]
         x = self.avgpool(x, emb)
         x = torch.flatten(x, 1)
+        if self.residual_affine_generator is not None:
+            scale = self.residual_affine_generator(emb)
+            const = self.residual_const_generator(emb)
+            x = scale*x + const
         x = self.fc(x, emb)
 
         return x
@@ -57,7 +64,6 @@ class PSPModuleStage(nn.Module):
         self.conv = GeneralConv2d(in_channels, out_channels, mode=mode, kernel_size=1, bias=False, **kwargs)
         self.bn = GeneralBatchNorm2d(out_channels, mode=mode, **kwargs)
         self.relu = GeneralReLU(inplace=True)
-
 
         self.residual_affine_generator = WeightGenerator(out_channels=in_channels, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
         self.residual_const_generator = WeightGenerator(out_channels=in_channels, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
