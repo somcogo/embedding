@@ -36,7 +36,7 @@ def transform_image(batch, labels, mode, transform, dataset):
 
 def create_mask_from_onehot(one_hot_mask, classes):
     one_hot_mask = one_hot_mask > 0
-    one_hot_mask = one_hot_mask * torch.arange(1, 19)
+    one_hot_mask = one_hot_mask * torch.arange(1, 19, device=one_hot_mask.device)
     mask = (one_hot_mask[..., classes]).amax(dim=-1)
     return mask
 

@@ -9,6 +9,7 @@ import torch.nn as nn
 from torch.optim import Adam, AdamW, SGD, LBFGS
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
+from torchvision.utils import make_grid
 import numpy as np
 
 from utils.logconf import logging
@@ -179,8 +180,8 @@ class EmbeddingTraining:
             self.logMetrics(comm_round, 'trn', trn_metrics)
 
             if comm_round == 1 or comm_round % validation_cadence == 0:
-                val_metrics = self.doValidation(val_dls)
-                self.logMetrics(comm_round, 'val', val_metrics)
+                val_metrics, imgs = self.doValidation(val_dls)
+                self.logMetrics(comm_round, 'val', val_metrics, imgs)
                 metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['overall/mean dice']
                 saving_criterion = max(metric_to_report, saving_criterion)
 
@@ -215,7 +216,7 @@ class EmbeddingTraining:
                 for batch_tuple in trn_dl:
                     # with torch.autograd.detect_anomaly():
                         self.optims[ndx].zero_grad()
-                        loss = self.computeBatchLoss(
+                        loss, _ = self.computeBatchLoss(
                             batch_tuple,
                             self.models[ndx],
                             site_metrics,
@@ -238,23 +239,28 @@ class EmbeddingTraining:
                 model.eval()
 
             metrics = []
+            need_imgs = self.task == 'segmentation'
             for ndx, val_dl in enumerate(val_dls):
                 site_metrics = self.get_empty_metrics()
                 for batch_tuple in val_dl:
                     # with torch.autograd.detect_anomaly():
-                        self.computeBatchLoss(
+                        _, img_list = self.computeBatchLoss(
                             batch_tuple,
                             self.models[ndx],
                             site_metrics,
                             'val',
-                            ndx
+                            ndx,
+                            need_imgs
                         )
+                        if img_list is not None:
+                            imgs_to_save = img_list
+                        need_imgs = False
                 metrics.append(site_metrics)
             val_metrics = self.calculateGlobalMetricsFromLocal(metrics)
 
-        return val_metrics
+        return val_metrics, imgs_to_save
 
-    def computeBatchLoss(self, batch_tup, model, metrics, mode, site_id):
+    def computeBatchLoss(self, batch_tup, model, metrics, mode, site_id, need_imgs=False):
         batch, labels, img_id = batch_tup
         batch = batch.to(device=self.device, non_blocking=True).float()
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
@@ -273,7 +279,14 @@ class EmbeddingTraining:
 
         metrics = self.calculateLocalMetrics(pred_label, labels, loss, metrics) if metrics is not None else None
 
-        return loss.sum()
+        if need_imgs:
+            images = (batch[:4] - batch[:4].amin(dim=(1, 2, 3), keepdim=True)) / (batch[:4].amax(dim=(1, 2, 3), keepdim=True) - batch[:4].amin(dim=(1, 2, 3), keepdim=True))
+            masks = pred_label[:4]
+            img_list = [images, masks]
+            return loss.sum(), img_list
+        else:
+            return loss.sum(), None
+
     
     def get_empty_metrics(self):
         metrics = {'loss':0,
@@ -315,8 +328,9 @@ class EmbeddingTraining:
                 eps = 1e-5
 
                 for cls in self.present_classes:
-                    cls_label = labels == cls
-                    cls_pred = pred_label == cls
+                    cls_value = cls + 1
+                    cls_label = labels == cls_value
+                    cls_pred = pred_label == cls_value
                     cls_ndx_mask = torch.sum(cls_label, dim=[1, 2]) > 0
 
                     true_pos  = ( cls_label *  cls_pred).sum(dim=[1, 2])
@@ -388,13 +402,19 @@ class EmbeddingTraining:
         self,
         comm_round,
         mode_str,
-        metrics
+        metrics,
+        imgs=None
     ):
         iter_number = comm_round * self.iterations
         self.initTensorboardWriters()
         writer = getattr(self, mode_str + '_writer')
         for k, v in metrics.items():
             writer.add_scalar(k, scalar_value=v, global_step=iter_number)
+        if imgs is not None:
+            img_grid = make_grid(imgs[0])
+            mask_grid = make_grid(imgs[1].unsqueeze(1))
+            writer.add_image('images/image', img_grid, global_step=iter_number, dataformats='CHW')
+            writer.add_image('images/mask', mask_grid, global_step=iter_number, dataformats='CHW')
         writer.flush()
 
     def saveModel(self, epoch_ndx, val_metrics, trn_dls, val_dls):
