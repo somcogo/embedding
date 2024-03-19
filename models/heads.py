@@ -7,14 +7,14 @@ from models.embedding_functionals import (GeneralAdaptiveAvgPool2d, GeneralBatch
                                           WeightGenerator, MODE_NAMES)
     
 class ClassifierHead(nn.Module):
-    def __init__(self, num_classes, mode, **kwargs):
+    def __init__(self, feature_dims, num_classes, mode, **kwargs):
         super().__init__()
 
         self.avgpool = GeneralAdaptiveAvgPool2d((1, 1))
-        self.fc = GeneralLinear(in_channels=512, out_channels=num_classes, **kwargs)
+        self.fc = GeneralLinear(in_channels=feature_dims[0], out_channels=num_classes, **kwargs)
 
-        self.residual_affine_generator = WeightGenerator(out_channels=512, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-        self.residual_const_generator = WeightGenerator(out_channels=512, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
+        self.residual_affine_generator = WeightGenerator(out_channels=feature_dims[0], **kwargs) if mode is not MODE_NAMES['vanilla'] else None
+        self.residual_const_generator = WeightGenerator(out_channels=feature_dims[0], **kwargs) if mode is not MODE_NAMES['vanilla'] else None
 
     def forward(self, _,  features, emb):
         x = features[-1]
