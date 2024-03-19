@@ -259,7 +259,7 @@ class EmbeddingTraining:
                 metrics.append(site_metrics)
             val_metrics = self.calculateGlobalMetricsFromLocal(metrics)
 
-        return val_metrics, imgs_to_save
+        return val_metrics, imgs_to_save if self.task == 'segmentation' else None
 
     def computeBatchLoss(self, batch_tup, model, metrics, mode, site_id, need_imgs=False):
         batch, labels, img_id = batch_tup
