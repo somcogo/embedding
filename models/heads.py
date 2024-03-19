@@ -11,10 +11,10 @@ class ClassifierHead(nn.Module):
         super().__init__()
 
         self.avgpool = GeneralAdaptiveAvgPool2d((1, 1))
-        self.fc = GeneralLinear(in_channels=feature_dims[0], out_channels=num_classes, **kwargs)
+        self.fc = GeneralLinear(in_channels=feature_dims[-1], out_channels=num_classes, **kwargs)
 
-        self.residual_affine_generator = WeightGenerator(out_channels=feature_dims[0], **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-        self.residual_const_generator = WeightGenerator(out_channels=feature_dims[0], **kwargs) if mode is not MODE_NAMES['vanilla'] else None
+        self.residual_affine_generator = WeightGenerator(out_channels=feature_dims[-1], **kwargs) if mode is not MODE_NAMES['vanilla'] else None
+        self.residual_const_generator = WeightGenerator(out_channels=feature_dims[-1], **kwargs) if mode is not MODE_NAMES['vanilla'] else None
 
     def forward(self, _,  features, emb):
         x = features[-1]
