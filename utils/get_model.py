@@ -56,8 +56,8 @@ def get_model_config(model_name, model_type, task, cifar, feature_dims):
         config['feature_dims'] = feature_dims if feature_dims is not None else [64, 128, 256, 512]
     elif task == 'segmentation':
         config['head_name'] = 'upernet'
-        config['fpn_out'] = 64
-        config['feature_channels'] = [64, 128, 256, 512]
+        config['fpn_out'] = feature_dims[0] if feature_dims is not None else 64
+        config['feature_channels'] = feature_dims if feature_dims is not None else [64, 128, 256, 512]
         config['bin_sizes'] = [1, 2, 4, 6]
         config['feature_dims'] = feature_dims if feature_dims is not None else [64, 128, 256, 512]
 
