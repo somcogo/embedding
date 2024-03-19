@@ -413,7 +413,7 @@ class EmbeddingTraining:
             writer.add_scalar(k, scalar_value=v, global_step=iter_number)
         if imgs is not None:
             img_grid = make_grid(imgs[0])
-            mask_grid = make_grid(imgs[1].unsqueeze(1))
+            mask_grid = make_grid(imgs[1].unsqueeze(1).float(), normalize=True)
             writer.add_image('images/image', img_grid, global_step=iter_number, dataformats='CHW')
             writer.add_image('images/mask', mask_grid, global_step=iter_number, dataformats='CHW')
         writer.flush()
