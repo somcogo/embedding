@@ -4,7 +4,7 @@ import torch
 from models.embedding_functionals import GeneralBatchNorm2d
 from models.assembler import ModelAssembler
 
-def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None, task=None, cifar=True):
+def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None, task=None, cifar=True, feature_dims=None):
     if dataset == 'cifar10':
         num_classes = 10
         in_channels = 3
@@ -23,7 +23,7 @@ def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None,
     elif dataset == 'celeba':
         num_classes = 19
         in_channels = 3
-    config = get_model_config(model_name, model_type, task, cifar)
+    config = get_model_config(model_name, model_type, task, cifar, feature_dims)
     models = []
     for _ in range(site_number):
         model = ModelAssembler(channels=in_channels, num_classes=num_classes, emb_dim=embed_dim, **config)
@@ -40,7 +40,7 @@ def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None,
             model.embedding = torch.nn.Parameter(init_weight)
     return models, num_classes
 
-def get_model_config(model_name, model_type, task, cifar):
+def get_model_config(model_name, model_type, task, cifar, feature_dims):
     if model_name == 'resnet18':
         config = {
             'backbone_name':'resnet',
@@ -53,11 +53,13 @@ def get_model_config(model_name, model_type, task, cifar):
 
     if task == 'classification':
         config['head_name'] = 'classifier'
+        config['feature_dims'] = feature_dims if feature_dims is not None else [64, 128, 256, 512]
     elif task == 'segmentation':
         config['head_name'] = 'upernet'
         config['fpn_out'] = 64
         config['feature_channels'] = [64, 128, 256, 512]
         config['bin_sizes'] = [1, 2, 4, 6]
+        config['feature_dims'] = feature_dims if feature_dims is not None else [64, 128, 256, 512]
 
     if model_type == 'vanilla':
         config['mode'] = 'vanilla'

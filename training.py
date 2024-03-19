@@ -33,7 +33,8 @@ class EmbeddingTraining:
                  embedding_lr=None, ffwrd_lr=None, k_fold_val_id=None, seed=0,
                  site_indices=None, task='classification', sites=None,
                  model_type=None, weight_decay=1e-5, cifar=True,
-                 get_transforms=False, state_dict=None, iterations=None):
+                 get_transforms=False, state_dict=None, iterations=None,
+                 feature_dims=None):
         
         log.info(comment)
         self.logdir_name = logdir
@@ -70,14 +71,14 @@ class EmbeddingTraining:
         else:
             self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
             self.site_number = len(site_indices)
-        self.models = self.initModels(embed_dim=embed_dim, model_type=model_type, cifar=cifar)
+        self.models = self.initModels(embed_dim=embed_dim, model_type=model_type, cifar=cifar, feature_dims=feature_dims)
         self.optims = self.initOptimizers(lr, finetuning, weight_decay=weight_decay, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers()
         self.iterations = math.ceil(len(self.trn_dls[0].dataset)/batch_size) if iterations is None else iterations
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
-    def initModels(self, embed_dim, model_type, cifar):
-        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, model_type=model_type, task=self.task, cifar=cifar)
+    def initModels(self, embed_dim, model_type, cifar, feature_dims):
+        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, model_type=model_type, task=self.task, cifar=cifar, feature_dims=feature_dims)
 
         if self.device == 'cuda':
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))

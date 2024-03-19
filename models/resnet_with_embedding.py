@@ -7,21 +7,21 @@ from .embedding_functionals import MODE_NAMES, GeneralConv2d, GeneralConvTranspo
 
 ### ----- Based on the official PyTorch ResNet-18 implementation ----- ###
 class CustomResnet(nn.Module):
-    def __init__(self, channels=3, layers=[2, 2, 2, 2], norm_layer=GeneralBatchNorm2d, device=None, cifar=False, **kwargs):
+    def __init__(self, channels=3, layers=[2, 2, 2, 2], feature_dims=[64, 128, 256, 512], norm_layer=GeneralBatchNorm2d, cifar=False, **kwargs):
         super().__init__()
 
         if cifar:
-            self.conv1 = GeneralConv2d(channels, 64, kernel_size=3, stride=1, padding=1, bias=False, **kwargs)
+            self.conv1 = GeneralConv2d(channels, feature_dims[0], kernel_size=3, stride=1, padding=1, bias=False, **kwargs)
         else:
-            self.conv1 = GeneralConv2d(channels, 64, kernel_size=7, stride=2, padding=3, bias=False, **kwargs)
-        self.batch_norm1 = norm_layer(num_features=64, **kwargs)
+            self.conv1 = GeneralConv2d(channels, feature_dims[0], kernel_size=7, stride=2, padding=3, bias=False, **kwargs)
+        self.batch_norm1 = norm_layer(num_features=feature_dims[0], **kwargs)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.layers = nn.ModuleList([])
-        self.make_layer(64, 64, layers[0], norm_layer=norm_layer, **kwargs)
-        self.make_layer(64, 128, layers[1], stride=2, norm_layer=norm_layer, **kwargs)
-        self.make_layer(128, 256, layers[2], stride=2, norm_layer=norm_layer, **kwargs)
-        self.make_layer(256, 512, layers[3], stride=2, norm_layer=norm_layer, **kwargs)
+        self.make_layer(feature_dims[0], feature_dims[0], layers[0], norm_layer=norm_layer, **kwargs)
+        self.make_layer(feature_dims[0], feature_dims[1], layers[1], stride=2, norm_layer=norm_layer, **kwargs)
+        self.make_layer(feature_dims[1], feature_dims[2], layers[2], stride=2, norm_layer=norm_layer, **kwargs)
+        self.make_layer(feature_dims[2], feature_dims[3], layers[3], stride=2, norm_layer=norm_layer, **kwargs)
 
     def make_layer(self, in_channels, out_channels, depth, stride=1, norm_layer=None, **kwargs):
         downsample = None
