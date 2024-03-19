@@ -130,7 +130,7 @@ def getTransformList(degradation, site_number, seed, device, **kwargs):
             transforms.append(NoiseTransform(rng=rng, t_rng=t_rng, device=device, var_add=var, choice=0))
         transforms = rng.permutation(transforms)
 
-    elif degradation == 'nothing':
+    elif degradation == 'nothing' or degradation == 'classsep':
         for site in range(site_number):
             transforms.append(ConvertImageDtype(torch.float))
             
