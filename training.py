@@ -161,8 +161,8 @@ class EmbeddingTraining:
         validation_cadence = 5
 
         if self.finetuning:
-            val_metrics = self.doValidation(val_dls)
-            self.logMetrics(0, 'val', val_metrics)
+            val_metrics, imgs = self.doValidation(val_dls)
+            self.logMetrics(0, 'val', val_metrics, imgs)
             metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['overall/mean dice']
             log.info('Round {} of {}, accuracy/dice {}, val loss {}'.format(0, self.comm_rounds, metric_to_report, val_metrics['mean loss']))
 
