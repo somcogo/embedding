@@ -64,9 +64,9 @@ class EmbeddingTraining:
             self.trn_dls = [site['trn_dl'] for site in sites]
             self.val_dls = [site['val_dl'] for site in sites]
             self.transforms = [site['transform'] for site in sites]
-            self.classes = [site['classes'] for site in sites]
+            self.classes = [site['classes'] for site in sites] if sites[0]['classes'] is not None else None
             if task == 'segmentation':
-                self.present_classes = [c for c_l in self.classes for c in c_l]
+                self.present_classes = [c for c_l in self.classes for c in c_l] if self.classes is not None else np.arange(18)
             self.site_number = len(sites)
         else:
             self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
@@ -269,7 +269,7 @@ class EmbeddingTraining:
             batch = batch.permute(0, 3, 1, 2)
         if self.dataset in ['celeba']:
             batch = batch.permute(0, 3, 1, 2)
-            labels = create_mask_from_onehot(labels, self.classes[site_id] if hasattr(self, 'classes') else np.arange(18))
+            labels = create_mask_from_onehot(labels, self.classes[site_id] if self.classes is not None else np.arange(18))
 
         batch, labels = transform_image(batch, labels, mode, self.transforms[site_id] if hasattr(self, 'transforms') else None, self.dataset)
 
