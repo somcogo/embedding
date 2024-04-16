@@ -12,9 +12,9 @@ from torchvision.transforms import (
      ColorJitter,
      ConvertImageDtype,)
 
-def get_class_list(task, site_number, class_number, class_seed):
+def get_class_list(task, site_number, class_number, class_seed, degradation):
     rng = np.random.default_rng(seed=class_seed)
-    if task == 'segmentation':
+    if task == 'segmentation' and degradation == 'nothing':
         class_range = rng.permutation(class_number)
         classes = np.array_split(class_range, site_number)
     else:

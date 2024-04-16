@@ -30,7 +30,7 @@ def main(logdir, comment, task, model_name, model_type, degradation,
 
     trn_dl_list, val_dl_list = get_dl_lists(dataset, batch_size, partition=partition, n_site=site_number, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=data_part_seed, use_hdf5=True)
     transform_list = getTransformList(degradation, site_number, seed=transform_gen_seed, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
-    class_list = get_class_list(task=task, site_number=site_number, class_number=18 if dataset == 'celeba' else None, class_seed=2)
+    class_list = get_class_list(task=task, site_number=site_number, class_number=18 if dataset == 'celeba' else None, class_seed=2, degradation=degradation)
     site_dict = [{'trn_dl': trn_dl_list[ndx],
                     'val_dl': val_dl_list[ndx],
                     'transform': transform_list[ndx],
@@ -51,7 +51,7 @@ def main(logdir, comment, task, model_name, model_type, degradation,
     
     training_metrics, state_dict = trainer.train()
     results = {'training':training_metrics}
-    if ft_trainers is not None:
+    if ft_trainers is not None and len(ft_trainers) > 0:
         fine_tuning_metrics = {}
         for trainer in ft_trainers:
             fine_tuning_metrics[trainer.strategy] = trainer.train(state_dict)[0]
