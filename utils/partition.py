@@ -27,7 +27,7 @@ def partition_by_class(data_dir, dataset, n_sites, seed=None):
     if dataset == 'celeba':
         train_ds, test_ds = get_celeba_dataset(data_dir)
 
-    if dataset == 'celeba':
+    if dataset in ['celeba', 'imagenet']:
         y_train = train_ds.labels
         y_test = test_ds.labels
     else:
@@ -135,7 +135,7 @@ def partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha, see
     if dataset == 'celeba':
         train_ds, test_ds = get_celeba_dataset(data_dir)
 
-    if dataset == 'celeba':
+    if dataset in ['celeba', 'imagenet']:
         y_train = train_ds.labels
         y_test = test_ds.labels
     else:

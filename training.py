@@ -166,7 +166,7 @@ class EmbeddingTraining:
             metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['overall/mean dice']
             log.info('Round {} of {}, accuracy/dice {}, val loss {}'.format(0, self.comm_rounds, metric_to_report, val_metrics['mean loss']))
 
-        for comm_round in range(1, self.comm_rounds):
+        for comm_round in range(1, self.comm_rounds + 1):
             logging_index = comm_round % 10**(math.floor(math.log(comm_round, 10))) == 0
 
             if comm_round == 1:
@@ -262,10 +262,10 @@ class EmbeddingTraining:
         return val_metrics, imgs_to_save if self.task == 'segmentation' else None
 
     def computeBatchLoss(self, batch_tup, model, metrics, mode, site_id, need_imgs=False):
-        batch, labels, img_id = batch_tup
+        batch, labels = batch_tup
         batch = batch.to(device=self.device, non_blocking=True).float()
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
-        if self.dataset in ['imagenet', 'cifar100']:
+        if self.dataset in ['cifar100']:
             batch = batch.permute(0, 3, 1, 2)
         if self.dataset in ['celeba']:
             batch = batch.permute(0, 3, 1, 2)
@@ -437,13 +437,6 @@ class EmbeddingTraining:
         for ndx, model in enumerate(self.models):
             if isinstance(model, torch.nn.DataParallel):
                 model = model.module
-            data_state[ndx] = {
-                'trn_indices': trn_dls[ndx].dataset.indices,
-                'val_indices': val_dls[ndx].dataset.indices,
-            }
-            if self.dataset != 'celeba':
-                data_state[ndx]['trn_labels'] = trn_dls[ndx].dataset.labels
-                data_state[ndx]['val_labels'] = val_dls[ndx].dataset.labels
             state_dict = model.state_dict()
             if self.finetuning:
                 site_state_dict = {key: state_dict[key] for key in state_dict.keys() if key in layer_list}
@@ -455,7 +448,7 @@ class EmbeddingTraining:
                 'scheduler_state': self.schedulers[ndx].state_dict(),
                 }
             if hasattr(model, 'embedding') and model.embedding is not None:
-                data_state[ndx]['emb_vector'] = model.embedding.detach().cpu()
+                data_state[ndx] = {'emb_vector':model.embedding.detach().cpu()}
 
         torch.save(model_state, model_file_path)
         log.debug("Saved model params to {}".format(model_file_path))

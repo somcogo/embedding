@@ -13,7 +13,7 @@ class TruncatedDataset(Dataset):
         self.data = dataset.data
         if dataset_name == 'mnist':
             self.data = np.expand_dims(self.data, axis=3)
-        if dataset_name in ['pascalvoc']:
+        if dataset_name in ['pascalvoc', 'imagenet']:
             self.labels = dataset.labels
         else:
             self.labels = dataset.targets
@@ -49,14 +49,14 @@ class ImageNetDataSet(Dataset):
         super().__init__()
         h5_file = h5py.File(os.path.join(data_dir, 'tiny_imagenet_{}.hdf5'.format(mode)), 'r')
         self.data = h5_file['data']
-        self.targets = np.array(h5_file['labels'])
+        self.labels = np.array(h5_file['labels'])
 
     def __len__(self):
         return self.data.shape[0]
     
     def __getitem__(self, index):
         img = torch.from_numpy(self.data[index]).permute(2, 0, 1)
-        target = self.targets[index]
+        target = self.labels[index]
         return img, target
 
 class CIFAR10DataSet(Dataset):
@@ -106,7 +106,7 @@ class CelebAMask_HQDataset(Dataset):
         self.data = h5_file['img']
         self.targets = h5_file['mask_one_hot']
         self.img_ids = h5_file['img_id']
-        self.labels = h5_file['present_classes']
+        self.labels = h5_file['present_classes'][start_ndx:end_ndx]
 
     def __len__(self):
         return len(self.indicies)

@@ -15,7 +15,7 @@ log.setLevel(logging.INFO)
 
 def main(logdir, comment, task, model_name, model_type, degradation,
          site_number, trn_site_number, embedding_dim, batch_size,
-         k_fold_val_id, comm_rounds, ft_comm_rounds=None, iterations=50,
+         cross_val_id, comm_rounds, ft_comm_rounds=None, iterations=50,
          lr=None, ff_lr=None, emb_lr=None, optimizer_type=None,
          weight_decay=None, scheduler_mode=None, T_max=None, save_model=None,
          strategy=None, ft_strategies=None, cifar=True, data_part_seed=0,
@@ -28,7 +28,7 @@ def main(logdir, comment, task, model_name, model_type, degradation,
     assert task in ['classification', 'segmentation']
     assert site_number >= trn_site_number
 
-    trn_dl_list, val_dl_list = get_dl_lists(dataset, batch_size, partition=partition, n_site=site_number, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=data_part_seed, use_hdf5=True)
+    trn_dl_list, val_dl_list = get_dl_lists(dataset, batch_size, partition=partition, n_site=site_number, alpha=alpha, seed=data_part_seed, use_hdf5=True, cross_val_id=cross_val_id)
     transform_list = getTransformList(degradation, site_number, seed=transform_gen_seed, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
     class_list = get_class_list(task=task, site_number=site_number, class_number=18 if dataset == 'celeba' else None, class_seed=2, degradation=degradation)
     site_dict = [{'trn_dl': trn_dl_list[ndx],
@@ -58,3 +58,5 @@ def main(logdir, comment, task, model_name, model_type, degradation,
         results['fine_tuning'] = fine_tuning_metrics
 
     torch.save(results, os.path.join(save_path, comment))
+    if cross_val_id is not None:
+        return results
