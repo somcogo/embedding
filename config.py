@@ -29,7 +29,7 @@ def get_config(logdir, comment, emb_dim, task, site_number, trn_site_number, deg
                 'swap_count':1}
     
     if 'emb' in model_type:
-        if cross_val_id is None:
+        if cross_val_id is None or task == 'classification':
             ft_strategies = ['finetuning', 'onlyfc', 'onlyemb', 'fffinetuning']
         else:
             ft_strategies = ['fffinetuning']
