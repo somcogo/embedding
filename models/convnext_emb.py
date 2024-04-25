@@ -42,7 +42,6 @@ class Block(nn.Module):
         if self.residual_affine_generator is not None:
             scale = self.residual_affine_generator(emb)
             const = self.residual_const_generator(emb)
-            print(x.shape, scale.shape, const.shape)
             x = scale*x + const
 
         x = self.pwconv2(x)

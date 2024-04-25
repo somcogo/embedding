@@ -6,15 +6,15 @@ import torch
 from config import get_standard_config
 from main import main
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 torch.set_num_threads(8)
 
-logdir = 'convnextceleb'
+logdir = 'convnextimnet'
 comment = 'firsttry'
-degradation = 'addgauss'
+degradation = 'classsep'
 model = 'convnext'
 model_type = 'embres2'
-dataset = 'celeba'
+dataset = 'imagenet'
 
 cross_validate = True
 if not cross_validate:

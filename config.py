@@ -121,7 +121,7 @@ def get_standard_config(logdir, comment, degradation, model, model_type, dataset
     config = {'logdir':logdir,
             'comment':f'{comment}-{task}-{model}-{model_type}-{degradation}-s5-ts2-edim{str(emb_dim)}-b{str(batch_size)}-commr{str(comm_rounds)}-ftcr{str(ft_comm_rounds)}-iter50-lr1e-4-fflrNone-emblr1e-3-{dataset}-alpha{alpha_str}-fdim{fdim_str}-xval{cross_val_id}',
             'task':task,
-            'model_name':'resnet18',
+            'model_name':model,
             'model_type':model_type,
             'degradation':degradation,
             'site_number':5,
