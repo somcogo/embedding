@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn as nn
 
 from models.embedding_functionals import GeneralBatchNorm2d
 from models.assembler import ModelAssembler
@@ -48,8 +49,14 @@ def get_model_config(model_name, model_type, task, cifar, feature_dims):
             'norm_layer':GeneralBatchNorm2d,
             'cifar':cifar,
         }
-    elif model_name == 'internimage':
-        config = {}
+    elif model_name == 'convnext':
+        config = {
+            'backbone_name':'convnext',
+            'depths':[3, 3, 9, 3],
+            'dims':feature_dims,
+            'drop_path_rate':0.1,
+            'norm_layer':nn.BatchNorm2d
+        }
 
     if task == 'classification':
         config['head_name'] = 'classifier'

@@ -86,9 +86,3 @@ class ResnetBlock(nn.Module):
         out = self.relu(out)
 
         return out
-    
-def get_backbone(backbone_name, **model_config):
-    if backbone_name == 'resnet':
-        backbone = CustomResnet(**model_config)
-
-    return backbone

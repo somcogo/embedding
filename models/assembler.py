@@ -4,9 +4,26 @@ import torch
 import torch.nn as nn
 
 from models.embedding_functionals import MODE_NAMES
-from models.resnet_with_embedding import get_backbone
-from models.heads import get_head
-    
+from models.resnet_with_embedding import CustomResnet
+from models.convnext_emb import ConvNeXt
+from models.heads import ClassifierHead, UperNet
+
+def get_backbone(backbone_name, **model_config):
+    if backbone_name == 'resnet':
+        backbone = CustomResnet(**model_config)
+    elif backbone_name == 'convnext':
+        backbone = ConvNeXt(**model_config)
+
+    return backbone
+
+def get_head(head_name, **model_config):
+    if head_name == 'classifier':
+        head = ClassifierHead(**model_config)
+    elif head_name == 'upernet':
+        head = UperNet(**model_config)
+
+    return head
+
 class ModelAssembler(nn.Module):
     def __init__(self, mode='vanilla', emb_dim=None, **model_config):
         super().__init__()

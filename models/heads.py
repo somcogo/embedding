@@ -13,17 +13,10 @@ class ClassifierHead(nn.Module):
         self.avgpool = GeneralAdaptiveAvgPool2d((1, 1))
         self.fc = GeneralLinear(in_channels=feature_dims[-1], out_channels=num_classes, **kwargs)
 
-        # self.residual_affine_generator = WeightGenerator(out_channels=feature_dims[-1], **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-        # self.residual_const_generator = WeightGenerator(out_channels=feature_dims[-1], **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-
     def forward(self, _,  features, emb):
         x = features[-1]
         x = self.avgpool(x, emb)
         x = torch.flatten(x, 1)
-        # if self.residual_affine_generator is not None:
-        #     scale = self.residual_affine_generator(emb)
-        #     const = self.residual_const_generator(emb)
-        #     x = scale*x + const
         x = self.fc(x, emb)
 
         return x
@@ -149,11 +142,3 @@ class UperNet(nn.Module):
 
         x = F.interpolate(x, size=input_size, mode='bilinear')
         return x
-
-def get_head(head_name, **model_config):
-    if head_name == 'classifier':
-        head = ClassifierHead(**model_config)
-    elif head_name == 'upernet':
-        head = UperNet(**model_config)
-
-    return head
