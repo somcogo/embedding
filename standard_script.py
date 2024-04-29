@@ -6,15 +6,15 @@ import torch
 from config import get_standard_config
 from main import main
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "6"
 torch.set_num_threads(8)
 
-logdir = 'convnextceleb'
+logdir = 'resnetcifar10'
 comment = 'firsttry'
 degradation = 'addgauss'
-model = 'convnext'
+model = 'resnet18'
 model_type = 'embres2'
-dataset = 'celeba'
+dataset = 'cifar10'
 
 cross_validate = True
 if not cross_validate:

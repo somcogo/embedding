@@ -265,7 +265,7 @@ class EmbeddingTraining:
         batch, labels = batch_tup
         batch = batch.to(device=self.device, non_blocking=True).float()
         labels = labels.to(device=self.device, non_blocking=True).to(dtype=torch.long)
-        if self.dataset in ['cifar100']:
+        if self.dataset in ['cifar10', 'cifar100']:
             batch = batch.permute(0, 3, 1, 2)
         if self.dataset in ['celeba']:
             batch = batch.permute(0, 3, 1, 2)
