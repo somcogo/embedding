@@ -55,7 +55,24 @@ def get_model_config(model_name, model_type, task, cifar, feature_dims):
             'depths':[3, 3, 9, 3],
             'dims':feature_dims,
             'drop_path_rate':0.1,
-            'norm_layer':nn.BatchNorm2d
+            'norm_layer':nn.BatchNorm2d,
+            'patch_size':2
+        }
+    elif model_name == 'convnextog':
+        config = {
+            'backbone_name':'convnextog',
+            'depths':[3, 3, 9, 3],
+            'dims':feature_dims,
+            'drop_path_rate':0.1,
+            'norm_layer':nn.BatchNorm2d,
+            'out_indices':[0, 1, 2, 3],
+            'patch_size':2
+        }
+    elif model_name == 'swinv2':
+        config = {
+            'backbone_name':'swinv2',
+            'drop_path_rate':0.2,
+            'embed_dim':feature_dims[0]
         }
 
     if task == 'classification':

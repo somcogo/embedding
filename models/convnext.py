@@ -1,9 +1,17 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+# All rights reserved.
+
+# This source code is licensed under the license found in the
+# LICENSE file in the root directory of this source tree.
+
+
+from functools import partial
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from timm.models.layers import trunc_normal_, DropPath
-
-from .embedding_functionals import WeightGenerator, MODE_NAMES
 
 
 class Block(nn.Module):
@@ -17,7 +25,7 @@ class Block(nn.Module):
         drop_path (float): Stochastic depth rate. Default: 0.0
         layer_scale_init_value (float): Init value for Layer Scale. Default: 1e-6.
     """
-    def __init__(self, dim, drop_path=0., layer_scale_init_value=1e-6, mode=None, **kwargs):
+    def __init__(self, dim, drop_path=0., layer_scale_init_value=1e-6):
         super().__init__()
         self.dwconv = nn.Conv2d(dim, dim, kernel_size=7, padding=3, groups=dim) # depthwise conv
         self.norm = LayerNorm(dim, eps=1e-6)
@@ -28,30 +36,13 @@ class Block(nn.Module):
                                     requires_grad=True) if layer_scale_init_value > 0 else None
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
-        # self.residual_affine_generator = WeightGenerator(out_channels=4 * dim, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-        # self.residual_const_generator = WeightGenerator(out_channels=4 * dim, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-        self.residual_affine_generator = WeightGenerator(out_channels=dim, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-        self.residual_const_generator = WeightGenerator(out_channels=dim, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-
-    def forward(self, x, emb):
+    def forward(self, x):
         input = x
         x = self.dwconv(x)
         x = x.permute(0, 2, 3, 1) # (N, C, H, W) -> (N, H, W, C)
         x = self.norm(x)
-
-        if self.residual_affine_generator is not None:
-            scale = self.residual_affine_generator(emb)
-            const = self.residual_const_generator(emb)
-            x = scale*x + const
-
         x = self.pwconv1(x)
         x = self.act(x)
-
-        # if self.residual_affine_generator is not None:
-        #     scale = self.residual_affine_generator(emb)
-        #     const = self.residual_const_generator(emb)
-        #     x = scale*x + const
-
         x = self.pwconv2(x)
         if self.gamma is not None:
             x = self.gamma * x
@@ -74,9 +65,9 @@ class ConvNeXt(nn.Module):
         layer_scale_init_value (float): Init value for Layer Scale. Default: 1e-6.
         head_init_scale (float): Init scaling value for classifier weights and biases. Default: 1.
     """
-    def __init__(self, channels=3, depths=[3, 3, 9, 3], dims=[96, 192, 384, 768],
-                 drop_path_rate=0., layer_scale_init_value=1e-6, patch_size=2, **kwargs
-                 ):
+    def __init__(self, channels=3, depths=[3, 3, 9, 3], dims=[96, 192, 384, 768], 
+                 drop_path_rate=0., layer_scale_init_value=1e-6, out_indices=[0, 1, 2, 3],
+                 patch_size=2, **kwargs):
         super().__init__()
 
         self.downsample_layers = nn.ModuleList() # stem and 3 intermediate downsampling conv layers
@@ -96,10 +87,20 @@ class ConvNeXt(nn.Module):
         dp_rates=[x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))] 
         cur = 0
         for i in range(4):
-            stage = nn.ModuleList([Block(dim=dims[i], drop_path=dp_rates[cur + j], 
-                layer_scale_init_value=layer_scale_init_value, **kwargs) for j in range(depths[i])])
+            stage = nn.Sequential(
+                *[Block(dim=dims[i], drop_path=dp_rates[cur + j], 
+                layer_scale_init_value=layer_scale_init_value) for j in range(depths[i])]
+            )
             self.stages.append(stage)
             cur += depths[i]
+
+        self.out_indices = out_indices
+
+        norm_layer = partial(LayerNorm, eps=1e-6, data_format="channels_first")
+        for i_layer in range(4):
+            layer = norm_layer(dims[i_layer])
+            layer_name = f'norm{i_layer}'
+            self.add_module(layer_name, layer)
 
         self.apply(self._init_weights)
 
@@ -108,14 +109,42 @@ class ConvNeXt(nn.Module):
             trunc_normal_(m.weight, std=.02)
             nn.init.constant_(m.bias, 0)
 
-    def forward(self, x, emb):
-        features = []
+    def init_weights(self, pretrained=None):
+        """Initialize the weights in backbone.
+        Args:
+            pretrained (str, optional): Path to pre-trained weights.
+                Defaults to None.
+        """
+
+        def _init_weights(m):
+            if isinstance(m, nn.Linear):
+                trunc_normal_(m.weight, std=.02)
+                if isinstance(m, nn.Linear) and m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.LayerNorm):
+                nn.init.constant_(m.bias, 0)
+                nn.init.constant_(m.weight, 1.0)
+
+        if pretrained is None:
+            self.apply(_init_weights)
+        else:
+            raise TypeError('no pretrained weights')
+
+    def forward_features(self, x):
+        outs = []
         for i in range(4):
             x = self.downsample_layers[i](x)
-            for block in self.stages[i]:
-                x = block(x, emb)
-            features.append(x)
-        return features
+            x = self.stages[i](x)
+            if i in self.out_indices:
+                norm_layer = getattr(self, f'norm{i}')
+                x_out = norm_layer(x)
+                outs.append(x_out)
+
+        return tuple(outs)
+
+    def forward(self, x, emb):
+        x = self.forward_features(x)
+        return x
 
 class LayerNorm(nn.Module):
     r""" LayerNorm that supports two data formats: channels_last (default) or channels_first. 
