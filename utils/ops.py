@@ -10,7 +10,11 @@ from torchvision.transforms import (
      RandomRotation,
      RandomErasing,
      ColorJitter,
-     ConvertImageDtype,)
+     ConvertImageDtype,
+     Resize,
+     InterpolationMode,
+     v2)
+from timm.data.mixup import Mixup
 
 def get_class_list(task, site_number, class_number, class_seed, degradation):
     rng = np.random.default_rng(seed=class_seed)
@@ -22,16 +26,22 @@ def get_class_list(task, site_number, class_number, class_seed, degradation):
 
     return classes
 
-def transform_image(batch, labels, mode, transform, dataset):
+def transform_image(batch, labels, mode, transform, dataset, model, p=False, trn_log=True):
     if mode == 'trn':
-        batch, labels = aug_image(batch, labels, dataset)
+        batch, labels = aug_image(batch, labels, dataset, model, p=p, trn_log=trn_log)
     if transform is not None:
         # For some transforms, e.g. colorjitter, the pixelvalues need to be in [0, 1]
         b_max = torch.amax(batch, dim=(1, 2, 3), keepdim=True)
         b_min = torch.amin(batch, dim=(1, 2, 3), keepdim=True)
-        batch = (batch - b_min) / (b_max - b_min)
+        batch = (batch - b_min) / (b_max - b_min + 1e-5)
         batch = transform(batch)
         batch = (b_max - b_min) * batch + b_min
+    if model == 'swinv2':
+        resize_tr = Resize((224, 224), antialias=True)
+        batch = resize_tr(batch)
+        if dataset in ['celeba', 'coco']:
+            resize_mask = Resize((224, 224), interpolation=InterpolationMode.NEAREST)
+            labels = resize_mask(labels)
     return batch, labels
 
 def create_mask_from_onehot(one_hot_mask, classes):
@@ -40,12 +50,10 @@ def create_mask_from_onehot(one_hot_mask, classes):
     mask = (one_hot_mask[..., classes]).amax(dim=-1)
     return mask
 
-def aug_image(batch: torch.Tensor, labels, dataset):
-    batch = aug_crop_rotate_flip_erase(batch, labels, dataset)
-    return batch
-
-def aug_crop_rotate_flip_erase(batch, labels, dataset):
+def aug_image(batch, labels, dataset, model, p=False, trn_log=True):
     if dataset in ['mnist', 'cifar10', 'cifar100']:
+        if p:
+            print('aug for mnist, cifar')
         trans = Compose([
             Pad(4),
             RandomCrop(32),
@@ -56,7 +64,9 @@ def aug_crop_rotate_flip_erase(batch, labels, dataset):
             RandomErasing(p=0.5, scale=(0.015625, 0.25), ratio=(0.25, 4))
         ])
         batch = trans(batch)
-    elif dataset == 'imagenet':
+    elif dataset == 'imagenet' and trn_log:
+        if p:
+            print('standard aug for imagenet')
         trans = Compose([
             Pad(4),
             RandomCrop(64),
@@ -68,6 +78,8 @@ def aug_crop_rotate_flip_erase(batch, labels, dataset):
         ])
         batch = trans(batch)
     elif dataset == 'celeba':
+        if p:
+            print('aug for celeba')
         flip = torch.rand(size=[batch.shape[0]]) < 0.5
         rotation = torch.randint(0, 5, [batch.shape[0]])
         scales = torch.rand(size=[batch.shape[0]], device=batch.device) * 0.4 + 0.8
@@ -78,6 +90,25 @@ def aug_crop_rotate_flip_erase(batch, labels, dataset):
             batch[ndx] = torch.rot90(batch[ndx], rotation[ndx], dims=(-2, -1))
             labels[ndx] = torch.rot90(labels[ndx], rotation[ndx], dims=(-2, -1))
         batch = scales.reshape(-1, 1, 1, 1) * batch
+    elif dataset == 'imagenet' and not trn_log:
+        if p:
+            print('new aug for imagenet')
+        rand_aug = v2.RandAugment(num_ops=2)
+        mixup = Mixup(
+            mixup_alpha=0.8,
+            cutmix_alpha=1.,
+            cutmix_minmax=None,
+            prob=0.4,
+            switch_prob=0.5,
+            mode='elem',
+            label_smoothing=0.1,
+            num_classes=200
+        )
+        rand_erase = v2.RandomErasing()
+        
+        batch = rand_aug(batch)
+        batch, labels = mixup(batch, labels)
+        batch = rand_erase(batch)
     return batch, labels
     
 def principle_comp_analysis(data:torch.Tensor):

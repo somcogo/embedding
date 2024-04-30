@@ -7,7 +7,7 @@ import torch
 from torchvision.transforms import Resize
 import torch.nn as nn
 from torch.optim import Adam, AdamW, SGD, LBFGS
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR, LinearLR, SequentialLR
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid
 import numpy as np
@@ -34,7 +34,7 @@ class EmbeddingTraining:
                  site_indices=None, task='classification', sites=None,
                  model_type=None, weight_decay=1e-5, cifar=True,
                  get_transforms=False, state_dict=None, iterations=None,
-                 feature_dims=None):
+                 feature_dims=None, label_smoothing=0., trn_logging=True):
         
         log.info(comment)
         self.logdir_name = logdir
@@ -53,6 +53,7 @@ class EmbeddingTraining:
         self.task = task
         self.state_dict = state_dict
         self.comm_rounds = comm_rounds
+        self.label_smoothing = label_smoothing
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
@@ -71,10 +72,14 @@ class EmbeddingTraining:
         else:
             self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
             self.site_number = len(site_indices)
+        # self.iterations = math.ceil(len(self.trn_dls[0].dataset)/batch_size) if iterations is None else iterations
+        self.iterations = iterations
         self.models = self.initModels(embed_dim=embed_dim, model_type=model_type, cifar=cifar, feature_dims=feature_dims)
         self.optims = self.initOptimizers(lr, finetuning, weight_decay=weight_decay, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
-        self.schedulers = self.initSchedulers()
-        self.iterations = math.ceil(len(self.trn_dls[0].dataset)/batch_size) if iterations is None else iterations
+        self.schedulers = self.initSchedulers(lr)
+        print('number of iterations: ', self.iterations)
+        self.p = True
+        self.trn_logging = trn_logging
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
     def initModels(self, embed_dim, model_type, cifar, feature_dims):
@@ -124,7 +129,7 @@ class EmbeddingTraining:
             optims.append(optim)
         return optims
     
-    def initSchedulers(self):
+    def initSchedulers(self, lr):
         if self.scheduler_mode is None:
             schedulers = None
         else:
@@ -132,6 +137,16 @@ class EmbeddingTraining:
             for optim in self.optims:
                 if self.scheduler_mode == 'cosine':
                     scheduler = CosineAnnealingLR(optim, T_max=self.T_max, eta_min=1e-6)
+                elif self.scheduler_mode == 'onecyc':
+                    scheduler = OneCycleLR(optim,
+                                           max_lr=lr,
+                                           steps_per_epoch=self.iterations if self.iterations is not None else len(self.trn_dls[0]),
+                                           epochs=self.comm_rounds)
+                elif self.scheduler_mode == 'warmcos':
+                    linear_warm_up = LinearLR(optim, start_factor=1e-8, total_iters=20)
+                    cosine_scheduler = CosineAnnealingLR(optim, self.comm_rounds - 20, 1e-6)
+                    scheduler = SequentialLR(optim, schedulers=[linear_warm_up, cosine_scheduler], milestones=[20])
+
                 schedulers.append(scheduler)
             
         return schedulers
@@ -191,7 +206,7 @@ class EmbeddingTraining:
                 if logging_index:
                     log.info('Round {} of {}, accuracy/dice {}, val loss {}'.format(comm_round, self.comm_rounds, metric_to_report, val_metrics['mean loss']))
             
-            if self.scheduler_mode == 'cosine' and not self.finetuning:
+            if self.scheduler_mode in ['cosine', 'warmcos'] and not self.finetuning:
                 for scheduler in self.schedulers:
                     scheduler.step()
 
@@ -212,8 +227,27 @@ class EmbeddingTraining:
         for ndx, trn_dl in enumerate(trn_dls):
             iter_ndx = 0
             site_metrics = self.get_empty_metrics()
-            while iter_ndx < self.iterations:
+            if self.iterations is not None:
+                while iter_ndx < self.iterations:
 
+                    for batch_tuple in trn_dl:
+                        # with torch.autograd.detect_anomaly():
+                            self.optims[ndx].zero_grad()
+                            loss, _ = self.computeBatchLoss(
+                                batch_tuple,
+                                self.models[ndx],
+                                site_metrics,
+                                'trn',
+                                ndx)
+                            loss.backward()
+                            self.optims[ndx].step()
+                            if self.scheduler_mode == 'onecyc' and not self.finetuning:
+                                for scheduler in self.schedulers:
+                                    scheduler.step()
+                            iter_ndx += 1
+                            if iter_ndx >= self.iterations:
+                                break
+            else:
                 for batch_tuple in trn_dl:
                     # with torch.autograd.detect_anomaly():
                         self.optims[ndx].zero_grad()
@@ -225,12 +259,12 @@ class EmbeddingTraining:
                             ndx)
                         loss.backward()
                         self.optims[ndx].step()
-                        iter_ndx += 1
-                        if iter_ndx >= self.iterations:
-                            break
+                        if self.scheduler_mode == 'onecyc' and not self.finetuning:
+                            for scheduler in self.schedulers:
+                                scheduler.step()
 
             metrics.append(site_metrics)
-        trn_metrics = self.calculateGlobalMetricsFromLocal(metrics)
+        trn_metrics = self.calculateGlobalMetricsFromLocal(metrics, mode='trn')
 
         return trn_metrics
 
@@ -257,7 +291,7 @@ class EmbeddingTraining:
                             imgs_to_save = img_list
                         need_imgs = False
                 metrics.append(site_metrics)
-            val_metrics = self.calculateGlobalMetricsFromLocal(metrics)
+            val_metrics = self.calculateGlobalMetricsFromLocal(metrics, mode='val')
 
         return val_metrics, imgs_to_save if self.task == 'segmentation' else None
 
@@ -271,14 +305,15 @@ class EmbeddingTraining:
             batch = batch.permute(0, 3, 1, 2)
             labels = create_mask_from_onehot(labels, self.classes[site_id] if self.classes is not None else np.arange(18))
 
-        batch, labels = transform_image(batch, labels, mode, self.transforms[site_id] if hasattr(self, 'transforms') else None, self.dataset)
+        batch, labels = transform_image(batch, labels, mode, self.transforms[site_id] if hasattr(self, 'transforms') else None, self.dataset, model=self.model_name, p=self.p, trn_log=self.trn_logging)
+        self.p = False
 
         pred = model(batch)
         pred_label = torch.argmax(pred, dim=1)
-        loss_fn = nn.CrossEntropyLoss()
+        loss_fn = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
         loss = loss_fn(pred, labels)
 
-        metrics = self.calculateLocalMetrics(pred_label, labels, loss, metrics) if metrics is not None else None
+        metrics = self.calculateLocalMetrics(pred_label, labels, loss, metrics, mode) if metrics is not None else None
 
         if need_imgs:
             images = (batch[:4] - batch[:4].amin(dim=(1, 2, 3), keepdim=True)) / (batch[:4].amax(dim=(1, 2, 3), keepdim=True) - batch[:4].amin(dim=(1, 2, 3), keepdim=True))
@@ -311,19 +346,20 @@ class EmbeddingTraining:
                 }
         return metrics
     
-    def calculateLocalMetrics(self, pred_label, labels, loss, local_metrics):
+    def calculateLocalMetrics(self, pred_label, labels, loss, local_metrics, mode):
         # with torch.autograd.detect_anomaly():
             local_metrics['loss'] += loss.sum()
             local_metrics['total'] += pred_label.shape[0]
             if self.task == 'classification':
-                correct_mask = pred_label == labels
-                correct = torch.sum(correct_mask)
-                local_metrics['correct'] += correct
+                if mode == 'val' or self.trn_logging:
+                    correct_mask = pred_label == labels
+                    correct = torch.sum(correct_mask)
+                    local_metrics['correct'] += correct
 
-                for cls in range(self.num_classes):
-                    class_mask = labels == cls
-                    local_metrics[cls]['correct'] += torch.sum(correct_mask[class_mask])
-                    local_metrics[cls]['total'] += torch.sum(class_mask)
+                    for cls in range(self.num_classes):
+                        class_mask = labels == cls
+                        local_metrics[cls]['correct'] += torch.sum(correct_mask[class_mask])
+                        local_metrics[cls]['total'] += torch.sum(class_mask)
 
             elif self.task == 'segmentation':
                 eps = 1e-5
@@ -352,7 +388,7 @@ class EmbeddingTraining:
                     local_metrics[cls]['true_neg'] += true_neg[cls_ndx_mask].sum()
                     local_metrics[cls]['total'] += cls_ndx_mask.sum()
 
-    def calculateGlobalMetricsFromLocal(self, local_metrics):
+    def calculateGlobalMetricsFromLocal(self, local_metrics, mode):
         # with torch.autograd.detect_anomaly():
             eps = 1e-5
 
@@ -360,15 +396,16 @@ class EmbeddingTraining:
             gl_metrics = {'mean loss':sum([d['loss'] for d in local_metrics]) / total}
 
             if self.task == 'classification':
-                gl_metrics['overall/accuracy'] = sum([d['correct'] for d in local_metrics]) / total
+                if mode == 'val' or self.trn_logging:
+                    gl_metrics['overall/accuracy'] = sum([d['correct'] for d in local_metrics]) / total
 
-                for site_ndx, local_m in enumerate(local_metrics):
-                    gl_metrics['accuracy_by_site/{}'.format(site_ndx)] = local_m['correct'] / local_m['total']
-                    gl_metrics['loss by site/{}'.format(site_ndx)] = local_m['loss'] / local_m['total']
+                    for site_ndx, local_m in enumerate(local_metrics):
+                        gl_metrics['accuracy_by_site/{}'.format(site_ndx)] = local_m['correct'] / local_m['total']
+                        gl_metrics['loss by site/{}'.format(site_ndx)] = local_m['loss'] / local_m['total']
 
-                for cls in range(self.num_classes):
-                    cls_total = sum([d[cls]['total'] for d in local_metrics])
-                    gl_metrics['accuracy by class/{}'.format(cls)] = sum([d[cls]['correct'] for d in local_metrics]) / cls_total
+                    for cls in range(self.num_classes):
+                        cls_total = sum([d[cls]['total'] for d in local_metrics])
+                        gl_metrics['accuracy by class/{}'.format(cls)] = sum([d[cls]['correct'] for d in local_metrics]) / cls_total
 
             elif self.task == 'segmentation':
                 for cls in self.present_classes:
@@ -406,7 +443,7 @@ class EmbeddingTraining:
         metrics,
         imgs=None
     ):
-        iter_number = comm_round * self.iterations
+        iter_number = comm_round * self.iterations if self.iterations is not None else comm_round * len(self.trn_dls[0])
         self.initTensorboardWriters()
         writer = getattr(self, mode_str + '_writer')
         for k, v in metrics.items():
