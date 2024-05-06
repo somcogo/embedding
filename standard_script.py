@@ -9,18 +9,18 @@ from main import main
 os.environ["CUDA_VISIBLE_DEVICES"] = "6"
 torch.set_num_threads(8)
 
-logdir = 'site1test'
-comment = 'scheduler'
+logdir = 'test'
+comment = 'ftsched'
 degradation = 'nothing'
-model = 'convnextog'
+model = 'convnext'
 model_type = 'vanilla'
-dataset = 'imagenet'
+dataset = 'celeba'
 
 cross_validate = False
 # if not cross_validate:
 #     cross_val_id = 0
 # else:
-cross_val_id = None
+cross_val_id = 0
 
 config_fn = get_exp_config
 
