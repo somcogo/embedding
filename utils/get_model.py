@@ -24,7 +24,7 @@ def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None,
     elif dataset == 'celeba':
         num_classes = 19
         in_channels = 3
-    config = get_model_config(model_name, model_type, task, cifar, feature_dims)
+    config = get_model_config(model_name, model_type, task, cifar, feature_dims, dataset)
     models = []
     for _ in range(site_number):
         model = ModelAssembler(channels=in_channels, num_classes=num_classes, emb_dim=embed_dim, **config)
@@ -41,7 +41,13 @@ def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None,
             model.embedding = torch.nn.Parameter(init_weight)
     return models, num_classes
 
-def get_model_config(model_name, model_type, task, cifar, feature_dims):
+def get_model_config(model_name, model_type, task, cifar, feature_dims, dataset):
+    if dataset == 'imagenet':
+        patch_size = 2
+    elif dataset == 'cifar10':
+        patch_size = 1
+    else:
+        patch_size = 4
     if model_name == 'resnet18':
         config = {
             'backbone_name':'resnet',
@@ -56,7 +62,7 @@ def get_model_config(model_name, model_type, task, cifar, feature_dims):
             'dims':feature_dims,
             'drop_path_rate':0.1,
             'norm_layer':nn.BatchNorm2d,
-            'patch_size':2
+            'patch_size':patch_size
         }
     elif model_name == 'convnextog':
         config = {
@@ -66,7 +72,7 @@ def get_model_config(model_name, model_type, task, cifar, feature_dims):
             'drop_path_rate':0.1,
             'norm_layer':nn.BatchNorm2d,
             'out_indices':[0, 1, 2, 3],
-            'patch_size':2
+            'patch_size':patch_size
         }
     elif model_name == 'swinv2':
         config = {
