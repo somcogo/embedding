@@ -82,15 +82,19 @@ def get_standard_config(logdir, comment, degradation, model, model_type, dataset
         batch_size = 64 if model == 'resnet18' else 256
         comm_rounds = 3200
         ft_comm_rounds = 800
-    elif dataset in ['celeba']:
+    elif dataset in ['celeba', 'minicoco']:
         task = 'segmentation'
         batch_size = 32
         comm_rounds = 400 if model == 'resnet18' else 100
         ft_comm_rounds = 100 if model == 'resnet18' else 50
     
     if degradation == 'classsep':
-        partition = 'by_class'
-        alpha = None
+        if dataset == 'minicoco':
+            partition = 'dirichlet'
+            alpha = 0.1
+        else:
+            partition = 'by_class'
+            alpha = None
     else:
         partition = 'dirichlet'
         alpha = 1e7
