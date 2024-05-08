@@ -38,18 +38,27 @@ class Block(nn.Module):
         input = x
         x = self.dwconv(x)
         x = x.permute(0, 2, 3, 1) # (N, C, H, W) -> (N, H, W, C)
-        x = self.norm(x)
-
-        # x = self.act1(x)
-
+        
+        # place #3
         if self.residual_affine_generator is not None:
             scale = self.residual_affine_generator(emb)
             const = self.residual_const_generator(emb)
             x = scale*x + const
 
+        x = self.norm(x)
+
+        # x = self.act1(x)
+
+        # place #1
+        # if self.residual_affine_generator is not None:
+        #     scale = self.residual_affine_generator(emb)
+        #     const = self.residual_const_generator(emb)
+        #     x = scale*x + const
+
         x = self.pwconv1(x)
         x = self.act2(x)
 
+        # place #2
         # if self.residual_affine_generator is not None:
         #     scale = self.residual_affine_generator(emb)
         #     const = self.residual_const_generator(emb)

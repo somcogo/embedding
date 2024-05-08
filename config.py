@@ -160,8 +160,8 @@ def get_standard_config(logdir, comment, degradation, model, model_type, dataset
 def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cross_val_id=None):
     if dataset in ['cifar10', 'imagenet']:
         task = 'classification'
-        batch_size = 64 if model == 'resnet18' else 128
-        comm_rounds = 400
+        batch_size = 64 if model == 'resnet18' else 64
+        comm_rounds = 800
         ft_comm_rounds = 100
     elif dataset in ['celeba']:
         task = 'segmentation'
@@ -204,7 +204,7 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     trn_site_number = 2
     lr = 4e-3
     weight_decay = 5e-2
-    label_smoothing = 0. if model == 'resnet18' else 0.
+    label_smoothing = 0. if model == 'resnet18' else 0.1
 
     optimizer = 'newadam' if model == 'resnet18'else 'adamw'
     scheduler = 'cosine' if model == 'resnet18'else 'warmcos'
