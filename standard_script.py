@@ -9,12 +9,12 @@ from main import main
 os.environ["CUDA_VISIBLE_DEVICES"] = "6"
 torch.set_num_threads(8)
 
-logdir = 'resnetcoco'
-comment = 'firsttry'
-degradation = 'classsep'
-model = 'resnet18'
-model_type = 'vanilla'
-dataset = 'minicoco'
+logdir = 'convcifar10'
+comment = 'nolabelsm'
+degradation = 'colorjitter'
+model = 'convnext'
+model_type = 'embres2'
+dataset = 'cifar10'
 
 cross_validate = False
 # if not cross_validate:
@@ -22,7 +22,7 @@ cross_validate = False
 # else:
 cross_val_id = 0
 
-config_fn = get_standard_config
+config_fn = get_exp_config
 
 if __name__ == '__main__':
     if cross_validate:
