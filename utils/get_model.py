@@ -25,7 +25,7 @@ def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None,
         num_classes = 19
         in_channels = 3
     elif dataset == 'minicoco':
-        num_classes = 90
+        num_classes = 91
         in_channels = 3
     config = get_model_config(model_name, model_type, task, cifar, feature_dims, dataset)
     models = []

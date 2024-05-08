@@ -161,8 +161,8 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     if dataset in ['cifar10', 'imagenet']:
         task = 'classification'
         batch_size = 64 if model == 'resnet18' else 64
-        comm_rounds = 800
-        ft_comm_rounds = 100
+        comm_rounds = 1600
+        ft_comm_rounds = 200
     elif dataset in ['celeba']:
         task = 'segmentation'
         batch_size = 32
@@ -210,7 +210,7 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     scheduler = 'cosine' if model == 'resnet18'else 'warmcos'
     ft_scheduler = 'cosine'
 
-    trn_logging = True
+    trn_logging = False if dataset == 'imagenet' else True
     aug = 'old' if trn_logging else 'new'
 
     config = {'logdir':logdir,
