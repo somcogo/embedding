@@ -166,8 +166,8 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     elif dataset in ['celeba']:
         task = 'segmentation'
         batch_size = 32
-        comm_rounds = 50
-        ft_comm_rounds = 50
+        comm_rounds = 400
+        ft_comm_rounds = 100
     
     if degradation == 'classsep':
         partition = 'by_class'
@@ -204,7 +204,7 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     trn_site_number = 2
     lr = 4e-3
     weight_decay = 5e-2
-    label_smoothing = 0. if model == 'resnet18' else 0.1
+    label_smoothing = 0. if model == 'resnet18' else 0.
 
     optimizer = 'newadam' if model == 'resnet18'else 'adamw'
     scheduler = 'cosine' if model == 'resnet18'else 'warmcos'

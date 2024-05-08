@@ -141,7 +141,7 @@ class MiniCOCODatase(Dataset):
         mask = self.targets[index]
 
         if self.img_tr is not None:
-            img = self.img_tr(img)
+            img = self.img_tr(img.transpose(1, 2, 0))
         if self.mask_tr is not None:
             mask = self.mask_tr(mask)
         return img, mask
