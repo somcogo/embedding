@@ -39,7 +39,7 @@ def transform_image(batch, labels, mode, transform, dataset, model, p=False, trn
     if model == 'swinv2':
         resize_tr = Resize((224, 224), antialias=True)
         batch = resize_tr(batch)
-        if dataset in ['celeba', 'coco']:
+        if dataset in ['celeba', 'minicoco']:
             resize_mask = Resize((224, 224), interpolation=InterpolationMode.NEAREST)
             labels = resize_mask(labels)
     return batch, labels
@@ -77,7 +77,7 @@ def aug_image(batch, labels, dataset, model, p=False, trn_log=True):
             RandomErasing(p=0.5, scale=(0.015625, 0.25), ratio=(0.25, 4))
         ])
         batch = trans(batch)
-    elif dataset == 'celeba':
+    elif dataset in ['celeba', 'minicoco']:
         if p:
             print('aug for celeba')
         flip = torch.rand(size=[batch.shape[0]]) < 0.5
