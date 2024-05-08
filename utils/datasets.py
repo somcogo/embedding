@@ -121,6 +121,30 @@ class CelebAMask_HQDataset(Dataset):
         if self.mask_tr is not None:
             mask = self.mask_tr(mask)
         return img, mask
+    
+class MiniCOCODatase(Dataset):
+    def __init__(self, data_dir, img_tr=None, mask_tr=None, mode='trn'):
+        super().__init__()
+        self.img_tr = img_tr
+        self.mask_tr = mask_tr
+
+        h5_file = h5py.File(os.path.join(data_dir, 'cocominitrain3.hdf5'), 'r')
+        self.data = h5_file[mode]['img']
+        self.targets = h5_file[mode]['mask']
+        self.labels = h5_file[mode]['present_classes']
+
+    def __len__(self):
+        return self.data.shape[0]
+
+    def __getitem__(self, index):
+        img = self.data[index]
+        mask = self.targets[index]
+
+        if self.img_tr is not None:
+            img = self.img_tr(img)
+        if self.mask_tr is not None:
+            mask = self.mask_tr(mask)
+        return img, mask
 
 def get_cifar10_datasets(data_dir, use_hdf5=False):
     if use_hdf5:
@@ -182,4 +206,15 @@ def get_image_net_dataset(data_dir):
 def get_celeba_dataset(data_dir, img_tr=None, mask_tr=None):
     dataset = CelebAMask_HQDataset(data_dir, img_tr, mask_tr, 'trn')
     val_dataset = CelebAMask_HQDataset(data_dir, img_tr, mask_tr, 'val')
+    return dataset, val_dataset
+
+def get_minicoco_dataset(data_dir):
+    mean = torch.tensor([0.40789654, 0.44719302, 0.47026115])
+    std  = torch.tensor([0.28863828, 0.27408164, 0.27809835])
+    transform = Compose([
+        ToTensor(),
+        Normalize(mean=mean, std=std)
+    ])
+    dataset = MiniCOCODatase(data_dir, transform, None, 'trn')
+    val_dataset = MiniCOCODatase(data_dir, transform, None, 'val')
     return dataset, val_dataset

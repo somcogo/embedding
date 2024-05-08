@@ -82,15 +82,19 @@ def get_standard_config(logdir, comment, degradation, model, model_type, dataset
         batch_size = 64 if model == 'resnet18' else 256
         comm_rounds = 3200
         ft_comm_rounds = 800
-    elif dataset in ['celeba']:
+    elif dataset in ['celeba', 'minicoco']:
         task = 'segmentation'
         batch_size = 32
-        comm_rounds = 400
-        ft_comm_rounds = 100
+        comm_rounds = 400 if model == 'resnet18' else 100
+        ft_comm_rounds = 100 if model == 'resnet18' else 50
     
     if degradation == 'classsep':
-        partition = 'by_class'
-        alpha = None
+        if dataset == 'minicoco':
+            partition = 'dirichlet'
+            alpha = 0.1
+        else:
+            partition = 'by_class'
+            alpha = None
     else:
         partition = 'dirichlet'
         alpha = 1e7
@@ -157,13 +161,13 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     if dataset in ['cifar10', 'imagenet']:
         task = 'classification'
         batch_size = 64 if model == 'resnet18' else 128
-        comm_rounds = 1600
-        ft_comm_rounds = 400
+        comm_rounds = 400
+        ft_comm_rounds = 100
     elif dataset in ['celeba']:
         task = 'segmentation'
         batch_size = 32
-        comm_rounds = 400
-        ft_comm_rounds = 100
+        comm_rounds = 50
+        ft_comm_rounds = 50
     
     if degradation == 'classsep':
         partition = 'by_class'
@@ -204,12 +208,13 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
 
     optimizer = 'newadam' if model == 'resnet18'else 'adamw'
     scheduler = 'cosine' if model == 'resnet18'else 'warmcos'
+    ft_scheduler = 'cosine'
 
-    trn_logging = False
+    trn_logging = True
     aug = 'old' if trn_logging else 'new'
 
     config = {'logdir':logdir,
-            'comment':f'{comment}-{task}-{model}-{model_type}-{degradation}-s{str(site_number)}-ts{str(trn_site_number)}-edim{str(emb_dim)}-b{str(batch_size)}-commr{str(comm_rounds)}-ftcr{str(ft_comm_rounds)}-iter{str(iterations)}-lr{str(lr)}-emblr1e-3-{optimizer}-{scheduler}-wd{str(weight_decay)}-{dataset}-aug{aug}-alpha{alpha_str}-fdim{fdim_str}-ls{str(label_smoothing)}-xval{cross_val_id}',
+            'comment':f'{comment}-{task}-{model}-{model_type}-{degradation}-s{str(site_number)}-ts{str(trn_site_number)}-edim{str(emb_dim)}-b{str(batch_size)}-commr{str(comm_rounds)}-ftcr{str(ft_comm_rounds)}-iter{str(iterations)}-lr{str(lr)}-emblr1e-3-{optimizer}-{scheduler}-ft{ft_scheduler}-wd{str(weight_decay)}-{dataset}-aug{aug}-alpha{alpha_str}-fdim{fdim_str}-ls{str(label_smoothing)}-xval{cross_val_id}',
             'task':task,
             'model_name':model,
             'model_type':model_type,
@@ -241,6 +246,7 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
             'partition':partition,
             'feature_dims':feature_dims,
             'label_smoothing':label_smoothing,
-            'trn_logging':trn_logging}
+            'trn_logging':trn_logging,
+            'ft_scheduler':ft_scheduler}
     
     return config

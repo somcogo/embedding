@@ -3,7 +3,7 @@ import random
 
 import numpy as np
 
-from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, get_image_net_dataset, get_celeba_dataset
+from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, get_image_net_dataset, get_celeba_dataset, get_minicoco_dataset
 
 def partition(data_dir, dataset, partition, n_sites, alpha=None, seed=None):
 
@@ -18,37 +18,35 @@ def partition_by_class(data_dir, dataset, n_sites, seed=None):
 
     if dataset == 'cifar10':
         train_ds, test_ds = get_cifar10_datasets(data_dir)
-    if dataset == 'cifar100':
+        K = 10
+        num = K // n_sites
+    elif dataset == 'cifar100':
         train_ds, test_ds = get_cifar100_datasets(data_dir)
-    if dataset == 'mnist':
+        K = 100
+        num = K // n_sites
+    elif dataset == 'mnist':
         train_ds, test_ds = get_mnist_datasets(data_dir)
-    if dataset == 'imagenet':
+        K = 10
+        num = K // n_sites
+    elif dataset == 'imagenet':
         train_ds, test_ds = get_image_net_dataset(data_dir)
-    if dataset == 'celeba':
+        K = 200
+        num = K // n_sites
+    elif dataset == 'celeba':
         train_ds, test_ds = get_celeba_dataset(data_dir)
+        K = 18
+        num = K // n_sites
+    elif dataset == 'minicoco':
+        train_ds, test_ds = get_minicoco_dataset(data_dir)
+        K = 90
+        num = K // n_sites
 
-    if dataset in ['celeba', 'imagenet']:
+    if dataset in ['celeba', 'imagenet', 'minicoco']:
         y_train = train_ds.labels
         y_test = test_ds.labels
     else:
         y_train = train_ds.targets
         y_test = test_ds.targets
-
-    if dataset == "cifar10":
-        K = 10
-        num = K // n_sites
-    elif dataset == "cifar100":
-        K = 100
-        num = K // n_sites
-    elif dataset == 'celeba':
-        K = 18
-        num = K // n_sites
-    elif dataset == 'imagenet':
-        K = 200
-        num = K // n_sites
-    elif dataset == 'mnist':
-        K = 10
-        num = K // n_sites
 
     # -------------------------------------------#
     # Divide classes + num samples for each user #
@@ -126,16 +124,24 @@ def partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha, see
 
     if dataset == 'cifar10':
         train_ds, test_ds = get_cifar10_datasets(data_dir, use_hdf5=True)
-    if dataset == 'cifar100':
+        K = 10
+    elif dataset == 'cifar100':
         train_ds, test_ds = get_cifar100_datasets(data_dir)
-    if dataset == 'mnist':
+        K = 100
+    elif dataset == 'mnist':
         train_ds, test_ds = get_mnist_datasets(data_dir, use_hdf5=True)
-    if dataset == 'imagenet':
+        K = 10
+    elif dataset == 'imagenet':
         train_ds, test_ds = get_image_net_dataset(data_dir)
-    if dataset == 'celeba':
+        K = 200
+    elif dataset == 'celeba':
         train_ds, test_ds = get_celeba_dataset(data_dir)
+        K = 18
+    elif dataset == 'minicoco':
+        train_ds, test_ds = get_minicoco_dataset(data_dir)
+        K = 92
 
-    if dataset in ['celeba', 'imagenet']:
+    if dataset in ['celeba', 'imagenet', 'minicoco']:
         y_train = train_ds.labels
         y_test = test_ds.labels
     else:
@@ -144,16 +150,6 @@ def partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha, see
 
     min_size = 0
     min_require_size = 10
-    if dataset == 'cifar10':
-        K = 10
-    elif dataset == 'cifar100':
-        K = 100
-    elif dataset == 'celeba':
-        K = 18
-    elif dataset == 'mnist':
-        K = 10
-    elif dataset == 'imagenet':
-        K = 200
 
     N_train = len(y_train)
     net_dataidx_map_train = {}
@@ -163,7 +159,7 @@ def partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha, see
         idx_batch_train = [[] for _ in range(n_sites)]
         idx_batch_test = [[] for _ in range(n_sites)]
         for k in range(K):
-            if dataset == 'celeba':
+            if dataset in ['celeba', 'minicoco']:
                 if k == 0:
                     train_idx_k = y_train[:, 0]
                     test_idx_k = y_test[:, 0]
