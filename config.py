@@ -157,8 +157,8 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     if dataset in ['cifar10', 'imagenet']:
         task = 'classification'
         batch_size = 64 if model == 'resnet18' else 128
-        comm_rounds = 100
-        ft_comm_rounds = 800
+        comm_rounds = 1600
+        ft_comm_rounds = 400
     elif dataset in ['celeba']:
         task = 'segmentation'
         batch_size = 32
@@ -195,10 +195,10 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
             feature_dims = 96 * np.array([1, 2, 4, 8])
     fdim_str = str(64 if feature_dims is None else feature_dims[0])
 
-    iterations = 50 if model == 'resnet18' else None
-    site_number = 1
-    trn_site_number = 1
-    lr = 2e-3
+    iterations = 50 if model == 'resnet18' else 50
+    site_number = 5
+    trn_site_number = 2
+    lr = 4e-3
     weight_decay = 5e-2
     label_smoothing = 0. if model == 'resnet18' else 0.1
 

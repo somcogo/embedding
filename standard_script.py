@@ -9,12 +9,12 @@ from main import main
 os.environ["CUDA_VISIBLE_DEVICES"] = "6"
 torch.set_num_threads(8)
 
-logdir = 'site1test'
-comment = 'scheduler'
-degradation = 'nothing'
-model = 'convnextog'
+logdir = 'convnextcifar10'
+comment = 'fedavgtest'
+degradation = 'addgauss'
+model = 'convnext'
 model_type = 'vanilla'
-dataset = 'imagenet'
+dataset = 'cifar10'
 
 cross_validate = False
 # if not cross_validate:
