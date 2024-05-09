@@ -23,16 +23,17 @@ class Block(nn.Module):
         self.norm = LayerNorm(dim, eps=1e-6)
         self.act1 = nn.GELU()
         self.pwconv1 = nn.Linear(dim, 4 * dim) # pointwise/1x1 convs, implemented with linear layers
+        self.norm2 = LayerNorm(4 * dim, eps=1e-6)
         self.act2 = nn.GELU()
         self.pwconv2 = nn.Linear(4 * dim, dim)
         self.gamma = nn.Parameter(layer_scale_init_value * torch.ones((dim)), 
                                     requires_grad=True) if layer_scale_init_value > 0 else None
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
-        # self.residual_affine_generator = WeightGenerator(out_channels=4 * dim, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-        # self.residual_const_generator = WeightGenerator(out_channels=4 * dim, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-        self.residual_affine_generator = WeightGenerator(out_channels=dim, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-        self.residual_const_generator = WeightGenerator(out_channels=dim, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
+        self.residual_affine_generator = WeightGenerator(out_channels=4 * dim, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
+        self.residual_const_generator = WeightGenerator(out_channels=4 * dim, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
+        # self.residual_affine_generator = WeightGenerator(out_channels=dim, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
+        # self.residual_const_generator = WeightGenerator(out_channels=dim, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
 
     def forward(self, x, emb):
         input = x
@@ -40,10 +41,10 @@ class Block(nn.Module):
         x = x.permute(0, 2, 3, 1) # (N, C, H, W) -> (N, H, W, C)
         
         # place #3
-        if self.residual_affine_generator is not None:
-            scale = self.residual_affine_generator(emb)
-            const = self.residual_const_generator(emb)
-            x = scale*x + const
+        # if self.residual_affine_generator is not None:
+        #     scale = self.residual_affine_generator(emb)
+        #     const = self.residual_const_generator(emb)
+        #     x = scale*x + const
 
         x = self.norm(x)
 
@@ -56,13 +57,16 @@ class Block(nn.Module):
         #     x = scale*x + const
 
         x = self.pwconv1(x)
+
+        x = self.norm2(x) # v4
+
         x = self.act2(x)
 
         # place #2
-        # if self.residual_affine_generator is not None:
-        #     scale = self.residual_affine_generator(emb)
-        #     const = self.residual_const_generator(emb)
-        #     x = scale*x + const
+        if self.residual_affine_generator is not None:
+            scale = self.residual_affine_generator(emb)
+            const = self.residual_const_generator(emb)
+            x = scale*x + const
 
         x = self.pwconv2(x)
         if self.gamma is not None:

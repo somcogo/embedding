@@ -161,8 +161,8 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     if dataset in ['cifar10', 'imagenet']:
         task = 'classification'
         batch_size = 64 if model == 'resnet18' else 64
-        comm_rounds = 1600
-        ft_comm_rounds = 200
+        comm_rounds = 3200
+        ft_comm_rounds = 400
     elif dataset in ['celeba']:
         task = 'segmentation'
         batch_size = 32
@@ -189,7 +189,7 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
         if model == 'resnet18':
             feature_dims = 62 * np.array([1, 2, 4, 8])
         elif model in ['convnext', 'convnextog', 'swinv2']:
-            feature_dims = 94 * np.array([1, 2, 4, 8])
+            feature_dims = 90 * np.array([1, 2, 4, 8])
     else:
         ft_strategies = ['finetuning']
         emb_dim = None

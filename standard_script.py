@@ -9,8 +9,8 @@ from main import main
 os.environ["CUDA_VISIBLE_DEVICES"] = "6"
 torch.set_num_threads(8)
 
-logdir = 'convcifar10'
-comment = 'nolabelsm'
+logdir = 'convcifar10v4'
+comment = 'v4'
 degradation = 'colorjitter'
 model = 'convnext'
 model_type = 'embres2'
