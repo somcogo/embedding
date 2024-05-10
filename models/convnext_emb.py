@@ -58,7 +58,7 @@ class Block(nn.Module):
 
         x = self.pwconv1(x)
 
-        x = self.norm2(x) # v4
+        # x = self.norm2(x) # v4
 
         x = self.act2(x)
 
