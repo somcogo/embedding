@@ -38,7 +38,7 @@ def partition_by_class(data_dir, dataset, n_sites, seed=None):
         num = K // n_sites
     elif dataset == 'minicoco':
         train_ds, test_ds = get_minicoco_dataset(data_dir)
-        K = 90
+        K = 12
         num = K // n_sites
 
     if dataset in ['celeba', 'imagenet', 'minicoco']:
@@ -139,7 +139,7 @@ def partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha, see
         K = 18
     elif dataset == 'minicoco':
         train_ds, test_ds = get_minicoco_dataset(data_dir)
-        K = 92
+        K = 12
 
     if dataset in ['celeba', 'imagenet', 'minicoco']:
         y_train = train_ds.labels

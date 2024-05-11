@@ -145,6 +145,32 @@ class MiniCOCODatase(Dataset):
         if self.mask_tr is not None:
             mask = self.mask_tr(mask)
         return img, mask
+    
+class MiniCOCODatase2(Dataset):
+    def __init__(self, data_dir, img_tr=None, mask_tr=None, mode='trn'):
+        super().__init__()
+        self.img_tr = img_tr
+        self.mask_tr = mask_tr
+
+        img_file = h5py.File(os.path.join(data_dir, 'cocominitrain3.hdf5'), 'r')
+        # mask_file = h5py.File(os.path.join(data_dir, 'cocominitrain4.hdf5'), 'r')
+        mask_file = h5py.File(os.path.join(data_dir, 'cocominitrain5.hdf5'), 'r')
+        self.data = img_file[mode]['img']
+        self.targets = mask_file[mode]['mask']
+        self.labels = mask_file[mode]['present_classes']
+
+    def __len__(self):
+        return self.data.shape[0]
+
+    def __getitem__(self, index):
+        img = self.data[index]
+        mask = self.targets[index]
+
+        if self.img_tr is not None:
+            img = self.img_tr(img.transpose(1, 2, 0))
+        if self.mask_tr is not None:
+            mask = self.mask_tr(mask)
+        return img, mask
 
 def get_cifar10_datasets(data_dir, use_hdf5=False):
     if use_hdf5:
@@ -215,6 +241,6 @@ def get_minicoco_dataset(data_dir):
         ToTensor(),
         Normalize(mean=mean, std=std)
     ])
-    dataset = MiniCOCODatase(data_dir, transform, None, 'trn')
-    val_dataset = MiniCOCODatase(data_dir, transform, None, 'val')
+    dataset = MiniCOCODatase2(data_dir, transform, None, 'trn')
+    val_dataset = MiniCOCODatase2(data_dir, transform, None, 'val')
     return dataset, val_dataset
