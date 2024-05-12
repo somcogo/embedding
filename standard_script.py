@@ -6,15 +6,15 @@ import torch
 from config import get_standard_config, get_exp_config
 from main import main
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 torch.set_num_threads(8)
 
-logdir = 'resnetcoco'
-comment = 'cocotest'
-degradation = 'classsep'
-model = 'resnet18'
+logdir = 'convimagenetv4'
+comment = 'lr-4'
+degradation = 'addgauss'
+model = 'convnext'
 model_type = 'vanilla'
-dataset = 'minicoco'
+dataset = 'imagenet'
 
 cross_validate = False
 # if not cross_validate:
@@ -22,7 +22,7 @@ cross_validate = False
 # else:
 cross_val_id = 0
 
-config_fn = get_standard_config
+config_fn = get_exp_config
 
 if __name__ == '__main__':
     if cross_validate:

@@ -161,17 +161,21 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     if dataset in ['cifar10', 'imagenet']:
         task = 'classification'
         batch_size = 64 if model == 'resnet18' else 64
-        comm_rounds = 3200
+        comm_rounds = 6400
         ft_comm_rounds = 400
-    elif dataset in ['celeba']:
+    elif dataset in ['celeba', 'minicoco']:
         task = 'segmentation'
         batch_size = 32
-        comm_rounds = 400
+        comm_rounds = 800
         ft_comm_rounds = 100
     
     if degradation == 'classsep':
-        partition = 'by_class'
-        alpha = None
+        if dataset == 'minicoco':
+            partition = 'dirichlet'
+            alpha = 0.1
+        else:
+            partition = 'by_class'
+            alpha = None
     else:
         partition = 'dirichlet'
         alpha = 1e7
@@ -202,7 +206,7 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     iterations = 50 if model == 'resnet18' else 50
     site_number = 5
     trn_site_number = 2
-    lr = 4e-3
+    lr = 1e-4
     weight_decay = 5e-2
     label_smoothing = 0. if model == 'resnet18' else 0.1
 
