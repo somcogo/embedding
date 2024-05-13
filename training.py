@@ -178,7 +178,7 @@ class EmbeddingTraining:
         if self.finetuning:
             val_metrics, imgs = self.doValidation(val_dls)
             self.logMetrics(0, 'val', val_metrics, imgs)
-            metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['overall/mean dice']
+            metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['average/mean dice']
             log.info('Round {} of {}, accuracy/dice {}, val loss {}'.format(0, self.comm_rounds, metric_to_report, val_metrics['mean loss']))
 
         for comm_round in range(1, self.comm_rounds + 1):
@@ -198,7 +198,7 @@ class EmbeddingTraining:
             if comm_round == 1 or comm_round % validation_cadence == 0:
                 val_metrics, imgs = self.doValidation(val_dls)
                 self.logMetrics(comm_round, 'val', val_metrics, imgs)
-                metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['overall/mean dice']
+                metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['average/mean dice']
                 saving_criterion = max(metric_to_report, saving_criterion)
 
                 if self.save_model and metric_to_report==saving_criterion:

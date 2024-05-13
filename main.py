@@ -61,3 +61,39 @@ def main(logdir, comment, task, model_name, model_type, degradation,
     torch.save(results, os.path.join(save_path, comment))
     if cross_val_id is not None:
         return results
+    
+
+def ft_main(logdir, comment, task, model_name, model_type, degradation,
+         site_number, trn_site_number, embedding_dim, batch_size,
+         cross_val_id, ft_comm_rounds=None, iterations=50,
+         lr=None, ff_lr=None, emb_lr=None, optimizer_type=None,
+         weight_decay=None, ft_scheduler='cosine', save_model=None,
+         strategy=None, cifar=True, data_part_seed=0,
+         transform_gen_seed=1, dataset=None, alpha=1e7,
+         tr_config=None, partition='dirichlet', feature_dims=None,
+         label_smoothing=0., trn_logging=True, state_dict=None):
+    save_path = os.path.join('/home/hansel/developer/embedding/results', logdir)
+    os.makedirs(save_path, exist_ok=True)
+    log.info(comment)
+    
+    assert task in ['classification', 'segmentation']
+    assert site_number >= trn_site_number
+
+    trn_dl_list, val_dl_list = get_dl_lists(dataset, batch_size, partition=partition, n_site=site_number, alpha=alpha, seed=data_part_seed, use_hdf5=True, cross_val_id=cross_val_id)
+    transform_list = getTransformList(degradation, site_number, seed=transform_gen_seed, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
+    class_list = get_class_list(task=task, site_number=site_number, class_number=18 if dataset == 'celeba' else None, class_seed=2, degradation=degradation)
+    site_dict = [{'trn_dl': trn_dl_list[ndx],
+                    'val_dl': val_dl_list[ndx],
+                    'transform': transform_list[ndx],
+                    'classes': class_list[ndx]}
+                    for ndx in range(site_number)]
+    sites = site_dict
+    
+    ft_trainer = EmbeddingTraining(comm_rounds=ft_comm_rounds, logdir=logdir, lr=lr, ffwrd_lr=ff_lr, embedding_lr=emb_lr, weight_decay=weight_decay, comment=comment, dataset=dataset, site_number=site_number - trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=ft_scheduler, save_model=save_model, strategy=strategy, finetuning=True, embed_dim=embedding_dim, sites=sites[trn_site_number:], cifar=cifar, iterations=iterations, task=task, feature_dims=feature_dims, label_smoothing=label_smoothing, trn_logging=trn_logging)
+    
+    fine_tuning_metrics = ft_trainer.train(state_dict)[0]
+    results = fine_tuning_metrics
+
+    torch.save(results, os.path.join(save_path, comment))
+    if cross_val_id is not None:
+        return results
