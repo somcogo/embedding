@@ -16,7 +16,7 @@ log.setLevel(logging.INFO)
 def main(logdir, comment, task, model_name, model_type, degradation,
          site_number, trn_site_number, embedding_dim, batch_size,
          cross_val_id, comm_rounds, ft_comm_rounds=None, iterations=50,
-         lr=None, ff_lr=None, emb_lr=None, optimizer_type=None,
+         lr=None, ff_lr=None, emb_lr=None, ft_emb_lr=None, optimizer_type=None,
          weight_decay=None, scheduler_mode=None, ft_scheduler='cosine', T_max=None, save_model=None,
          strategy=None, ft_strategies=None, cifar=True, data_part_seed=0,
          transform_gen_seed=1, model_path=None, dataset=None, alpha=1e7,
@@ -46,7 +46,7 @@ def main(logdir, comment, task, model_name, model_type, degradation,
         logdir = os.path.join(logdir, 'finetuning')
         for strategy in ft_strategies:
             str_comment = comment + '-' + strategy
-            ft_trainers.append(EmbeddingTraining(comm_rounds=ft_comm_rounds, logdir=logdir, lr=lr, ffwrd_lr=ff_lr, embedding_lr=emb_lr, weight_decay=weight_decay, comment=str_comment, dataset=dataset, site_number=site_number - trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=ft_scheduler, save_model=save_model, strategy=strategy, finetuning=True, embed_dim=embedding_dim, sites=sites[trn_site_number:], cifar=cifar, iterations=iterations, task=task, feature_dims=feature_dims, label_smoothing=label_smoothing, trn_logging=trn_logging))
+            ft_trainers.append(EmbeddingTraining(comm_rounds=ft_comm_rounds, logdir=logdir, lr=lr, ffwrd_lr=ff_lr, embedding_lr=ft_emb_lr, weight_decay=weight_decay, comment=str_comment, dataset=dataset, site_number=site_number - trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=ft_scheduler, save_model=save_model, strategy=strategy, finetuning=True, embed_dim=embedding_dim, sites=sites[trn_site_number:], cifar=cifar, iterations=iterations, task=task, feature_dims=feature_dims, label_smoothing=label_smoothing, trn_logging=trn_logging))
     else:
         ft_trainers = None
     
