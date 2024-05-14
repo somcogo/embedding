@@ -6,15 +6,15 @@ import torch
 from config import get_standard_config, get_exp_config
 from main import main
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 torch.set_num_threads(8)
 
-logdir = 'convimagenetv4'
-comment = 'lr-4'
+logdir = 'convcocov4'
+comment = 'e800'
 degradation = 'addgauss'
 model = 'convnext'
 model_type = 'vanilla'
-dataset = 'imagenet'
+dataset = 'minicoco'
 
 cross_validate = False
 # if not cross_validate:

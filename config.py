@@ -207,6 +207,7 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     site_number = 5
     trn_site_number = 2
     lr = 4e-3
+    ft_emb_lr = 1e-4 if task == 'segmentation' else 1e-3
     weight_decay = 5e-2
     label_smoothing = 0. if model == 'resnet18' else 0.1
 
@@ -218,7 +219,7 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     aug = 'old' if trn_logging else 'new'
 
     config = {'logdir':logdir,
-            'comment':f'{comment}-{task}-{model}-{model_type}-{degradation}-s{str(site_number)}-ts{str(trn_site_number)}-edim{str(emb_dim)}-b{str(batch_size)}-commr{str(comm_rounds)}-ftcr{str(ft_comm_rounds)}-iter{str(iterations)}-lr{str(lr)}-emblr1e-3-{optimizer}-{scheduler}-ft{ft_scheduler}-wd{str(weight_decay)}-{dataset}-aug{aug}-alpha{alpha_str}-fdim{fdim_str}-ls{str(label_smoothing)}-xval{cross_val_id}',
+            'comment':f'{comment}-{task}-{model}-{model_type}-{degradation}-s{str(site_number)}-ts{str(trn_site_number)}-edim{str(emb_dim)}-b{str(batch_size)}-commr{str(comm_rounds)}-ftcr{str(ft_comm_rounds)}-iter{str(iterations)}-lr{str(lr)}-emblr1e-3-ftemblr-{str(ft_emb_lr)}-{optimizer}-{scheduler}-ft{ft_scheduler}-wd{str(weight_decay)}-{dataset}-aug{aug}-alpha{alpha_str}-fdim{fdim_str}-ls{str(label_smoothing)}-xval{cross_val_id}',
             'task':task,
             'model_name':model,
             'model_type':model_type,
@@ -233,6 +234,7 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
             'lr':lr,
             'ff_lr':None,
             'emb_lr':1e-3,
+            'ft_emb_lr':ft_emb_lr,
             'weight_decay':weight_decay,
             'optimizer_type':optimizer,
             'scheduler_mode':scheduler,
