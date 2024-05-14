@@ -206,7 +206,7 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     iterations = 50 if model == 'resnet18' else 50
     site_number = 5
     trn_site_number = 2
-    lr = 1e-4
+    lr = 4e-3
     weight_decay = 5e-2
     label_smoothing = 0. if model == 'resnet18' else 0.1
 
@@ -263,7 +263,7 @@ def get_finetuning_config(logdir, comment, degradation, model, model_type, datas
     elif dataset in ['celeba', 'minicoco']:
         task = 'segmentation'
         batch_size = 32
-        ft_comm_rounds = 100
+        ft_comm_rounds = 10
     
     if degradation == 'classsep':
         if dataset == 'minicoco':
@@ -284,14 +284,14 @@ def get_finetuning_config(logdir, comment, degradation, model, model_type, datas
                 'swap_count':1}
     
     if 'emb' in model_type:
-        strategy = ['fffinetuning']
+        strategy = 'fffinetuning'
         emb_dim = 128
         if model == 'resnet18':
             feature_dims = 62 * np.array([1, 2, 4, 8])
         elif model in ['convnext', 'convnextog', 'swinv2']:
             feature_dims = 90 * np.array([1, 2, 4, 8])
     else:
-        strategy = ['finetuning']
+        strategy = 'finetuning'
         emb_dim = None
         if model == 'resnet18':
             feature_dims = 64 * np.array([1, 2, 4, 8])
@@ -303,7 +303,7 @@ def get_finetuning_config(logdir, comment, degradation, model, model_type, datas
     site_number = 5
     trn_site_number = 2
     lr = 1e-4
-    emb_lr = 1e-4
+    emb_lr = 1e-5
     weight_decay = 5e-2
     label_smoothing = 0. if model == 'resnet18' else 0.1
 
@@ -331,7 +331,6 @@ def get_finetuning_config(logdir, comment, degradation, model, model_type, datas
             'weight_decay':weight_decay,
             'optimizer_type':optimizer,
             'ft_scheduler':ft_scheduler,
-            'T_max':ft_comm_rounds,
             'save_model':True,
             'strategy':strategy,
             'cifar':True,
