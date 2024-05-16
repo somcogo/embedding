@@ -267,7 +267,7 @@ def get_finetuning_config(logdir, comment, degradation, model, model_type, datas
     elif dataset in ['celeba', 'minicoco']:
         task = 'segmentation'
         batch_size = 32
-        ft_comm_rounds = 10
+        ft_comm_rounds = 100
     
     if degradation == 'classsep':
         if dataset == 'minicoco':
@@ -306,7 +306,7 @@ def get_finetuning_config(logdir, comment, degradation, model, model_type, datas
     iterations = 50 if model == 'resnet18' else 50
     site_number = 5
     trn_site_number = 2
-    lr = 1e-4
+    lr = 1e-5
     emb_lr = 1e-5
     weight_decay = 5e-2
     label_smoothing = 0. if model == 'resnet18' else 0.1
