@@ -295,7 +295,7 @@ def get_finetuning_config(logdir, comment, degradation, model, model_type, datas
         elif model in ['convnext', 'convnextog', 'swinv2']:
             feature_dims = 90 * np.array([1, 2, 4, 8])
     else:
-        strategy = 'finetuning'
+        strategy = 'fedbn'
         emb_dim = None
         if model == 'resnet18':
             feature_dims = 64 * np.array([1, 2, 4, 8])
@@ -306,8 +306,8 @@ def get_finetuning_config(logdir, comment, degradation, model, model_type, datas
     iterations = 50 if model == 'resnet18' else 50
     site_number = 5
     trn_site_number = 2
-    lr = 1e-5
-    emb_lr = 1e-5
+    lr = 1e-4
+    emb_lr = 1e-3
     weight_decay = 5e-2
     label_smoothing = 0. if model == 'resnet18' else 0.1
 
