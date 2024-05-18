@@ -9,8 +9,8 @@ from main import main
 os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 torch.set_num_threads(8)
 
-logdir = 'convcocov4'
-comment = 'e800'
+logdir = 'convcocofinal'
+comment = 'e400'
 degradation = 'addgauss'
 model = 'convnext'
 model_type = 'vanilla'

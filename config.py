@@ -161,12 +161,12 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     if dataset in ['cifar10', 'imagenet']:
         task = 'classification'
         batch_size = 64 if model == 'resnet18' else 64
-        comm_rounds = 6400
+        comm_rounds = 3200
         ft_comm_rounds = 400
     elif dataset in ['celeba', 'minicoco']:
         task = 'segmentation'
         batch_size = 32
-        comm_rounds = 800
+        comm_rounds = 400
         ft_comm_rounds = 100
     
     if degradation == 'classsep':
@@ -188,14 +188,14 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
                 'swap_count':1}
     
     if 'emb' in model_type:
-        ft_strategies = ['fffinetuning']
+        ft_strategies = []
         emb_dim = 128
         if model == 'resnet18':
             feature_dims = 62 * np.array([1, 2, 4, 8])
         elif model in ['convnext', 'convnextog', 'swinv2']:
             feature_dims = 90 * np.array([1, 2, 4, 8])
     else:
-        ft_strategies = ['finetuning']
+        ft_strategies = []
         emb_dim = None
         if model == 'resnet18':
             feature_dims = 64 * np.array([1, 2, 4, 8])
@@ -206,7 +206,8 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     iterations = 50 if model == 'resnet18' else 50
     site_number = 5
     trn_site_number = 2
-    lr = 1e-3
+    lr = 4e-3
+    emb_lr = 1e-3
     ft_lr = 1e-5 if dataset == 'minicoco' else lr
     ft_emb_lr = 1e-5 if task == 'segmentation' else 1e-3
     weight_decay = 5e-2
@@ -220,7 +221,7 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     aug = 'old' if trn_logging else 'new'
 
     config = {'logdir':logdir,
-            'comment':f'{comment}-{task}-{model}-{model_type}-{degradation}-s{str(site_number)}-ts{str(trn_site_number)}-edim{str(emb_dim)}-b{str(batch_size)}-commr{str(comm_rounds)}-ftcr{str(ft_comm_rounds)}-iter{str(iterations)}-lr{str(lr)}-ftlr-{str(ft_lr)}-emblr1e-3-ftemblr-{str(ft_emb_lr)}-{optimizer}-{scheduler}-ft{ft_scheduler}-wd{str(weight_decay)}-{dataset}-aug{aug}-alpha{alpha_str}-fdim{fdim_str}-ls{str(label_smoothing)}-xval{cross_val_id}',
+            'comment':f'{comment}-{task}-{model}-{model_type}-{degradation}-s{str(site_number)}-ts{str(trn_site_number)}-edim{str(emb_dim)}-b{str(batch_size)}-commr{str(comm_rounds)}-ftcr{str(ft_comm_rounds)}-iter{str(iterations)}-lr{str(lr)}-ftlr-{str(ft_lr)}-emblr{str(emb_lr)}-ftemblr-{str(ft_emb_lr)}-{optimizer}-{scheduler}-ft{ft_scheduler}-wd{str(weight_decay)}-{dataset}-aug{aug}-alpha{alpha_str}-fdim{fdim_str}-ls{str(label_smoothing)}-xval{cross_val_id}',
             'task':task,
             'model_name':model,
             'model_type':model_type,
@@ -234,7 +235,7 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
             'ft_comm_rounds':ft_comm_rounds,
             'lr':lr,
             'ff_lr':None,
-            'emb_lr':1e-3,
+            'emb_lr':emb_lr,
             'ft_lr':ft_lr,
             'ft_emb_lr':ft_emb_lr,
             'weight_decay':weight_decay,
