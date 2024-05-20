@@ -206,7 +206,7 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     iterations = 50 if model == 'resnet18' else 50
     site_number = 5
     trn_site_number = 2
-    lr = 4e-3
+    lr = 1e-4 if dataset == 'minicoco' else 4e-3
     emb_lr = 1e-3
     ft_lr = 1e-5 if dataset == 'minicoco' else lr
     ft_emb_lr = 1e-5 if task == 'segmentation' else 1e-3
@@ -260,15 +260,15 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     
     return config
 
-def get_finetuning_config(logdir, comment, degradation, model, model_type, dataset, cross_val_id=None):
+def get_finetuning_config(logdir, comment, degradation, model, model_type, dataset, cross_val_id=None, fedbn=True):
     if dataset in ['cifar10', 'imagenet']:
         task = 'classification'
         batch_size = 64 if model == 'resnet18' else 64
-        ft_comm_rounds = 400
+        ft_comm_rounds = 100
     elif dataset in ['celeba', 'minicoco']:
         task = 'segmentation'
         batch_size = 32
-        ft_comm_rounds = 100
+        ft_comm_rounds = 50
     
     if degradation == 'classsep':
         if dataset == 'minicoco':
@@ -296,7 +296,7 @@ def get_finetuning_config(logdir, comment, degradation, model, model_type, datas
         elif model in ['convnext', 'convnextog', 'swinv2']:
             feature_dims = 90 * np.array([1, 2, 4, 8])
     else:
-        strategy = 'fedbn'
+        strategy = 'fedbn' if fedbn else 'finetuning'
         emb_dim = None
         if model == 'resnet18':
             feature_dims = 64 * np.array([1, 2, 4, 8])
@@ -308,18 +308,18 @@ def get_finetuning_config(logdir, comment, degradation, model, model_type, datas
     site_number = 5
     trn_site_number = 2
     lr = 1e-4
-    emb_lr = 1e-3
-    weight_decay = 5e-2
+    emb_lr = 1e-4
+    weight_decay = 1e-4 if model == 'resnet18' else 5e-2
     label_smoothing = 0. if model == 'resnet18' else 0.1
 
     optimizer = 'newadam' if model == 'resnet18'else 'adamw'
-    ft_scheduler = 'cosine' if model == 'resnet18'else 'cosine'
+    ft_scheduler = 'cosine'
 
-    trn_logging = False if dataset == 'imagenet' else True
+    trn_logging = True
     aug = 'old' if trn_logging else 'new'
 
     config = {'logdir':logdir,
-            'comment':f'{comment}-ft-{task}-{model}-{model_type}-{degradation}-s{str(site_number)}-ts{str(trn_site_number)}-edim{str(emb_dim)}-b{str(batch_size)}-ftcr{str(ft_comm_rounds)}-iter{str(iterations)}-lr{str(lr)}-emblr{str(emb_lr)}-{optimizer}-sched{ft_scheduler}-wd{str(weight_decay)}-{dataset}-aug{aug}-alpha{alpha_str}-fdim{fdim_str}-ls{str(label_smoothing)}-xval{cross_val_id}',
+            'comment':f'{comment}-{strategy}-{task}-{model}-{model_type}-{degradation}-s{str(site_number)}-ts{str(trn_site_number)}-edim{str(emb_dim)}-b{str(batch_size)}-ftcr{str(ft_comm_rounds)}-iter{str(iterations)}-lr{str(lr)}-emblr{str(emb_lr)}-{optimizer}-sched{ft_scheduler}-wd{str(weight_decay)}-{dataset}-fdim{fdim_str}-ls{str(label_smoothing)}-xval{cross_val_id}',
             'task':task,
             'model_name':model,
             'model_type':model_type,
