@@ -264,7 +264,7 @@ def get_finetuning_config(logdir, comment, degradation, model, model_type, datas
     if dataset in ['cifar10', 'imagenet']:
         task = 'classification'
         batch_size = 64 if model == 'resnet18' else 64
-        ft_comm_rounds = 100
+        ft_comm_rounds = 200
     elif dataset in ['celeba', 'minicoco']:
         task = 'segmentation'
         batch_size = 32

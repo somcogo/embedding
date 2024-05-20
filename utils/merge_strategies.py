@@ -9,7 +9,7 @@ def get_layer_list(task, strategy, original_list):
         elif strategy == 'finetuning':
             layer_list = [name for name in original_list if 'embedding' in name.split('.') or 'fc' in name]
         elif strategy == 'fedbn':
-            layer_list = [name for name in original_list if 'embedding' in name.split('.') or 'fc' in name or 'batch_norm' in name]
+            layer_list = [name for name in original_list if 'embedding' in name.split('.') or 'fc' in name or 'norm' in name]
         elif strategy == 'fffinetuning':
             layer_list = [name for name in original_list if 'embedding' in name.split('.') or 'fc' in name or 'generator' in name]
         elif strategy == 'affinetoo':
@@ -37,6 +37,8 @@ def get_layer_list(task, strategy, original_list):
             layer_list = [name for name in original_list if 'embedding' in name]
         elif strategy == 'finetuning':
             layer_list = [name for name in original_list if 'embedding' in name or 'head.head' in name]
+        elif strategy == 'fedbn':
+            layer_list = [name for name in original_list if 'embedding' in name or 'head.head' in name or 'norm' in name]
         elif strategy == 'fffinetuning':
             layer_list = [name for name in original_list if 'embedding' in name or 'head.head' in name or 'generator' in name]
 
