@@ -6,27 +6,32 @@ import torch.nn.functional as F
 
 MODE_NAMES = {'embedding': 'embedding_weights',
               'residual': 'embedding_residual',
-              'vanilla': 'vanilla'}
+              'vanilla': 'vanilla',
+              'fedbn':'fedbn'}
 
 class WeightGenerator(nn.Module):
     def __init__(self, emb_dim, gen_hidden_layer, out_channels, gen_depth=None, target='const', **kwargs):
         super().__init__()
         self.gen_depth = gen_depth
-        # if target == 'const':
-        #     init = nn.init.zeros_
-        # else:
-        #     init = nn.init.ones_
+        
         if gen_depth == 1:
             self.lin1 = nn.Linear(in_features=emb_dim, out_features=out_channels)
-            # nn.init.zeros_(self.lin1.weight)
-            # init(self.lin1.bias)
+            
+            if target == 'zero':
+                nn.init.zeros_(self.lin1.weight)
+                nn.init.zeros_(self.lin1.bias)
+            elif target == 'one':
+                nn.init.zeros_(self.lin1.weight)
+                nn.init.ones_(self.lin1.bias)
         if gen_depth == 2:
             self.lin1 = nn.Linear(in_features=emb_dim, out_features=gen_hidden_layer)
             self.lin2 = nn.Linear(in_features=gen_hidden_layer, out_features=out_channels)
-            # nn.init.zeros_(self.lin1.weight)
-            # nn.init.zeros_(self.lin1.bias)
-            # nn.init.zeros_(self.lin2.weight)
-            # init(self.lin2.bias)
+            if target == 'zero':
+                nn.init.zeros_(self.lin2.weight)
+                nn.init.zeros_(self.lin2.weight)
+            elif target == 'one':
+                nn.init.zeros_(self.lin2.weight)
+                nn.init.ones_(self.lin2.bias)
     
     def forward(self, x):
         x = x.to(torch.float)
@@ -213,7 +218,7 @@ class Linear_emb(nn.Module):
         return x
     
 class BatchNorm2d_emb(nn.Module):
-    def __init__(self, num_features,eps=1e-05, momentum=0.1, gen_affine=False, device=None, dtype=None, **kwargs):
+    def __init__(self, num_features,eps=1e-05, momentum=0.1, gen_affine=False, device=None, dtype=None, gen_size=2, **kwargs):
         super().__init__()
         self.gen_affine = gen_affine
         self.momentum = momentum
@@ -227,15 +232,21 @@ class BatchNorm2d_emb(nn.Module):
         nn.init.ones_(self.weight)
         nn.init.zeros_(self.bias)
         
-        gen_weight_const_size = 1
-        gen_weight_affine_size = 1 if gen_affine else None
-        gen_bias_const_size = 1 
-        gen_bias_affine_size = 1 if gen_affine else None
+        if gen_size == 1:
+            gen_weight_const_size = 1
+            gen_weight_affine_size = 1 if gen_affine else None
+            gen_bias_const_size = 1 
+            gen_bias_affine_size = 1 if gen_affine else None
+        if gen_size == 2:
+            gen_weight_const_size = num_features
+            gen_weight_affine_size = num_features if gen_affine else None
+            gen_bias_const_size = num_features
+            gen_bias_affine_size = num_features if gen_affine else None
 
-        self.weight_const_generator = WeightGenerator(gen_weight_const_size, target='const', **kwargs)
-        self.weight_affine_generator = WeightGenerator(gen_weight_affine_size, target='affine', **kwargs) if gen_affine else None
-        self.bias_const_generator = WeightGenerator(gen_bias_const_size, target='const', **kwargs)
-        self.bias_affine_generator = WeightGenerator(gen_bias_affine_size, target='affine', **kwargs) if gen_affine else None
+        self.weight_const_generator = WeightGenerator(out_channels=gen_weight_const_size, target='const', **kwargs)
+        self.weight_affine_generator = WeightGenerator(out_channels=gen_weight_affine_size, target='affine', **kwargs) if gen_affine else None
+        self.bias_const_generator = WeightGenerator(out_channels=gen_bias_const_size, target='const', **kwargs)
+        self.bias_affine_generator = WeightGenerator(out_channels=gen_bias_affine_size, target='affine', **kwargs) if gen_affine else None
 
     def forward(self, x, emb):
         weight = self.weight.to(x.dtype)
@@ -249,6 +260,28 @@ class BatchNorm2d_emb(nn.Module):
         weight = weight + weight_const
         bias_const = self.bias_const_generator(emb).expand(bias.shape)
         bias = bias + bias_const
+
+        x = F.batch_norm(x, running_mean=self.running_mean, running_var=self.running_var, weight=weight, bias=bias, training=self.training, momentum=self.momentum, eps=self.eps)
+        return x
+    
+class BatchNorm2d_emb_replace(nn.Module):
+    def __init__(self, num_features,eps=1e-05, momentum=0.1, gen_affine=False, device=None, dtype=None, gen_size=2, **kwargs):
+        super().__init__()
+        self.gen_affine = gen_affine
+        self.momentum = momentum
+        self.eps = eps
+        self.register_buffer('running_mean', torch.zeros(num_features, device=device))
+        self.register_buffer('running_var', torch.ones(num_features, device=device))
+
+        gen_weight_const_size = num_features
+        gen_bias_const_size = num_features
+
+        self.weight_const_generator = WeightGenerator(out_channels=gen_weight_const_size, target='zero', **kwargs)
+        self.bias_const_generator = WeightGenerator(out_channels=gen_bias_const_size, target='one', **kwargs)
+
+    def forward(self, x, emb):
+        weight = self.weight_const_generator(emb).to(x.dtype)
+        bias = self.bias_const_generator(emb).to(x.dtype)
 
         x = F.batch_norm(x, running_mean=self.running_mean, running_var=self.running_var, weight=weight, bias=bias, training=self.training, momentum=self.momentum, eps=self.eps)
         return x
@@ -350,13 +383,13 @@ class GeneralBatchNorm2d(nn.Module):
     def __init__(self, num_features,  mode='vanilla', eps=1e-05, momentum=0.1, affine=True, track_running_stats=True, device=None, dtype=None, **kwargs):
         super().__init__()
         self.mode = mode
-        if mode == MODE_NAMES['embedding']:
+        if mode == MODE_NAMES['embedding'] or mode == MODE_NAMES['fedbn']:
             self.batch_norm = BatchNorm2d_emb(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, device=device, **kwargs)
         else:
             self.batch_norm = nn.BatchNorm2d(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, device=device)
     
     def forward(self, x, emb):
-        if self.mode == MODE_NAMES['embedding']:
+        if self.mode == MODE_NAMES['embedding'] or self.mode == MODE_NAMES['fedbn']:
             out = self.batch_norm(x, emb)
         else:
             out = self.batch_norm(x)

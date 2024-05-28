@@ -58,8 +58,8 @@ class PSPModuleStage(nn.Module):
         self.bn = GeneralBatchNorm2d(out_channels, mode=mode, **kwargs)
         self.relu = GeneralReLU(inplace=True)
 
-        self.residual_affine_generator = WeightGenerator(out_channels=in_channels, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-        self.residual_const_generator = WeightGenerator(out_channels=in_channels, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
+        self.residual_affine_generator = WeightGenerator(out_channels=in_channels, **kwargs) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
+        self.residual_const_generator = WeightGenerator(out_channels=in_channels, **kwargs) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
 
     def forward(self, x, emb):
         x = self.prior(x, emb)
@@ -93,11 +93,11 @@ class FPN_fuse(nn.Module):
             GeneralReLU(inplace=True)
         ])
 
-        self.residual_affine_generator1 = WeightGenerator(out_channels=sum(feature_channels), **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-        self.residual_const_generator1 = WeightGenerator(out_channels=sum(feature_channels), **kwargs) if mode is not MODE_NAMES['vanilla'] else None
+        self.residual_affine_generator1 = WeightGenerator(out_channels=sum(feature_channels), **kwargs) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
+        self.residual_const_generator1 = WeightGenerator(out_channels=sum(feature_channels), **kwargs) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
 
-        self.residual_affine_generator2 = WeightGenerator(out_channels=fpn_out*len(feature_channels), **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-        self.residual_const_generator2 = WeightGenerator(out_channels=fpn_out*len(feature_channels), **kwargs) if mode is not MODE_NAMES['vanilla'] else None
+        self.residual_affine_generator2 = WeightGenerator(out_channels=fpn_out*len(feature_channels), **kwargs) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
+        self.residual_const_generator2 = WeightGenerator(out_channels=fpn_out*len(feature_channels), **kwargs) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
 
     def forward(self, features, emb):
         if self.residual_affine_generator1 is not None:

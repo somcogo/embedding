@@ -135,10 +135,7 @@ def getTransformList(degradation, site_number, seed, device, **kwargs):
             con = rng.uniform(endpoints[con_ndx[site]], endpoints[con_ndx[site]+1])
             sat = rng.uniform(endpoints[sat_ndx[site]], endpoints[sat_ndx[site]+1])
             hue = rng.uniform(endpoints[hue_ndx[site]], endpoints[hue_ndx[site]+1]) - 1
-            transforms.append(ColorJitter((bri, bri),
-                                          (con, con),
-                                          (sat, sat),
-                                          (hue, hue)))
+            transforms.append(deterministicColorjitter(bri, con, sat, hue))
 
     elif degradation == '3noises':
         var_add = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], math.ceil(site_number/3))
@@ -167,6 +164,44 @@ def getTransformList(degradation, site_number, seed, device, **kwargs):
             
     return transforms
 
+def get_test_transforms(site_number, seed, degradation, device, **kwargs):
+    rng = np.random.default_rng(seed)
+    transforms = []
+    if degradation == 'mixed':
+        variances = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], site_number//2)
+        for i in range(site_number//2):
+            transforms.append(NoiseTransform(rng=rng, t_rng=None, device=device, var_add=variances[i], choice=0))
+        for i in range(site_number//2):
+            transforms.append(ConvertImageDtype(torch.float))
+    elif degradation == '3mixed':
+        variances = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], site_number//3)
+        for i in range(site_number//3):
+            transforms.append(NoiseTransform(rng=rng, t_rng=None, device=device, var_add=variances[i], choice=0))
+        for i in range(site_number//3):
+            transforms.append(ConvertImageDtype(torch.float))
+        jitters = np.linspace(0.5, 1.5, site_number//3)
+        for j in jitters:
+            transforms.append(deterministicColorjitter(j, j, j, j - 1))
+    elif degradation == 'addgauss':
+        variances = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], site_number)
+        for i in range(site_number):
+            transforms.append(NoiseTransform(rng=rng, t_rng=None, device=device, var_add=variances[i], choice=0))
+    elif degradation == 'jittermix':
+        bri = np.linspace(0.5, 1.5, site_number//4)
+        for b in bri:
+            transforms.append(deterministicColorjitter(b, 1., 1., 0.))
+        con = np.linspace(0.5, 1.5, site_number//4)
+        for c in con:
+            transforms.append(deterministicColorjitter(1., c, 1., 0.))
+        sat = np.linspace(0.5, 1.5, site_number//4)
+        for s in sat:
+            transforms.append(deterministicColorjitter(1., 1., s, 0.))
+        hue = np.linspace(-0.5, 0.5, site_number//4)
+        for h in hue:
+            transforms.append(deterministicColorjitter(1., 1., 1., h))
+
+    return transforms
+
 class NoiseTransform:
     def __init__(self, rng, t_rng, device, **kwargs):
         self.rng = rng
@@ -190,3 +225,14 @@ class NoiseTransform:
             noise = torch.poisson(input=img*10**alpha, generator=self.t_rng)/10**alpha
             img = torch.tensor(noise, device=self.device)
         return img.float()
+
+class deterministicColorjitter:
+    def __init__(self, bri, con, sat, hue):
+        self.bri = bri
+        self.con = con
+        self.sat = sat
+        self.hue = hue
+        self.jitter = ColorJitter((self.bri, self.bri), (self.con, self.con), (self.sat, self.sat), (self.hue, self.hue))
+    
+    def __call__(self, img:torch.Tensor):
+        return self.jitter(img)

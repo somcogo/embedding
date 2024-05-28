@@ -30,10 +30,10 @@ class Block(nn.Module):
                                     requires_grad=True) if layer_scale_init_value > 0 else None
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
-        self.residual_affine_generator = WeightGenerator(out_channels=4 * dim, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-        self.residual_const_generator = WeightGenerator(out_channels=4 * dim, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-        # self.residual_affine_generator = WeightGenerator(out_channels=dim, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-        # self.residual_const_generator = WeightGenerator(out_channels=dim, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
+        self.residual_affine_generator = WeightGenerator(out_channels=4 * dim, **kwargs) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
+        self.residual_const_generator = WeightGenerator(out_channels=4 * dim, **kwargs) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
+        # self.residual_affine_generator = WeightGenerator(out_channels=dim, **kwargs) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
+        # self.residual_const_generator = WeightGenerator(out_channels=dim, **kwargs) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
 
     def forward(self, x, emb):
         input = x

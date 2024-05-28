@@ -1,5 +1,52 @@
 import numpy as np
 
+def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type):
+    dataset = 'cifar10'
+    task = 'classification'
+    partition = 'dirichlet'
+    batch_size = 64
+    iterations = 50
+    alpha = 1e7
+    alpha_str = str(alpha) if partition == 'dirichlet' else 'classsep'
+    emb_dim = 128
+
+    tr_config = {'var_add':(0.005, 1),
+                'alpha':(1.2, 1.5),
+                'var_mul':(0.01, 0.5),
+                'patch_size':3,
+                'swap_count':1}
+
+    config = {'logdir':logdir,
+            'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{degradation}-s{str(site_number)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-embdim-{emb_dim}-{dataset}-alpha{alpha_str}',
+            'task':task,
+            'model_name':'resnet18',
+            'model_type':model_type,
+            'degradation':degradation,
+            'site_number':site_number,
+            'embed_dim':emb_dim,
+            'batch_size':batch_size,
+            'comm_rounds':comm_rounds,
+            'lr':1e-4,
+            'ffwrd_lr':None,
+            'embedding_lr':None,
+            'weight_decay':1e-4,
+            'optimizer_type':'newadam',
+            'scheduler_mode':'cosine',
+            'T_max':comm_rounds,
+            'save_model':True,
+            'strategy':strategy,
+            'cifar':True,
+            'data_part_seed':0,
+            'transform_gen_seed':1,
+            'dataset':dataset,
+            'alpha':alpha,
+            'iterations':iterations,
+            'tr_config':tr_config,
+            'partition':partition}
+    
+    return config
+
+
 def get_config(logdir, comment, emb_dim, task, site_number, trn_site_number, degradation, model_type, comm_rounds, ft_comm_rounds, feature_dims=None, cross_val_id=None):
     if task == 'classification':
         batch_size = 64

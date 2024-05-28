@@ -2,8 +2,8 @@ import os
 
 import torch
 
-from utils.data_loader import get_dl_lists
-from utils.ops import getTransformList, get_class_list
+from utils.data_loader import get_dl_lists, new_get_dl_lists
+from utils.ops import getTransformList, get_class_list, get_test_transforms
 from training import EmbeddingTraining
 from utils.logconf import logging
 
@@ -97,3 +97,21 @@ def ft_main(logdir, comment, task, model_name, model_type, degradation,
     torch.save(results, os.path.join(save_path, comment))
     if cross_val_id is not None:
         return results
+
+
+def new_main(logdir, comment, degradation, site_number, data_part_seed, transform_gen_seed, tr_config, **config):
+    save_path = os.path.join('/home/hansel/developer/embedding/results', logdir)
+    os.makedirs(save_path, exist_ok=True)
+    log.info(comment)
+
+    trn_dl_list, val_dl_list = new_get_dl_lists(dataset=config['dataset'], batch_size=config['batch_size'], degradation=degradation, n_site=site_number, seed=data_part_seed)
+    transform_list = get_test_transforms(site_number=site_number, seed=transform_gen_seed, degradation=degradation, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
+    class_list = get_class_list(task='classification', site_number=site_number, class_number=18 if config['dataset'] == 'celeba' else None, class_seed=2, degradation=degradation)
+    site_dict = [{'trn_dl': trn_dl_list[ndx],
+                    'val_dl': val_dl_list[ndx],
+                    'transform': transform_list[ndx],
+                    'classes': class_list[ndx]}
+                    for ndx in range(site_number)]
+    
+    ft_trainer = EmbeddingTraining(logdir=logdir, comment=comment, site_number=site_number, sites=site_dict, **config)
+    ft_trainer.train()
