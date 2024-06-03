@@ -15,9 +15,11 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
                 'var_mul':(0.01, 0.5),
                 'patch_size':3,
                 'swap_count':1}
+    
+    fflr = 0.001
 
     config = {'logdir':logdir,
-            'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{degradation}-s{str(site_number)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-embdim-{emb_dim}-{dataset}-alpha{alpha_str}',
+            'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{degradation}-s{str(site_number)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-fflr{fflr}-embdim-{emb_dim}-{dataset}-alpha{alpha_str}',
             'task':task,
             'model_name':'resnet18',
             'model_type':model_type,
@@ -27,7 +29,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
             'batch_size':batch_size,
             'comm_rounds':comm_rounds,
             'lr':1e-4,
-            'ffwrd_lr':None,
+            'ffwrd_lr':fflr,
             'embedding_lr':None,
             'weight_decay':1e-4,
             'optimizer_type':'newadam',

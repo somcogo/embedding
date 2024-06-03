@@ -380,10 +380,13 @@ class GeneralLinear(nn.Module):
         return out
     
 class GeneralBatchNorm2d(nn.Module):
-    def __init__(self, num_features,  mode='vanilla', eps=1e-05, momentum=0.1, affine=True, track_running_stats=True, device=None, dtype=None, **kwargs):
+    def __init__(self, num_features,  mode='vanilla', eps=1e-05, momentum=0.1, affine=True, track_running_stats=True, device=None, dtype=None, use_repl_bn=False, **kwargs):
         super().__init__()
         self.mode = mode
-        if mode == MODE_NAMES['embedding'] or mode == MODE_NAMES['fedbn']:
+
+        if use_repl_bn:
+            self.batch_norm = BatchNorm2d_emb_replace(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, device=device, **kwargs)
+        elif mode == MODE_NAMES['embedding'] or mode == MODE_NAMES['fedbn']:
             self.batch_norm = BatchNorm2d_emb(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, device=device, **kwargs)
         else:
             self.batch_norm = nn.BatchNorm2d(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, device=device)
