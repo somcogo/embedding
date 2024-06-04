@@ -502,8 +502,7 @@ class EmbeddingTraining:
                     state_dict = loaded_dict[0]['model_state']
             elif state_dict is None:
                 state_dict = self.models[0].state_dict()
-            if 'embedding.weight' in '\t'.join(state_dict.keys()):
-                state_dict['embedding.weight'] = state_dict['embedding.weight'][0].unsqueeze(0).repeat(self.site_number, 1)
+            state_dict.pop('embedding', None)
             for model in self.models:
                 model.load_state_dict(state_dict, strict=False)
         else:
