@@ -187,13 +187,13 @@ def get_test_transforms(site_number, seed, degradation, device, **kwargs):
         for i in range(site_number):
             transforms.append(NoiseTransform(rng=rng, t_rng=None, device=device, var_add=variances[i], choice=0))
     elif degradation == 'jittermix':
-        bri = np.linspace(0.5, 1.5, site_number//4)
+        bri = np.linspace(0.2, 1.8, site_number//4)
         for b in bri:
             transforms.append(deterministicColorjitter(b, 1., 1., 0.))
-        con = np.linspace(0.5, 1.5, site_number//4)
+        con = np.linspace(0.2, 1.8, site_number//4)
         for c in con:
             transforms.append(deterministicColorjitter(1., c, 1., 0.))
-        sat = np.linspace(0.5, 1.5, site_number//4)
+        sat = np.linspace(0.2, 1.8, site_number//4)
         for s in sat:
             transforms.append(deterministicColorjitter(1., 1., s, 0.))
         hue = np.linspace(-0.5, 0.5, site_number//4)

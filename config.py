@@ -17,7 +17,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
                 'swap_count':1}
     
     fflr = 0.01
-    emb_lr = 0.01
+    emb_lr = 0.1
 
     config = {'logdir':logdir,
             'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{degradation}-s{str(site_number)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-fflr{fflr}-elr{emb_lr}-embdim-{emb_dim}-{dataset}-alpha{alpha_str}',
