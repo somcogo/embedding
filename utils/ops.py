@@ -206,6 +206,14 @@ def get_test_transforms(site_number, seed, degradation, device, **kwargs):
         hue = np.linspace(-0.5, 0.5, site_number//4)
         for h in hue:
             transforms.append(deterministicColorjitter(1., 1., 1., h))
+    elif degradation == 'randgauss':
+        var = rng.standard_normal((site_number)) * 0.05
+        var[var < -0.049] = -0.049
+        mu = 0.1
+        for i in range(site_number):
+            if i == site_number // 2:
+                mu = 1
+            transforms.append(NoiseTransform(rng=rng, t_rng=None, device=device, var_add=mu + var[i], choice=0))
 
     return transforms
 
