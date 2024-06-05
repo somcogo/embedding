@@ -14,6 +14,8 @@ def get_layer_list(task, strategy, original_list):
             layer_list = [name for name in original_list if 'embedding' in name or 'fc' in name]
         elif strategy == 'fedbn':
             layer_list = [name for name in original_list if 'embedding' in name or 'fc' in name or 'norm' in name]
+        elif strategy == 'embbnft':
+            layer_list = [name for name in original_list if 'embedding' in name or 'norm' in name]
         elif strategy == 'fffinetuning':
             layer_list = [name for name in original_list if 'embedding' in name or 'fc' in name or 'generator' in name]
         elif strategy == 'affinetoo':

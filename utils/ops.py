@@ -186,6 +186,13 @@ def get_test_transforms(site_number, seed, degradation, device, **kwargs):
         variances = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], site_number)
         for i in range(site_number):
             transforms.append(NoiseTransform(rng=rng, t_rng=None, device=device, var_add=variances[i], choice=0))
+    elif degradation == 'jitter':
+        jitters = np.linspace(0.5, 1.5, site_number)
+        for j in jitters:
+            transforms.append(deterministicColorjitter(j, j, j, j - 1))
+    elif degradation == 'classskew':
+        for i in range(site_number):
+            transforms.append(ConvertImageDtype(torch.float))
     elif degradation == 'jittermix':
         bri = np.linspace(0.2, 1.8, site_number//4)
         for b in bri:

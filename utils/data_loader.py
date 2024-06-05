@@ -70,7 +70,9 @@ def new_get_dl_lists(dataset, batch_size, degradation, n_site=None, seed=None):
         trn_l3, val_l3 = get_dl_lists(dataset=dataset, batch_size=batch_size, partition='dirichlet', n_site=n_site // 3, alpha=1e7, seed=seed)
         trn_dl_list = trn_l1 + trn_l2 + trn_l3
         val_dl_list = val_l1 + val_l2 + val_l3
-    elif degradation in ['addgauss', 'jittermix']:
+    elif degradation in ['addgauss', 'jittermix', 'jitter']:
         trn_dl_list, val_dl_list = get_dl_lists(dataset=dataset, batch_size=batch_size, partition='dirichlet', n_site=n_site, alpha=1e7, seed=seed)
+    elif degradation == 'classskew':
+        trn_dl_list, val_dl_list = get_dl_lists(dataset=dataset, batch_size=batch_size, partition='cont', n_site=n_site, seed=seed)
 
     return trn_dl_list, val_dl_list

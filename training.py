@@ -98,7 +98,7 @@ class EmbeddingTraining:
         for model in self.models:
             params_to_update = []
             if finetuning:
-                assert self.strategy in ['finetuning', 'onlyfc', 'onlyemb', 'fffinetuning', 'fedbn']
+                assert self.strategy in ['finetuning', 'onlyfc', 'onlyemb', 'fffinetuning', 'fedbn', 'embbnft']
                 layer_list = get_layer_list(task=self.task, strategy=self.strategy, original_list=model.state_dict().keys())
                 for name, param in model.named_parameters():
                     if name in layer_list:
@@ -203,6 +203,7 @@ class EmbeddingTraining:
 
                 if self.save_model and metric_to_report==saving_criterion:
                     self.saveModel(comm_round, val_metrics, trn_dls, val_dls)
+                    best_state_dict = self.models[0].state_dict()
                 if logging_index:
                     log.info('Round {} of {}, accuracy/dice {}, val loss {}'.format(comm_round, self.comm_rounds, metric_to_report, val_metrics['mean loss']))
             
@@ -217,7 +218,7 @@ class EmbeddingTraining:
             self.trn_writer.close()
             self.val_writer.close()
 
-        return saving_criterion, self.models[0].state_dict()
+        return saving_criterion, best_state_dict
 
     def doTraining(self, trn_dls):
         for model in self.models:

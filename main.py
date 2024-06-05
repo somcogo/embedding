@@ -115,3 +115,31 @@ def new_main(logdir, comment, degradation, site_number, data_part_seed, transfor
     
     ft_trainer = EmbeddingTraining(logdir=logdir, comment=comment, site_number=site_number, sites=site_dict, **config)
     ft_trainer.train()
+
+def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_strategy, **config):
+    save_path = os.path.join('/home/hansel/developer/embedding/results', logdir)
+    os.makedirs(save_path, exist_ok=True)
+    log.info(comment)
+
+    trn_dl_list, val_dl_list = new_get_dl_lists(dataset=config['dataset'], batch_size=config['batch_size'], degradation=degradation, n_site=site_number, seed=data_part_seed)
+    transform_list = get_test_transforms(site_number=site_number, seed=transform_gen_seed, degradation=degradation, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
+    class_list = get_class_list(task='classification', site_number=site_number, class_number=18 if config['dataset'] == 'celeba' else None, class_seed=2, degradation=degradation)
+    site_dict = [{'trn_dl': trn_dl_list[ndx],
+                    'val_dl': val_dl_list[ndx],
+                    'transform': transform_list[ndx],
+                    'classes': class_list[ndx]}
+                    for ndx in range(site_number)]
+
+    trn_site_dict = site_dict[::2]
+    ft_site_dict = site_dict[1::2]
+    
+    trainer = EmbeddingTraining(logdir=logdir, comment=comment, site_number=site_number // 2, sites=trn_site_dict, **config)
+    acc, state_dict = trainer.train()
+
+    ft_comment = comment + '-' + ft_strategy
+    ft_logdir = logdir + '_ft'
+    config['comm_rounds'] = 200
+    config['T_max'] = 200
+    config['strategy'] = ft_strategy
+    ft_trainer = EmbeddingTraining(logdir=ft_logdir, comment=ft_comment, site_number=site_number // 2, state_dict=state_dict, sites=ft_site_dict, finetuning=True, **config)
+    ft_trainer.train()

@@ -19,6 +19,13 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
     fflr = 0.01
     emb_lr = 0.1
 
+    if strategy == 'fedbntrn':
+        ft_strategy = 'fedbn'
+    elif strategy == 'noembed':
+        ft_strategy = 'finetuning'
+    elif strategy == 'embbn':
+        ft_strategy = 'embbnft'
+
     config = {'logdir':logdir,
             'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{degradation}-s{str(site_number)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-fflr{fflr}-elr{emb_lr}-embdim-{emb_dim}-{dataset}-alpha{alpha_str}',
             'task':task,
@@ -45,7 +52,8 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
             'alpha':alpha,
             'iterations':iterations,
             'tr_config':tr_config,
-            'partition':partition}
+            'partition':partition,
+            'ft_strategy':ft_strategy}
     
     return config
 
