@@ -40,7 +40,6 @@ class EmbeddingTraining:
         self.logdir_name = logdir
         self.comment = comment
         self.dataset = dataset
-        self.site_number = site_number
         self.model_name = model_name
         self.optimizer_type = optimizer_type
         self.scheduler_mode = scheduler_mode
@@ -49,7 +48,6 @@ class EmbeddingTraining:
         self.strategy = strategy
         self.finetuning = finetuning
         self.model_path = model_path
-        self.site_indices = range(site_number) if site_indices is None else site_indices
         self.task = task
         self.state_dict = state_dict
         self.comm_rounds = comm_rounds
@@ -69,9 +67,11 @@ class EmbeddingTraining:
             if task == 'segmentation':
                 self.present_classes = [c for c_l in self.classes for c in c_l] if self.classes is not None else np.arange(18 if self.dataset == 'celeba' else 12)
             self.site_number = len(sites)
+            self.site_indices = range(self.site_number) if site_indices is None else site_indices
         else:
             self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
-            self.site_number = len(site_indices)
+            self.site_number = site_number
+            self.site_indices = range(site_number) if site_indices is None else site_indices
         # self.iterations = math.ceil(len(self.trn_dls[0].dataset)/batch_size) if iterations is None else iterations
         self.iterations = iterations
         self.models = self.initModels(embed_dim=embed_dim, model_type=model_type, cifar=cifar, feature_dims=feature_dims)

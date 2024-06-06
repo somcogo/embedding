@@ -130,10 +130,11 @@ def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, 
                     'classes': class_list[ndx]}
                     for ndx in range(site_number)]
 
+    # trn_site_dict = site_dict
     trn_site_dict = site_dict[::2]
     ft_site_dict = site_dict[1::2]
     
-    trainer = EmbeddingTraining(logdir=logdir, comment=comment, site_number=site_number // 2, sites=trn_site_dict, **config)
+    trainer = EmbeddingTraining(logdir=logdir, comment=comment, sites=trn_site_dict, **config)
     acc, state_dict = trainer.train()
 
     ft_comment = comment + '-' + ft_strategy
@@ -141,5 +142,5 @@ def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, 
     config['comm_rounds'] = 200
     config['T_max'] = 200
     config['strategy'] = ft_strategy
-    ft_trainer = EmbeddingTraining(logdir=ft_logdir, comment=ft_comment, site_number=site_number // 2, state_dict=state_dict, sites=ft_site_dict, finetuning=True, **config)
+    ft_trainer = EmbeddingTraining(logdir=ft_logdir, comment=ft_comment, state_dict=state_dict, sites=ft_site_dict, finetuning=True, **config)
     ft_trainer.train()
