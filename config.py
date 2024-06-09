@@ -1,6 +1,6 @@
 import numpy as np
 
-def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type):
+def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type, finetune):
     dataset = 'cifar10'
     task = 'classification'
     partition = 'dirichlet'
@@ -26,8 +26,10 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
     elif strategy == 'embbn':
         ft_strategy = 'embbnft'
 
+    site_number_to_comment = site_number // 2 if finetune else site_number
+
     config = {'logdir':logdir,
-            'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{degradation}-s{str(site_number)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-fflr{fflr}-elr{emb_lr}-embdim-{emb_dim}-{dataset}-alpha{alpha_str}',
+            'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{degradation}-s{str(site_number_to_comment)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-fflr{fflr}-elr{emb_lr}-embdim-{emb_dim}-{dataset}-alpha{alpha_str}',
             'task':task,
             'model_name':'resnet18',
             'model_type':model_type,

@@ -116,7 +116,7 @@ def new_main(logdir, comment, degradation, site_number, data_part_seed, transfor
     ft_trainer = EmbeddingTraining(logdir=logdir, comment=comment, site_number=site_number, sites=site_dict, **config)
     ft_trainer.train()
 
-def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_strategy, **config):
+def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_strategy, finetune, **config):
     save_path = os.path.join('/home/hansel/developer/embedding/results', logdir)
     os.makedirs(save_path, exist_ok=True)
     log.info(comment)
@@ -130,17 +130,20 @@ def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, 
                     'classes': class_list[ndx]}
                     for ndx in range(site_number)]
 
-    # trn_site_dict = site_dict
-    trn_site_dict = site_dict[::2]
-    ft_site_dict = site_dict[1::2]
+    if finetune:
+        trn_site_dict = site_dict[::2]
+        ft_site_dict = site_dict[1::2]
+    else:
+        trn_site_dict = site_dict
     
     trainer = EmbeddingTraining(logdir=logdir, comment=comment, sites=trn_site_dict, **config)
     acc, state_dict = trainer.train()
 
-    ft_comment = comment + '-' + ft_strategy
-    ft_logdir = logdir + '_ft'
-    config['comm_rounds'] = 200
-    config['T_max'] = 200
-    config['strategy'] = ft_strategy
-    ft_trainer = EmbeddingTraining(logdir=ft_logdir, comment=ft_comment, state_dict=state_dict, sites=ft_site_dict, finetuning=True, **config)
-    ft_trainer.train()
+    if finetune:
+        ft_comment = comment + '-' + ft_strategy
+        ft_logdir = logdir + '_ft'
+        config['comm_rounds'] = 200
+        config['T_max'] = 200
+        config['strategy'] = ft_strategy
+        ft_trainer = EmbeddingTraining(logdir=ft_logdir, comment=ft_comment, state_dict=state_dict, sites=ft_site_dict, finetuning=True, **config)
+        ft_trainer.train()

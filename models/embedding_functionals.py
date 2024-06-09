@@ -13,25 +13,34 @@ class WeightGenerator(nn.Module):
     def __init__(self, emb_dim, gen_hidden_layer, out_channels, gen_depth=None, target='const', **kwargs):
         super().__init__()
         self.gen_depth = gen_depth
-        
+
+        bound_w_l = - 1 / math.sqrt(emb_dim)
+        bound_w_r = 1 / math.sqrt(emb_dim)
+        bound_b_l = 1 - 1 / math.sqrt(emb_dim) if target == 'one' else - 1 / math.sqrt(emb_dim)
+        bound_b_r = 1 + 1 / math.sqrt(emb_dim) if target == 'one' else 1 / math.sqrt(emb_dim)
         if gen_depth == 1:
             self.lin1 = nn.Linear(in_features=emb_dim, out_features=out_channels)
-            
-            if target == 'zero':
-                nn.init.zeros_(self.lin1.weight)
-                nn.init.zeros_(self.lin1.bias)
-            elif target == 'one':
-                nn.init.zeros_(self.lin1.weight)
-                nn.init.ones_(self.lin1.bias)
+
+            nn.init.uniform_(self.lin1.weight, a=bound_w_l, b=bound_w_r)
+            nn.init.uniform_(self.lin1.bias, a=bound_b_l, b=bound_b_r)
+            # if target == 'zero':
+            #     nn.init.zeros_(self.lin1.weight)
+            #     nn.init.zeros_(self.lin1.bias)
+            # elif target == 'one':
+            #     nn.init.zeros_(self.lin1.weight)
+            #     nn.init.ones_(self.lin1.bias)
         if gen_depth == 2:
             self.lin1 = nn.Linear(in_features=emb_dim, out_features=gen_hidden_layer)
             self.lin2 = nn.Linear(in_features=gen_hidden_layer, out_features=out_channels)
-            if target == 'zero':
-                nn.init.zeros_(self.lin2.weight)
-                nn.init.zeros_(self.lin2.weight)
-            elif target == 'one':
-                nn.init.zeros_(self.lin2.weight)
-                nn.init.ones_(self.lin2.bias)
+
+            nn.init.uniform_(self.lin2.weight, a=bound_w_l, b=bound_w_r)
+            nn.init.uniform_(self.lin2.bias, a=bound_b_l, b=bound_b_r)
+            # if target == 'zero':
+            #     nn.init.zeros_(self.lin2.weight)
+            #     nn.init.zeros_(self.lin2.weight)
+            # elif target == 'one':
+            #     nn.init.zeros_(self.lin2.weight)
+            #     nn.init.ones_(self.lin2.bias)
     
     def forward(self, x):
         x = x.to(torch.float)
@@ -276,8 +285,8 @@ class BatchNorm2d_emb_replace(nn.Module):
         gen_weight_const_size = num_features
         gen_bias_const_size = num_features
 
-        self.weight_const_generator = WeightGenerator(out_channels=gen_weight_const_size, target='zero', **kwargs)
-        self.bias_const_generator = WeightGenerator(out_channels=gen_bias_const_size, target='one', **kwargs)
+        self.weight_const_generator = WeightGenerator(out_channels=gen_weight_const_size, target='one', **kwargs)
+        self.bias_const_generator = WeightGenerator(out_channels=gen_bias_const_size, target='zero', **kwargs)
 
     def forward(self, x, emb):
         weight = self.weight_const_generator(emb).to(x.dtype)
