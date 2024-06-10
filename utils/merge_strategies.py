@@ -4,6 +4,8 @@ def get_layer_list(task, strategy, original_list):
             layer_list = original_list
         elif strategy == 'noembed':
             layer_list = [name for name in original_list if not ('embedding' in name or 'fc' in name)]
+        elif strategy == 'pureemb':
+            layer_list = [name for name in original_list if not ('embedding' in name)]
         elif strategy == 'fedbntrn':
             layer_list = [name for name in original_list if not ('embedding' in name or 'fc' in name or 'norm' in name)]
         elif strategy == 'embbn':

@@ -17,7 +17,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
                 'swap_count':1}
     
     fflr = 0.01
-    emb_lr = 0.1
+    emb_lr = 1
 
     if strategy == 'fedbntrn':
         ft_strategy = 'fedbn'
@@ -25,6 +25,8 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
         ft_strategy = 'finetuning'
     elif strategy == 'embbn':
         ft_strategy = 'embbnft'
+    elif strategy == 'pureemb':
+        ft_strategy = 'onlyemb'
 
     site_number_to_comment = site_number // 2 if finetune else site_number
 

@@ -96,26 +96,24 @@ class EmbeddingTraining:
     def initOptimizers(self, lr, finetuning, weight_decay=None, embedding_lr=None, ffwrd_lr=None):
         optims = []
         for model in self.models:
-            params_to_update = []
             if finetuning:
                 assert self.strategy in ['finetuning', 'onlyfc', 'onlyemb', 'fffinetuning', 'fedbn', 'embbnft']
-                layer_list = get_layer_list(task=self.task, strategy=self.strategy, original_list=model.state_dict().keys())
+                all_names = get_layer_list(task=self.task, strategy=self.strategy, original_list=model.state_dict().keys())
                 for name, param in model.named_parameters():
-                    if name in layer_list:
-                        params_to_update.append(param)
-                    else:
+                    if name not in all_names:
+                    #     params_to_update.append(param)
+                    # else:
                         param.requires_grad = False
             else:
                 all_names = [name for name, _ in model.named_parameters()]
-                embedding_names = []
-                ffwrd_names = []
-                if embedding_lr is not None:
-                    embedding_names = [name for name in all_names if name.split('.')[0] == 'embedding']
-                    params_to_update.append({'params':[param for name, param in model.named_parameters() if name in embedding_names], 'lr':embedding_lr})
-                if ffwrd_lr is not None:
-                    ffwrd_names = [name for name in all_names if 'generator' in name]
-                    params_to_update.append({'params':[param for name, param in model.named_parameters() if name in ffwrd_names], 'lr':ffwrd_lr})
-                params_to_update.append({'params':[param for name, param in model.named_parameters() if not name in embedding_names and not name in ffwrd_names]})
+            params_to_update = []
+            embedding_names = [name for name in all_names if name.split('.')[0] == 'embedding']
+            ffwrd_names = [name for name in all_names if 'generator' in name]
+            if embedding_lr is not None:
+                params_to_update.append({'params':[param for name, param in model.named_parameters() if name in embedding_names and name in all_names], 'lr':embedding_lr})
+            if ffwrd_lr is not None:
+                params_to_update.append({'params':[param for name, param in model.named_parameters() if name in ffwrd_names and name in all_names], 'lr':ffwrd_lr})
+            params_to_update.append({'params':[param for name, param in model.named_parameters() if not name in embedding_names and not name in ffwrd_names  and name in all_names]})
 
             if self.optimizer_type == 'adam':
                 optim = Adam(params=params_to_update, lr=lr, weight_decay=weight_decay)
