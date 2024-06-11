@@ -219,7 +219,7 @@ def get_standard_config(logdir, comment, degradation, model, model_type, dataset
     
     return config
 
-def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cross_val_id=None):
+def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cross_val_id=None, strategy=None, ft_strategy=None):
     if dataset in ['cifar10', 'imagenet']:
         task = 'classification'
         batch_size = 64 if model == 'resnet18' else 64
@@ -250,14 +250,14 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
                 'swap_count':1}
     
     if 'emb' in model_type:
-        ft_strategies = []
+        # ft_strategies = []
         emb_dim = 128
         if model == 'resnet18':
             feature_dims = 62 * np.array([1, 2, 4, 8])
         elif model in ['convnext', 'convnextog', 'swinv2']:
             feature_dims = 90 * np.array([1, 2, 4, 8])
     else:
-        ft_strategies = []
+        # ft_strategies = []
         emb_dim = None
         if model == 'resnet18':
             feature_dims = 64 * np.array([1, 2, 4, 8])
@@ -268,10 +268,16 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     iterations = 50 if model == 'resnet18' else 50
     site_number = 5
     trn_site_number = 2
-    lr = 1e-4 if dataset == 'minicoco' else 4e-3
-    emb_lr = 1e-3
-    ft_lr = 1e-5 if dataset == 'minicoco' else lr
-    ft_emb_lr = 1e-5 if task == 'segmentation' else 1e-3
+    # lr = 1e-4 if dataset == 'minicoco' else 4e-3
+    # emb_lr = 1e-3
+    # ft_lr = 1e-5 if dataset == 'minicoco' else lr
+    # ft_emb_lr = 1e-5 if task == 'segmentation' else 1e-3
+    lr = 1e-4
+    ff_lr = 0.01
+    emb_lr = 1
+    ft_lr = 1e-4
+    ft_ff_lr = 0.01
+    ft_emb_lr = 1
     weight_decay = 5e-2
     label_smoothing = 0. if model == 'resnet18' else 0.1
 
@@ -282,8 +288,11 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     trn_logging = False if dataset == 'imagenet' else True
     aug = 'old' if trn_logging else 'new'
 
+    strategy = strategy if strategy is not None else 'noembed'
+    ft_strategies = ft_strategy if ft_strategy is not None else 'finetuning'
+
     config = {'logdir':logdir,
-            'comment':f'{comment}-{task}-{model}-{model_type}-{degradation}-s{str(site_number)}-ts{str(trn_site_number)}-edim{str(emb_dim)}-b{str(batch_size)}-commr{str(comm_rounds)}-ftcr{str(ft_comm_rounds)}-iter{str(iterations)}-lr{str(lr)}-ftlr-{str(ft_lr)}-emblr{str(emb_lr)}-ftemblr-{str(ft_emb_lr)}-{optimizer}-{scheduler}-ft{ft_scheduler}-wd{str(weight_decay)}-{dataset}-aug{aug}-alpha{alpha_str}-fdim{fdim_str}-ls{str(label_smoothing)}-xval{cross_val_id}',
+            'comment':f'{comment}-{task}-{model}-{model_type}-{degradation}-{strategy}-s{str(site_number)}-ts{str(trn_site_number)}-edim{str(emb_dim)}-b{str(batch_size)}-commr{str(comm_rounds)}-ftcr{str(ft_comm_rounds)}-lr{str(lr)}-fflr-{str(ff_lr)}-emblr{str(emb_lr)}-ftlr-{str(ft_lr)}-ftfflr-{str(ft_ff_lr)}-ftemblr-{str(ft_emb_lr)}-{optimizer}-{scheduler}-ft{ft_scheduler}-wd{str(weight_decay)}-{dataset}-aug{aug}-fdim{fdim_str}-ls{str(label_smoothing)}-xval{cross_val_id}',
             'task':task,
             'model_name':model,
             'model_type':model_type,
@@ -296,16 +305,17 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
             'comm_rounds':comm_rounds,
             'ft_comm_rounds':ft_comm_rounds,
             'lr':lr,
-            'ff_lr':None,
+            'ff_lr':ff_lr,
             'emb_lr':emb_lr,
             'ft_lr':ft_lr,
+            'ft_ff_lr':ft_ff_lr,
             'ft_emb_lr':ft_emb_lr,
             'weight_decay':weight_decay,
             'optimizer_type':optimizer,
             'scheduler_mode':scheduler,
             'T_max':comm_rounds,
             'save_model':True,
-            'strategy':'noembed',
+            'strategy':strategy,
             'ft_strategies':ft_strategies,
             'cifar':True,
             'data_part_seed':0,
