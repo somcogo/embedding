@@ -141,7 +141,7 @@ def get_config(logdir, comment, emb_dim, task, site_number, trn_site_number, deg
 def get_standard_config(logdir, comment, degradation, model, model_type, dataset, cross_val_id=None):
     if dataset in ['cifar10', 'imagenet']:
         task = 'classification'
-        batch_size = 64 if model == 'resnet18' else 256
+        batch_size = 64 if model == 'resnet18' else 64
         comm_rounds = 3200
         ft_comm_rounds = 800
     elif dataset in ['celeba', 'minicoco']:
@@ -241,7 +241,6 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     else:
         partition = 'dirichlet'
         alpha = 1e7
-    alpha_str = str(alpha) if partition == 'dirichlet' else 'classsep'
 
     tr_config = {'var_add':(0.005, 1),
                 'alpha':(1.2, 1.5),
@@ -273,26 +272,26 @@ def get_exp_config(logdir, comment, degradation, model, model_type, dataset, cro
     # ft_lr = 1e-5 if dataset == 'minicoco' else lr
     # ft_emb_lr = 1e-5 if task == 'segmentation' else 1e-3
     lr = 1e-4
-    ff_lr = 1e-4
-    emb_lr = 1
+    ff_lr = 1e-2
+    emb_lr = 1e-1
     ft_lr = 1e-4
-    ft_ff_lr = 1e-4
-    ft_emb_lr = 1
-    weight_decay = 5e-2
+    ft_ff_lr = 1e-2
+    ft_emb_lr = 1e-1
+    weight_decay = 1e-5
     label_smoothing = 0. if model == 'resnet18' else 0.1
 
     optimizer = 'newadam' if model == 'resnet18'else 'adamw'
     scheduler = 'cosine' if model == 'resnet18'else 'warmcos'
     ft_scheduler = 'cosine'
 
-    trn_logging = False if dataset == 'imagenet' else True
+    trn_logging = True
     aug = 'old' if trn_logging else 'new'
 
     strategy = strategy if strategy is not None else 'noembed'
     ft_strategies = ft_strategy if ft_strategy is not None else 'finetuning'
 
     config = {'logdir':logdir,
-            'comment':f'{comment}-{task}-{model}-{model_type}-{degradation}-{strategy}-s{str(site_number)}-ts{str(trn_site_number)}-edim{str(emb_dim)}-b{str(batch_size)}-commr{str(comm_rounds)}-ftcr{str(ft_comm_rounds)}-lr{str(lr)}-fflr-{str(ff_lr)}-emblr{str(emb_lr)}-ftlr-{str(ft_lr)}-ftfflr-{str(ft_ff_lr)}-ftemblr-{str(ft_emb_lr)}-{optimizer}-{scheduler}-ft{ft_scheduler}-wd{str(weight_decay)}-{dataset}-aug{aug}-fdim{fdim_str}-ls{str(label_smoothing)}-xval{cross_val_id}',
+            'comment':f'{comment}-{model}-{model_type}-{degradation}-{strategy}-s{str(site_number)}-ts{str(trn_site_number)}-edim{str(emb_dim)}-b{str(batch_size)}-commr{str(comm_rounds)}-ftcr{str(ft_comm_rounds)}-lr{str(lr)}-fflr-{str(ff_lr)}-emblr{str(emb_lr)}-{optimizer}-{scheduler}-ft{ft_scheduler}-wd{str(weight_decay)}-{dataset}-fdim{fdim_str}-ls{str(label_smoothing)}-xval{cross_val_id}',
             'task':task,
             'model_name':model,
             'model_type':model_type,

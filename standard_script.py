@@ -6,20 +6,22 @@ import torch
 from config import get_standard_config, get_exp_config
 from main import main
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "6"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 torch.set_num_threads(8)
 
 logdir = 'resnetimagenetbn4'
-comment = 'test'
-degradation = 'addgauss'
+comment = 'lrtune'
+degradation = 'colorjitter'
 model = 'resnet18'
 model_type = 'embbn4'
 dataset = 'imagenet'
 
-strategy = 'pureemb'
-ft_strategy = ['onlyemb']
-# strategy = 'embbn'
-# ft_strategy = ['embbnft']
+if model_type == 'embbn4':
+    strategy = 'pureemb'
+    ft_strategy = ['onlyemb']
+elif model_type == 'vanilla':
+    strategy = 'embbn'
+    ft_strategy = ['embbnft']
 
 cross_validate = False
 # if not cross_validate:
