@@ -34,7 +34,8 @@ class EmbeddingTraining:
                  site_indices=None, task='classification', sites=None,
                  model_type=None, weight_decay=1e-5, cifar=True,
                  get_transforms=False, state_dict=None, iterations=None,
-                 feature_dims=None, label_smoothing=0., trn_logging=True):
+                 feature_dims=None, label_smoothing=0., trn_logging=True,
+                 fed_prox=0.):
         
         log.info(comment)
         self.logdir_name = logdir
@@ -52,6 +53,7 @@ class EmbeddingTraining:
         self.state_dict = state_dict
         self.comm_rounds = comm_rounds
         self.label_smoothing = label_smoothing
+        self.fed_prox = fed_prox
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
@@ -69,16 +71,13 @@ class EmbeddingTraining:
             self.site_number = len(sites)
             self.site_indices = range(self.site_number) if site_indices is None else site_indices
         else:
-            self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
             self.site_number = site_number
+            self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
             self.site_indices = range(site_number) if site_indices is None else site_indices
-        # self.iterations = math.ceil(len(self.trn_dls[0].dataset)/batch_size) if iterations is None else iterations
         self.iterations = iterations
         self.models = self.initModels(embed_dim=embed_dim, model_type=model_type, cifar=cifar, feature_dims=feature_dims)
         self.optims = self.initOptimizers(lr, finetuning, weight_decay=weight_decay, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers = self.initSchedulers(lr)
-        print('number of iterations: ', self.iterations)
-        self.p = True
         self.trn_logging = trn_logging
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
@@ -304,13 +303,22 @@ class EmbeddingTraining:
             batch = batch.permute(0, 3, 1, 2)
             labels = create_mask_from_onehot(labels, self.classes[site_id] if self.classes is not None else np.arange(18))
 
-        batch, labels = transform_image(batch, labels, mode, self.transforms[site_id] if hasattr(self, 'transforms') else None, self.dataset, model=self.model_name, p=self.p, trn_log=self.trn_logging)
-        self.p = False
+        batch, labels = transform_image(batch, labels, mode, self.transforms[site_id] if hasattr(self, 'transforms') else None, self.dataset, model=self.model_name, trn_log=self.trn_logging)
 
         pred = model(batch)
         pred_label = torch.argmax(pred, dim=1)
         loss_fn = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
-        loss = loss_fn(pred, labels)
+
+        prox_term = torch.tensor(0., device=self.device)
+        if self.fed_prox > 0 and not self.finetuning:
+            name_list = list(self.global_model.state_dict().keys())
+            layers = get_layer_list(self.task, self.strategy, name_list)
+            for layer, glob_p, loc_p in zip(name_list, self.global_model.parameters(), self.models[0].parameters()):
+                if layer in layers:
+                    prox_term += torch.pow(torch.norm(glob_p - loc_p), 2)
+
+        xe_loss = loss_fn(pred, labels)
+        loss = xe_loss + self.fed_prox / 2 * prox_term
 
         metrics = self.calculateLocalMetrics(pred_label, labels, loss, metrics, mode) if metrics is not None else None
 
@@ -504,17 +512,20 @@ class EmbeddingTraining:
             state_dict.pop('embedding', None)
             for model in self.models:
                 model.load_state_dict(state_dict, strict=False)
+            self.global_model = copy.deepcopy(self.models[0])
         else:
             original_list = [name for name, _ in self.models[0].named_parameters()]
             layer_list = get_layer_list(task=self.task, strategy=self.strategy, original_list=original_list)
             state_dicts = [model.state_dict() for model in self.models]
             updated_params = {layer: torch.zeros_like(state_dicts[0][layer]) for layer in layer_list}
 
+            site_weights = np.array([len(dl.dataset) for dl in self.trn_dls])
             for layer in layer_list:
-                for state_dict in state_dicts:
-                    updated_params[layer] += state_dict[layer]
-                updated_params[layer] /= len(state_dicts)
+                for weight, state_dict in zip(site_weights, state_dicts):
+                    updated_params[layer] += weight * state_dict[layer]
+                updated_params[layer] /= site_weights.sum()
 
+            self.global_model.load_state_dict(updated_params, strict=False)
             for model in self.models:
                 model.load_state_dict(updated_params, strict=False)
 

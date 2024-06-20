@@ -26,9 +26,9 @@ def get_class_list(task, site_number, class_number, class_seed, degradation):
 
     return classes
 
-def transform_image(batch, labels, mode, transform, dataset, model, p=False, trn_log=True):
+def transform_image(batch, labels, mode, transform, dataset, model, trn_log=True):
     if mode == 'trn':
-        batch, labels = aug_image(batch, labels, dataset, model, p=p, trn_log=trn_log)
+        batch, labels = aug_image(batch, labels, dataset, model, trn_log=trn_log)
     if transform is not None:
         # For some transforms, e.g. colorjitter, the pixelvalues need to be in [0, 1]
         b_max = torch.amax(batch, dim=(1, 2, 3), keepdim=True)
@@ -50,10 +50,8 @@ def create_mask_from_onehot(one_hot_mask, classes):
     mask = (one_hot_mask[..., classes]).amax(dim=-1)
     return mask
 
-def aug_image(batch, labels, dataset, model, p=False, trn_log=True):
+def aug_image(batch, labels, dataset, model, trn_log=True):
     if dataset in ['mnist', 'cifar10', 'cifar100']:
-        if p:
-            print('aug for mnist, cifar')
         trans = Compose([
             Pad(4),
             RandomCrop(32),
@@ -65,8 +63,6 @@ def aug_image(batch, labels, dataset, model, p=False, trn_log=True):
         ])
         batch = trans(batch)
     elif dataset == 'imagenet' and trn_log:
-        if p:
-            print('standard aug for imagenet')
         trans = Compose([
             Pad(4),
             RandomCrop(64),
@@ -78,8 +74,6 @@ def aug_image(batch, labels, dataset, model, p=False, trn_log=True):
         ])
         batch = trans(batch)
     elif dataset in ['celeba', 'minicoco']:
-        if p:
-            print('aug for celeba')
         flip = torch.rand(size=[batch.shape[0]]) < 0.5
         rotation = torch.randint(0, 5, [batch.shape[0]])
         scales = torch.rand(size=[batch.shape[0]], device=batch.device) * 0.4 + 0.8
@@ -91,8 +85,6 @@ def aug_image(batch, labels, dataset, model, p=False, trn_log=True):
             labels[ndx] = torch.rot90(labels[ndx], rotation[ndx], dims=(-2, -1))
         batch = scales.reshape(-1, 1, 1, 1) * batch
     elif dataset == 'imagenet' and not trn_log:
-        if p:
-            print('new aug for imagenet')
         rand_aug = v2.RandAugment(num_ops=2)
         mixup = Mixup(
             mixup_alpha=0.8,
