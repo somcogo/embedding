@@ -2,8 +2,8 @@ import os
 
 import torch
 
-from utils.data_loader import get_dl_lists
-from utils.ops import getTransformList, get_class_list
+from utils.data_loader import get_dl_lists, new_get_dl_lists
+from utils.ops import getTransformList, get_class_list, get_test_transforms
 from training import EmbeddingTraining
 from utils.logconf import logging
 
@@ -16,7 +16,7 @@ log.setLevel(logging.INFO)
 def main(logdir, comment, task, model_name, model_type, degradation,
          site_number, trn_site_number, embedding_dim, batch_size,
          cross_val_id, comm_rounds, ft_comm_rounds=None, iterations=50,
-         lr=None, ff_lr=None, emb_lr=None, ft_lr=None, ft_emb_lr=None, optimizer_type=None,
+         lr=None, ff_lr=None, emb_lr=None, ft_lr=None, ft_ff_lr=None, ft_emb_lr=None, optimizer_type=None,
          weight_decay=None, scheduler_mode=None, ft_scheduler='cosine', T_max=None, save_model=None,
          strategy=None, ft_strategies=None, cifar=True, data_part_seed=0,
          transform_gen_seed=1, model_path=None, dataset=None, alpha=1e7,
@@ -32,12 +32,11 @@ def main(logdir, comment, task, model_name, model_type, degradation,
     trn_dl_list, val_dl_list = get_dl_lists(dataset, batch_size, partition=partition, n_site=site_number, alpha=alpha, seed=data_part_seed, use_hdf5=True, cross_val_id=cross_val_id)
     transform_list = getTransformList(degradation, site_number, seed=transform_gen_seed, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
     class_list = get_class_list(task=task, site_number=site_number, class_number=18 if dataset == 'celeba' else None, class_seed=2, degradation=degradation)
-    site_dict = [{'trn_dl': trn_dl_list[ndx],
+    sites = [{'trn_dl': trn_dl_list[ndx],
                     'val_dl': val_dl_list[ndx],
                     'transform': transform_list[ndx],
                     'classes': class_list[ndx]}
                     for ndx in range(site_number)]
-    sites = site_dict
     
     trainer = EmbeddingTraining(comm_rounds=comm_rounds, logdir=logdir, lr=lr, ffwrd_lr=ff_lr, embedding_lr=emb_lr, weight_decay=weight_decay, comment=comment, dataset=dataset, site_number=trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=scheduler_mode, T_max=T_max, save_model=save_model, strategy=strategy, finetuning=False, embed_dim=embedding_dim, sites=sites[:trn_site_number], cifar=cifar, model_path=model_path, iterations=iterations, task=task, feature_dims=feature_dims, label_smoothing=label_smoothing, trn_logging=trn_logging)
 
@@ -46,7 +45,7 @@ def main(logdir, comment, task, model_name, model_type, degradation,
         logdir = os.path.join(logdir, 'finetuning')
         for strategy in ft_strategies:
             str_comment = comment + '-' + strategy
-            ft_trainers.append(EmbeddingTraining(comm_rounds=ft_comm_rounds, logdir=logdir, lr=ft_lr, ffwrd_lr=ff_lr, embedding_lr=ft_emb_lr, weight_decay=weight_decay, comment=str_comment, dataset=dataset, site_number=site_number - trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=ft_scheduler, save_model=save_model, strategy=strategy, finetuning=True, embed_dim=embedding_dim, sites=sites[trn_site_number:], cifar=cifar, iterations=iterations, task=task, feature_dims=feature_dims, label_smoothing=label_smoothing, trn_logging=trn_logging))
+            ft_trainers.append(EmbeddingTraining(comm_rounds=ft_comm_rounds, logdir=logdir, lr=ft_lr, ffwrd_lr=ft_ff_lr, embedding_lr=ft_emb_lr, weight_decay=weight_decay, comment=str_comment, dataset=dataset, site_number=site_number - trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=ft_scheduler, save_model=save_model, strategy=strategy, finetuning=True, embed_dim=embedding_dim, sites=sites[trn_site_number:], cifar=cifar, iterations=iterations, task=task, feature_dims=feature_dims, label_smoothing=label_smoothing, trn_logging=trn_logging))
     else:
         ft_trainers = None
     
@@ -82,12 +81,11 @@ def ft_main(logdir, comment, task, model_name, model_type, degradation,
     trn_dl_list, val_dl_list = get_dl_lists(dataset, batch_size, partition=partition, n_site=site_number, alpha=alpha, seed=data_part_seed, use_hdf5=True, cross_val_id=cross_val_id)
     transform_list = getTransformList(degradation, site_number, seed=transform_gen_seed, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
     class_list = get_class_list(task=task, site_number=site_number, class_number=18 if dataset == 'celeba' else None, class_seed=2, degradation=degradation)
-    site_dict = [{'trn_dl': trn_dl_list[ndx],
+    sites = [{'trn_dl': trn_dl_list[ndx],
                     'val_dl': val_dl_list[ndx],
                     'transform': transform_list[ndx],
                     'classes': class_list[ndx]}
                     for ndx in range(site_number)]
-    sites = site_dict
     
     ft_trainer = EmbeddingTraining(comm_rounds=ft_comm_rounds, logdir=logdir, lr=lr, ffwrd_lr=ff_lr, embedding_lr=emb_lr, weight_decay=weight_decay, comment=comment, dataset=dataset, site_number=site_number - trn_site_number, model_name=model_name, model_type=model_type, optimizer_type=optimizer_type, scheduler_mode=ft_scheduler, save_model=save_model, strategy=strategy, finetuning=True, embed_dim=embedding_dim, sites=sites[trn_site_number:], cifar=cifar, iterations=iterations, task=task, feature_dims=feature_dims, label_smoothing=label_smoothing, trn_logging=trn_logging)
     
@@ -97,3 +95,56 @@ def ft_main(logdir, comment, task, model_name, model_type, degradation,
     torch.save(results, os.path.join(save_path, comment))
     if cross_val_id is not None:
         return results
+
+
+def new_main(logdir, comment, degradation, site_number, data_part_seed, transform_gen_seed, tr_config, **config):
+    save_path = os.path.join('/home/hansel/developer/embedding/results', logdir)
+    os.makedirs(save_path, exist_ok=True)
+    log.info(comment)
+
+    trn_dl_list, val_dl_list = new_get_dl_lists(dataset=config['dataset'], batch_size=config['batch_size'], degradation=degradation, n_site=site_number, seed=data_part_seed)
+    transform_list = get_test_transforms(site_number=site_number, seed=transform_gen_seed, degradation=degradation, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
+    class_list = get_class_list(task='classification', site_number=site_number, class_number=18 if config['dataset'] == 'celeba' else None, class_seed=2, degradation=degradation)
+    site_dict = [{'trn_dl': trn_dl_list[ndx],
+                    'val_dl': val_dl_list[ndx],
+                    'transform': transform_list[ndx],
+                    'classes': class_list[ndx]}
+                    for ndx in range(site_number)]
+    
+    ft_trainer = EmbeddingTraining(logdir=logdir, comment=comment, site_number=site_number, sites=site_dict, **config)
+    ft_trainer.train()
+
+def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_strategy, finetune, state_dict, **config):
+    save_path = os.path.join('/home/hansel/developer/embedding/results', logdir)
+    os.makedirs(save_path, exist_ok=True)
+    log.info(comment)
+
+    trn_dl_list, val_dl_list = new_get_dl_lists(dataset=config['dataset'], batch_size=config['batch_size'], degradation=degradation, n_site=site_number, seed=data_part_seed)
+    transform_list = get_test_transforms(site_number=site_number, seed=transform_gen_seed, degradation=degradation, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
+    class_list = get_class_list(task='classification', site_number=site_number, class_number=18 if config['dataset'] == 'celeba' else None, class_seed=2, degradation=degradation)
+    site_dict = [{'trn_dl': trn_dl_list[ndx],
+                    'val_dl': val_dl_list[ndx],
+                    'transform': transform_list[ndx],
+                    'classes': class_list[ndx]}
+                    for ndx in range(site_number)]
+
+    if finetune and state_dict is None:
+        trn_site_dict = site_dict[::2]
+        ft_site_dict = site_dict[1::2]
+    elif finetune and state_dict is not None:
+        ft_site_dict = site_dict
+    else:
+        trn_site_dict = site_dict
+    
+    if state_dict is None:
+        trainer = EmbeddingTraining(logdir=logdir, comment=comment, sites=trn_site_dict, **config)
+        acc, state_dict = trainer.train()
+
+    if finetune:
+        ft_comment = comment + '-' + ft_strategy
+        ft_logdir = logdir + '_ft'
+        config['comm_rounds'] = 200
+        config['T_max'] = 200
+        config['strategy'] = ft_strategy
+        ft_trainer = EmbeddingTraining(logdir=ft_logdir, comment=ft_comment, state_dict=state_dict, sites=ft_site_dict, finetuning=True, **config)
+        ft_trainer.train()

@@ -55,8 +55,8 @@ class CustomResnet(nn.Module):
 class ResnetBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, downsample=None, norm_layer=GeneralBatchNorm2d, mode=None, **kwargs):
         super().__init__()
-        self.residual_affine_generator = WeightGenerator(out_channels=out_channels, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
-        self.residual_const_generator = WeightGenerator(out_channels=out_channels, **kwargs) if mode is not MODE_NAMES['vanilla'] else None
+        self.residual_affine_generator = WeightGenerator(out_channels=out_channels, **kwargs) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
+        self.residual_const_generator = WeightGenerator(out_channels=out_channels, **kwargs) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
 
         self.conv1 = GeneralConv2d(mode=mode, in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=stride, padding=1, **kwargs)
         self.batch_norm1 = norm_layer(mode=mode, num_features=out_channels, **kwargs)

@@ -26,9 +26,9 @@ def get_class_list(task, site_number, class_number, class_seed, degradation):
 
     return classes
 
-def transform_image(batch, labels, mode, transform, dataset, model, p=False, trn_log=True):
+def transform_image(batch, labels, mode, transform, dataset, model, trn_log=True):
     if mode == 'trn':
-        batch, labels = aug_image(batch, labels, dataset, model, p=p, trn_log=trn_log)
+        batch, labels = aug_image(batch, labels, dataset, model, trn_log=trn_log)
     if transform is not None:
         # For some transforms, e.g. colorjitter, the pixelvalues need to be in [0, 1]
         b_max = torch.amax(batch, dim=(1, 2, 3), keepdim=True)
@@ -50,10 +50,8 @@ def create_mask_from_onehot(one_hot_mask, classes):
     mask = (one_hot_mask[..., classes]).amax(dim=-1)
     return mask
 
-def aug_image(batch, labels, dataset, model, p=False, trn_log=True):
+def aug_image(batch, labels, dataset, model, trn_log=True):
     if dataset in ['mnist', 'cifar10', 'cifar100']:
-        if p:
-            print('aug for mnist, cifar')
         trans = Compose([
             Pad(4),
             RandomCrop(32),
@@ -65,8 +63,6 @@ def aug_image(batch, labels, dataset, model, p=False, trn_log=True):
         ])
         batch = trans(batch)
     elif dataset == 'imagenet' and trn_log:
-        if p:
-            print('standard aug for imagenet')
         trans = Compose([
             Pad(4),
             RandomCrop(64),
@@ -78,8 +74,6 @@ def aug_image(batch, labels, dataset, model, p=False, trn_log=True):
         ])
         batch = trans(batch)
     elif dataset in ['celeba', 'minicoco']:
-        if p:
-            print('aug for celeba')
         flip = torch.rand(size=[batch.shape[0]]) < 0.5
         rotation = torch.randint(0, 5, [batch.shape[0]])
         scales = torch.rand(size=[batch.shape[0]], device=batch.device) * 0.4 + 0.8
@@ -91,8 +85,6 @@ def aug_image(batch, labels, dataset, model, p=False, trn_log=True):
             labels[ndx] = torch.rot90(labels[ndx], rotation[ndx], dims=(-2, -1))
         batch = scales.reshape(-1, 1, 1, 1) * batch
     elif dataset == 'imagenet' and not trn_log:
-        if p:
-            print('new aug for imagenet')
         rand_aug = v2.RandAugment(num_ops=2)
         mixup = Mixup(
             mixup_alpha=0.8,
@@ -135,10 +127,7 @@ def getTransformList(degradation, site_number, seed, device, **kwargs):
             con = rng.uniform(endpoints[con_ndx[site]], endpoints[con_ndx[site]+1])
             sat = rng.uniform(endpoints[sat_ndx[site]], endpoints[sat_ndx[site]+1])
             hue = rng.uniform(endpoints[hue_ndx[site]], endpoints[hue_ndx[site]+1]) - 1
-            transforms.append(ColorJitter((bri, bri),
-                                          (con, con),
-                                          (sat, sat),
-                                          (hue, hue)))
+            transforms.append(deterministicColorjitter(bri, con, sat, hue))
 
     elif degradation == '3noises':
         var_add = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], math.ceil(site_number/3))
@@ -167,6 +156,62 @@ def getTransformList(degradation, site_number, seed, device, **kwargs):
             
     return transforms
 
+def get_test_transforms(site_number, seed, degradation, device, **kwargs):
+    rng = np.random.default_rng(seed)
+    transforms = []
+    if degradation == 'mixed':
+        variances = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], site_number//2)
+        for i in range(site_number//2):
+            transforms.append(NoiseTransform(rng=rng, t_rng=None, device=device, var_add=variances[i], choice=0))
+        for i in range(site_number//2):
+            transforms.append(ConvertImageDtype(torch.float))
+    elif degradation == '3mixed':
+        variances = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], site_number//3)
+        for i in range(site_number//3):
+            transforms.append(NoiseTransform(rng=rng, t_rng=None, device=device, var_add=variances[i], choice=0))
+        for i in range(site_number//3):
+            transforms.append(ConvertImageDtype(torch.float))
+        jitters = np.linspace(0.5, 1.5, site_number//3)
+        for j in jitters:
+            transforms.append(deterministicColorjitter(j, j, j, j - 1))
+    elif degradation == 'addgauss':
+        variances = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], site_number)
+        for i in range(site_number):
+            transforms.append(NoiseTransform(rng=rng, t_rng=None, device=device, var_add=variances[i], choice=0))
+    elif degradation == 'jitter':
+        jitters = np.linspace(0.5, 1.5, site_number)
+        for j in jitters:
+            transforms.append(deterministicColorjitter(j, j, j, j - 1))
+    elif degradation == 'classskew':
+        for i in range(site_number):
+            transforms.append(ConvertImageDtype(torch.float))
+    elif degradation == 'jittermix':
+        bri = np.linspace(0.2, 1.8, site_number//4)
+        for b in bri:
+            transforms.append(deterministicColorjitter(b, 1., 1., 0.))
+        con = np.linspace(0.2, 1.8, site_number//4)
+        for c in con:
+            transforms.append(deterministicColorjitter(1., c, 1., 0.))
+        sat = np.linspace(0.2, 1.8, site_number//4)
+        for s in sat:
+            transforms.append(deterministicColorjitter(1., 1., s, 0.))
+        hue = np.linspace(-0.5, 0.5, site_number//4)
+        for h in hue:
+            transforms.append(deterministicColorjitter(1., 1., 1., h))
+    elif degradation == 'randgauss':
+        var = rng.standard_normal((site_number)) * 0.05
+        var[var < -0.049] = -0.049
+        mu = 0.1
+        for i in range(site_number):
+            if i == site_number // 2:
+                mu = 1
+            transforms.append(NoiseTransform(rng=rng, t_rng=None, device=device, var_add=mu + var[i], choice=0))
+    elif degradation == 'classsep':
+        for i in range(site_number):
+            transforms.append(ConvertImageDtype(torch.float))
+
+    return transforms
+
 class NoiseTransform:
     def __init__(self, rng, t_rng, device, **kwargs):
         self.rng = rng
@@ -190,3 +235,14 @@ class NoiseTransform:
             noise = torch.poisson(input=img*10**alpha, generator=self.t_rng)/10**alpha
             img = torch.tensor(noise, device=self.device)
         return img.float()
+
+class deterministicColorjitter:
+    def __init__(self, bri, con, sat, hue):
+        self.bri = bri
+        self.con = con
+        self.sat = sat
+        self.hue = hue
+        self.jitter = ColorJitter((self.bri, self.bri), (self.con, self.con), (self.sat, self.sat), (self.hue, self.hue))
+    
+    def __call__(self, img:torch.Tensor):
+        return self.jitter(img)

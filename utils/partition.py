@@ -11,7 +11,44 @@ def partition(data_dir, dataset, partition, n_sites, alpha=None, seed=None):
         (net_dataidx_map_train, net_dataidx_map_test) = partition_by_class(data_dir, dataset, n_sites, seed)
     elif partition == 'dirichlet':
         (net_dataidx_map_train, net_dataidx_map_test) = partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha, seed)
+    elif partition == 'cont':
+        (net_dataidx_map_train, net_dataidx_map_test) = cont_partition(data_dir, dataset, n_sites)
     return (net_dataidx_map_train, net_dataidx_map_test)
+
+def cont_partition(data_dir, dataset, n_sites):
+    if dataset == 'cifar10':
+        train_ds, test_ds = get_cifar10_datasets(data_dir)
+        K = 10
+    elif dataset == 'cifar100':
+        train_ds, test_ds = get_cifar100_datasets(data_dir)
+        K = 100
+    elif dataset == 'mnist':
+        train_ds, test_ds = get_mnist_datasets(data_dir)
+        K = 10
+    elif dataset == 'imagenet':
+        train_ds, test_ds = get_image_net_dataset(data_dir)
+        K = 200
+    elif dataset == 'celeba':
+        train_ds, test_ds = get_celeba_dataset(data_dir)
+        K = 18
+    elif dataset == 'minicoco':
+        train_ds, test_ds = get_minicoco_dataset(data_dir)
+        K = 12
+    assert n_sites <= K
+
+    if dataset in ['imagenet']:
+        y_train = train_ds.labels
+        y_test = test_ds.labels
+    else:
+        y_train = train_ds.targets
+        y_test = test_ds.targets
+    
+    
+    trn_map = {i: np.where(y_train <= i)[0] for i in range(K)}
+    val_map = {i: np.where(y_test <= i)[0] for i in range(K)}
+
+    return trn_map, val_map
+    
 
 def partition_by_class(data_dir, dataset, n_sites, seed=None):
     rng = np.random.default_rng(seed)
