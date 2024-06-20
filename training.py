@@ -12,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid
 import numpy as np
 
-
+from st_adam import Adam as ProxAdam
 from utils.logconf import logging
 from utils.data_loader import get_dl_lists
 from utils.ops import transform_image, getTransformList, create_mask_from_onehot
@@ -55,6 +55,7 @@ class EmbeddingTraining:
         self.comm_rounds = comm_rounds
         self.label_smoothing = label_smoothing
         self.fed_prox = fed_prox
+        self.proximal_map = proximal_map
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
@@ -118,7 +119,10 @@ class EmbeddingTraining:
             if self.optimizer_type == 'adam':
                 optim = Adam(params=params_to_update, lr=lr, weight_decay=weight_decay)
             elif self.optimizer_type == 'newadam':
-                optim = Adam(params=params_to_update, lr=lr, weight_decay=weight_decay, betas=(0.5,0.9))
+                if self.proximal_map:
+                    optim = ProxAdam(params=params_to_update, lr=lr, weight_decay=weight_decay, betas=(0.5,0.9), mu=self.fed_prox)
+                else:
+                    optim = Adam(params=params_to_update, lr=lr, weight_decay=weight_decay, betas=(0.5,0.9))
             elif self.optimizer_type == 'adamw':
                 optim = AdamW(params=params_to_update, lr=lr, weight_decay=weight_decay)
             elif self.optimizer_type == 'sgd':
@@ -311,7 +315,7 @@ class EmbeddingTraining:
         loss_fn = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
 
         prox_term = torch.tensor(0., device=self.device)
-        if self.fed_prox > 0 and not self.finetuning:
+        if self.fed_prox > 0 and not self.finetuning and not self.proximal_map:
             name_list = list(self.global_model.state_dict().keys())
             layers = get_layer_list(self.task, self.strategy, name_list)
             for layer, glob_p, loc_p in zip(name_list, self.global_model.parameters(), model.parameters()):
@@ -514,6 +518,12 @@ class EmbeddingTraining:
             for model in self.models:
                 model.load_state_dict(state_dict, strict=False)
             self.global_model = copy.deepcopy(self.models[0])
+            original_list = [name for name, _ in self.models[0].named_parameters()]
+            layer_list = get_layer_list(task=self.task, strategy=self.strategy, original_list=original_list)
+            for model in self.models:
+                for n, p in model.named_parameters():
+                    if n in layer_list:
+                        p.global_weight = state_dict[n]
         else:
             original_list = [name for name, _ in self.models[0].named_parameters()]
             layer_list = get_layer_list(task=self.task, strategy=self.strategy, original_list=original_list)
@@ -529,6 +539,9 @@ class EmbeddingTraining:
             self.global_model.load_state_dict(updated_params, strict=False)
             for model in self.models:
                 model.load_state_dict(updated_params, strict=False)
+                for n, p in model.named_parameters():
+                    if n in layer_list:
+                        p.global_weight = updated_params[n]
 
 
 if __name__ == '__main__':

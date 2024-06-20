@@ -1,6 +1,6 @@
 import numpy as np
 
-def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type, finetune, fed_prox):
+def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type, finetune, fed_prox, prox_map):
     dataset = 'cifar10'
     task = 'classification'
     partition = 'dirichlet'
@@ -31,7 +31,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
     site_number_to_comment = site_number // 2 if finetune else site_number
 
     config = {'logdir':logdir,
-            'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{degradation}-s{str(site_number_to_comment)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-fflr{fflr}-elr{emb_lr}-embdim-{emb_dim}-{dataset}-fedp-{str(fed_prox)}',
+            'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{degradation}-s{str(site_number_to_comment)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-fflr{fflr}-elr{emb_lr}-embdim-{emb_dim}-{dataset}-fedp-{str(fed_prox)}-proxm-{prox_map}',
             'task':task,
             'model_name':'resnet18',
             'model_type':model_type,
@@ -58,7 +58,8 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
             'tr_config':tr_config,
             'partition':partition,
             'ft_strategy':ft_strategy,
-            'fed_prox':fed_prox}
+            'fed_prox':fed_prox,
+            'proximal_map':prox_map}
     
     return config
 
