@@ -12,6 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid
 import numpy as np
 
+
 from utils.logconf import logging
 from utils.data_loader import get_dl_lists
 from utils.ops import transform_image, getTransformList, create_mask_from_onehot
@@ -35,7 +36,7 @@ class EmbeddingTraining:
                  model_type=None, weight_decay=1e-5, cifar=True,
                  get_transforms=False, state_dict=None, iterations=None,
                  feature_dims=None, label_smoothing=0., trn_logging=True,
-                 fed_prox=0.):
+                 fed_prox=0., proximal_map=False):
         
         log.info(comment)
         self.logdir_name = logdir
@@ -313,7 +314,7 @@ class EmbeddingTraining:
         if self.fed_prox > 0 and not self.finetuning:
             name_list = list(self.global_model.state_dict().keys())
             layers = get_layer_list(self.task, self.strategy, name_list)
-            for layer, glob_p, loc_p in zip(name_list, self.global_model.parameters(), self.models[0].parameters()):
+            for layer, glob_p, loc_p in zip(name_list, self.global_model.parameters(), model.parameters()):
                 if layer in layers:
                     prox_term += torch.pow(torch.norm(glob_p - loc_p), 2)
 
