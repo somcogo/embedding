@@ -1,6 +1,6 @@
 import numpy as np
 
-def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type, finetune, fed_prox, prox_map):
+def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type, finetune, fed_prox, prox_map, emb_dim):
     dataset = 'cifar10'
     task = 'classification'
     partition = 'dirichlet'
@@ -8,7 +8,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
     iterations = 50
     alpha = 1e7
     alpha_str = str(alpha) if partition == 'dirichlet' else 'classsep'
-    emb_dim = 128
+    emb_dim = emb_dim if emb_dim is not None else 128
 
     tr_config = {'var_add':(0.005, 1),
                 'alpha':(1.2, 1.5),
@@ -16,8 +16,8 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
                 'patch_size':3,
                 'swap_count':1}
     
-    fflr = 0.01
-    emb_lr = 1
+    fflr = 1e-4 if model_type != 'vanilla' else None
+    emb_lr = 1e-1 if model_type != 'vanilla' else None
 
     if strategy == 'fedbntrn':
         ft_strategy = 'fedbn'

@@ -10,6 +10,7 @@ from torch.optim import Adam, AdamW, SGD, LBFGS
 from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR, LinearLR, SequentialLR
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid
+import torchvision
 import numpy as np
 
 from st_adam import Adam as ProxAdam
@@ -19,6 +20,7 @@ from utils.ops import transform_image, getTransformList, create_mask_from_onehot
 from utils.merge_strategies import get_layer_list
 from utils.get_model import get_model
 
+torchvision.disable_beta_transforms_warning()
 log = logging.getLogger(__name__)
 # log.setLevel(logging.WARN)
 log.setLevel(logging.INFO)
@@ -78,8 +80,8 @@ class EmbeddingTraining:
             self.site_indices = range(site_number) if site_indices is None else site_indices
         self.iterations = iterations
         self.models = self.initModels(embed_dim=embed_dim, model_type=model_type, cifar=cifar, feature_dims=feature_dims)
-        self.optims = self.initOptimizers(lr, finetuning, weight_decay=weight_decay, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
-        self.schedulers = self.initSchedulers(lr)
+        self.optims, self.emb_optims = self.initOptimizers(lr, finetuning, weight_decay=weight_decay, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
+        self.schedulers, self.emb_schedulers = self.initSchedulers(lr, embedding_lr)
         self.trn_logging = trn_logging
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
@@ -96,6 +98,7 @@ class EmbeddingTraining:
 
     def initOptimizers(self, lr, finetuning, weight_decay=None, embedding_lr=None, ffwrd_lr=None):
         optims = []
+        emb_optims = []
         for model in self.models:
             if finetuning:
                 assert self.strategy in ['finetuning', 'onlyfc', 'onlyemb', 'fffinetuning', 'fedbn', 'embbnft']
@@ -108,10 +111,19 @@ class EmbeddingTraining:
             else:
                 all_names = [name for name, _ in model.named_parameters()]
             params_to_update = []
-            embedding_names = [name for name in all_names if name.split('.')[0] == 'embedding']
+            embedding_names = [name for name in all_names if 'embedding' in name]
             ffwrd_names = [name for name in all_names if 'generator' in name]
             if embedding_lr is not None:
-                params_to_update.append({'params':[param for name, param in model.named_parameters() if name in embedding_names and name in all_names], 'lr':embedding_lr})
+                emb_params = [param for name, param in model.named_parameters() if name in embedding_names and name in all_names]
+                if self.optimizer_type == 'adam':
+                    emb_optim = Adam(params=emb_params, lr=embedding_lr, weight_decay=weight_decay)
+                elif self.optimizer_type == 'newadam':
+                    emb_optim = Adam(params=emb_params, lr=embedding_lr, weight_decay=weight_decay, betas=(0.5,0.9))
+                elif self.optimizer_type == 'adamw':
+                    emb_optim = AdamW(params=emb_params, lr=embedding_lr, weight_decay=weight_decay)
+                elif self.optimizer_type == 'sgd':
+                    emb_optim = SGD(params=emb_params, lr=embedding_lr, weight_decay=weight_decay, momentum=0.9)
+                emb_optims.append(emb_optim)
             if ffwrd_lr is not None:
                 params_to_update.append({'params':[param for name, param in model.named_parameters() if name in ffwrd_names and name in all_names], 'lr':ffwrd_lr})
             params_to_update.append({'params':[param for name, param in model.named_parameters() if not name in embedding_names and not name in ffwrd_names  and name in all_names]})
@@ -129,9 +141,9 @@ class EmbeddingTraining:
                 optim = SGD(params=params_to_update, lr=lr, weight_decay=weight_decay, momentum=0.9)
 
             optims.append(optim)
-        return optims
+        return optims, emb_optims
     
-    def initSchedulers(self, lr):
+    def initSchedulers(self, lr, emb_lr):
         if self.scheduler_mode is None:
             schedulers = None
         else:
@@ -148,10 +160,23 @@ class EmbeddingTraining:
                     linear_warm_up = LinearLR(optim, start_factor=1e-8, total_iters=20)
                     cosine_scheduler = CosineAnnealingLR(optim, self.comm_rounds - 20, 1e-6)
                     scheduler = SequentialLR(optim, schedulers=[linear_warm_up, cosine_scheduler], milestones=[20])
-
                 schedulers.append(scheduler)
+            emb_schedulers = []
+            for emb_optim in self.emb_optims:
+                if self.scheduler_mode == 'cosine':
+                    emb_scheduler = CosineAnnealingLR(emb_optim, T_max=self.T_max, eta_min=emb_lr * 1e-3)
+                elif self.scheduler_mode == 'onecyc':
+                    emb_scheduler = OneCycleLR(emb_optim,
+                                           max_lr=emb_lr,
+                                           steps_per_epoch=self.iterations if self.iterations is not None else len(self.trn_dls[0]),
+                                           epochs=self.comm_rounds)
+                elif self.scheduler_mode == 'warmcos':
+                    linear_warm_up = LinearLR(emb_optim, start_factor=1e-8, total_iters=20)
+                    cosine_scheduler = CosineAnnealingLR(emb_optim, self.comm_rounds - 20, emb_lr * 1e-3)
+                    emb_scheduler = SequentialLR(emb_optim, schedulers=[linear_warm_up, cosine_scheduler], milestones=[20])
+                emb_schedulers.append(emb_scheduler)
             
-        return schedulers
+        return schedulers, emb_schedulers
 
     def initDls(self, batch_size, partition, alpha, k_fold_val_id, seed, site_indices):
         trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
@@ -212,6 +237,8 @@ class EmbeddingTraining:
             if self.scheduler_mode in ['cosine', 'warmcos'] and not self.finetuning:
                 for scheduler in self.schedulers:
                     scheduler.step()
+                for emb_scheduler in self.emb_schedulers:
+                    emb_scheduler.step()
 
             if self.site_number > 1 and not self.finetuning:
                 self.mergeModels()
@@ -236,6 +263,8 @@ class EmbeddingTraining:
                     for batch_tuple in trn_dl:
                         # with torch.autograd.detect_anomaly():
                             self.optims[ndx].zero_grad()
+                            if len(self.emb_optims) > 0:
+                                self.emb_optims[ndx].zero_grad()
                             loss, _ = self.computeBatchLoss(
                                 batch_tuple,
                                 self.models[ndx],
@@ -244,9 +273,13 @@ class EmbeddingTraining:
                                 ndx)
                             loss.backward()
                             self.optims[ndx].step()
+                            if len(self.emb_optims) > 0:
+                                self.emb_optims[ndx].step()
                             if self.scheduler_mode == 'onecyc' and not self.finetuning:
                                 for scheduler in self.schedulers:
                                     scheduler.step()
+                                for emb_scheduler in self.emb_schedulers:
+                                    emb_scheduler.step()
                             iter_ndx += 1
                             if iter_ndx >= self.iterations:
                                 break
@@ -254,6 +287,8 @@ class EmbeddingTraining:
                 for batch_tuple in trn_dl:
                     # with torch.autograd.detect_anomaly():
                         self.optims[ndx].zero_grad()
+                        if len(self.emb_optims) > 0:
+                            self.emb_optims[ndx].zero_grad()
                         loss, _ = self.computeBatchLoss(
                             batch_tuple,
                             self.models[ndx],
@@ -262,9 +297,13 @@ class EmbeddingTraining:
                             ndx)
                         loss.backward()
                         self.optims[ndx].step()
+                        if len(self.emb_optims) > 0:
+                            self.emb_optims[ndx].step()
                         if self.scheduler_mode == 'onecyc' and not self.finetuning:
                             for scheduler in self.schedulers:
                                 scheduler.step()
+                            for emb_scheduler in self.emb_schedulers:
+                                emb_scheduler.step()
 
             metrics.append(site_metrics)
         trn_metrics = self.calculateGlobalMetricsFromLocal(metrics, mode='trn')
@@ -496,6 +535,9 @@ class EmbeddingTraining:
                 'optimizer_state': self.optims[ndx].state_dict(),
                 'scheduler_state': self.schedulers[ndx].state_dict(),
                 }
+            if len(self.emb_optims) > 0:
+                model_state[ndx]['emb_optimizer_state'] = self.emb_optims[ndx].state_dict()
+                model_state[ndx]['emb_scheduler_state'] = self.emb_schedulers[ndx].state_dict()
             if hasattr(model, 'embedding') and model.embedding is not None:
                 data_state[ndx] = {'emb_vector':model.embedding.detach().cpu()}
 
@@ -522,7 +564,7 @@ class EmbeddingTraining:
             layer_list = get_layer_list(task=self.task, strategy=self.strategy, original_list=original_list)
             for model in self.models:
                 for n, p in model.named_parameters():
-                    if n in layer_list:
+                    if n in layer_list and self.proximal_map:
                         p.global_weight = state_dict[n]
         else:
             original_list = [name for name, _ in self.models[0].named_parameters()]
@@ -540,7 +582,7 @@ class EmbeddingTraining:
             for model in self.models:
                 model.load_state_dict(updated_params, strict=False)
                 for n, p in model.named_parameters():
-                    if n in layer_list:
+                    if n in layer_list and self.proximal_map:
                         p.global_weight = updated_params[n]
 
 

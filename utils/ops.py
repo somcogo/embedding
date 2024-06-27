@@ -174,6 +174,18 @@ def get_test_transforms(site_number, seed, degradation, device, **kwargs):
         jitters = np.linspace(0.5, 1.5, site_number//3)
         for j in jitters:
             transforms.append(deterministicColorjitter(j, j, j, j - 1))
+    elif degradation == 'colorjitter':
+        endpoints = np.linspace(0.5, 1.5, site_number+1)
+        bri_ndx = rng.permutation(np.arange(site_number))
+        con_ndx = rng.permutation(np.arange(site_number))
+        sat_ndx = rng.permutation(np.arange(site_number))
+        hue_ndx = rng.permutation(np.arange(site_number))
+        for site in range(site_number):
+            bri = rng.uniform(endpoints[bri_ndx[site]], endpoints[bri_ndx[site]+1])
+            con = rng.uniform(endpoints[con_ndx[site]], endpoints[con_ndx[site]+1])
+            sat = rng.uniform(endpoints[sat_ndx[site]], endpoints[sat_ndx[site]+1])
+            hue = rng.uniform(endpoints[hue_ndx[site]], endpoints[hue_ndx[site]+1]) - 1
+            transforms.append(deterministicColorjitter(bri, con, sat, hue))
     elif degradation == 'addgauss':
         variances = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], site_number)
         for i in range(site_number):

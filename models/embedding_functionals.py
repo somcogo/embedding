@@ -23,24 +23,12 @@ class WeightGenerator(nn.Module):
 
             nn.init.uniform_(self.lin1.weight, a=bound_w_l, b=bound_w_r)
             nn.init.uniform_(self.lin1.bias, a=bound_b_l, b=bound_b_r)
-            # if target == 'zero':
-            #     nn.init.zeros_(self.lin1.weight)
-            #     nn.init.zeros_(self.lin1.bias)
-            # elif target == 'one':
-            #     nn.init.zeros_(self.lin1.weight)
-            #     nn.init.ones_(self.lin1.bias)
         if gen_depth == 2:
             self.lin1 = nn.Linear(in_features=emb_dim, out_features=gen_hidden_layer)
             self.lin2 = nn.Linear(in_features=gen_hidden_layer, out_features=out_channels)
 
             nn.init.uniform_(self.lin2.weight, a=bound_w_l, b=bound_w_r)
             nn.init.uniform_(self.lin2.bias, a=bound_b_l, b=bound_b_r)
-            # if target == 'zero':
-            #     nn.init.zeros_(self.lin2.weight)
-            #     nn.init.zeros_(self.lin2.weight)
-            # elif target == 'one':
-            #     nn.init.zeros_(self.lin2.weight)
-            #     nn.init.ones_(self.lin2.bias)
     
     def forward(self, x):
         x = x.to(torch.float)
@@ -51,7 +39,43 @@ class WeightGenerator(nn.Module):
             x = nn.functional.relu(x)
             out = self.lin2(x)
         return out
+    
+class CombWeightGenerator(nn.Module):
+    def __init__(self, emb_dim, gen_hidden_layer, out_chans, gen_depth=None, targets=['const', 'one'], **kwargs):
+        super().__init__()
+        self.gen_depth = gen_depth
+        bound_w_l, bound_w_r, bound_b_l, bound_b_r = [], [], [], []
+        for target in targets:
+            bound_w_l.append(- 1 / math.sqrt(emb_dim))
+            bound_w_r.append(1 / math.sqrt(emb_dim))
+            bound_b_l.append(1 - 1 / math.sqrt(emb_dim) if target == 'one' else - 1 / math.sqrt(emb_dim))
+            bound_b_r.append(1 + 1 / math.sqrt(emb_dim) if target == 'one' else 1 / math.sqrt(emb_dim))
+        if gen_depth == 1:
+            self.lin1 = nn.Linear(in_features=emb_dim, out_features=out_chans[0])
 
+            nn.init.uniform_(self.lin1.weight, a=bound_w_l[0], b=bound_w_r[0])
+            nn.init.uniform_(self.lin1.bias, a=bound_b_l[0], b=bound_b_r[0])
+        if gen_depth == 2:
+            self.lin1 = nn.Linear(in_features=emb_dim, out_features=gen_hidden_layer)
+            self.lin2s = nn.ModuleList([])
+            for ndx in range(len(out_chans)):
+                lin = nn.Linear(in_features=gen_hidden_layer, out_features=out_chans[ndx])
+                nn.init.uniform_(lin.weight, a=bound_w_l[ndx], b=bound_w_r[ndx])
+                nn.init.uniform_(lin.bias, a=bound_b_l[ndx], b=bound_b_r[ndx])
+                self.lin2s.append(lin)
+    
+    def forward(self, x):
+        x = x.to(torch.float)
+        if self.gen_depth == 1:
+            out = self.lin1(x)
+        if self.gen_depth == 2:
+            x = self.lin1(x)
+            x = nn.functional.relu(x)
+            out = []
+            for lin in self.lin2s:
+                out.append(lin(x))
+        return out
+    
 class Conv2d_emb(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True, gen_size=1, gen_affine=False, device=None, **kwargs):
         super().__init__()
@@ -274,23 +298,32 @@ class BatchNorm2d_emb(nn.Module):
         return x
     
 class BatchNorm2d_emb_replace(nn.Module):
-    def __init__(self, num_features,eps=1e-05, momentum=0.1, gen_affine=False, device=None, dtype=None, gen_size=2, **kwargs):
+    def __init__(self, num_features,eps=1e-05, momentum=0.1, gen_affine=False, device=None, comb_gen=False, **kwargs):
         super().__init__()
         self.gen_affine = gen_affine
         self.momentum = momentum
         self.eps = eps
+        self.comb_gen = comb_gen
         self.register_buffer('running_mean', torch.zeros(num_features, device=device))
         self.register_buffer('running_var', torch.ones(num_features, device=device))
 
-        gen_weight_const_size = num_features
-        gen_bias_const_size = num_features
+        gen_w_size = num_features
+        gen_b_size = num_features
 
-        self.weight_const_generator = WeightGenerator(out_channels=gen_weight_const_size, target='one', **kwargs)
-        self.bias_const_generator = WeightGenerator(out_channels=gen_bias_const_size, target='zero', **kwargs)
+        if comb_gen:
+            self.w_b_generator = CombWeightGenerator(out_chans=[gen_w_size, gen_b_size], targets=['one', 'zero'], **kwargs)
+        else:
+            self.weight_const_generator = WeightGenerator(out_channels=gen_w_size, target='one', **kwargs)
+            self.bias_const_generator = WeightGenerator(out_channels=gen_b_size, target='zero', **kwargs)
 
     def forward(self, x, emb):
-        weight = self.weight_const_generator(emb).to(x.dtype)
-        bias = self.bias_const_generator(emb).to(x.dtype)
+        if self.comb_gen:
+            weight, bias = self.w_b_generator(emb)
+            weight = weight.to(x.dtype)
+            bias = bias.to(x.dtype)
+        else:
+            weight = self.weight_const_generator(emb).to(x.dtype)
+            bias = self.bias_const_generator(emb).to(x.dtype)
 
         x = F.batch_norm(x, running_mean=self.running_mean, running_var=self.running_var, weight=weight, bias=bias, training=self.training, momentum=self.momentum, eps=self.eps)
         return x
