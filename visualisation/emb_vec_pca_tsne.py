@@ -13,7 +13,7 @@ def vis_embedding(trn_path, ft_path, trn_sites, ft_sites, deg, x_dim=0, y_dim=1,
     
 
     tsne_emb_trn = TSNE(perplexity=min(5, trn_sites)).fit_transform(embs_trn)
-    pca_trn = PCA(n_components=max(2, trn_sites))
+    pca_trn = PCA(n_components=min(max(2, trn_sites), embs_trn.shape[1]))
     pca_trn.fit(embs_trn)
     pca_embs_trn = pca_trn.transform(embs_trn)
 
