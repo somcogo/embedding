@@ -3,7 +3,7 @@ import os
 import torch
 
 from utils.data_loader import get_dl_lists, new_get_dl_lists
-from utils.ops import getTransformList, get_class_list, get_test_transforms
+from utils.ops import getTransformList, get_class_list, get_test_transforms, get_ft_indices
 from training import EmbeddingTraining
 from utils.logconf import logging
 
@@ -114,7 +114,7 @@ def new_main(logdir, comment, degradation, site_number, data_part_seed, transfor
     ft_trainer = EmbeddingTraining(logdir=logdir, comment=comment, site_number=site_number, sites=site_dict, **config)
     ft_trainer.train()
 
-def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_strategy, finetune, state_dict, **config):
+def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_strategy, state_dict, ft_site_number, **config):
     save_path = os.path.join('/home/hansel/developer/embedding/results', logdir)
     os.makedirs(save_path, exist_ok=True)
     log.info(comment)
@@ -128,19 +128,15 @@ def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, 
                     'classes': class_list[ndx]}
                     for ndx in range(site_number)]
 
-    if finetune and state_dict is None:
-        trn_site_dict = site_dict[::2]
-        ft_site_dict = site_dict[1::2]
-    elif finetune and state_dict is not None:
-        ft_site_dict = site_dict
-    else:
-        trn_site_dict = site_dict
+    ft_indices = get_ft_indices(site_number, ft_site_number, degradation)
+    trn_site_dict = [site_dict[i] for i in range(len(site_dict)) if i not in ft_indices]
+    ft_site_dict = [site_dict[i] for i in range(len(site_dict)) if i in ft_indices]
     
-    if state_dict is None:
+    if site_number > 0:
         trainer = EmbeddingTraining(logdir=logdir, comment=comment, sites=trn_site_dict, **config)
         acc, state_dict = trainer.train()
 
-    if finetune:
+    if ft_site_number > 0:
         ft_comment = comment + '-' + ft_strategy
         ft_logdir = logdir + '_ft'
         config['comm_rounds'] = 200
