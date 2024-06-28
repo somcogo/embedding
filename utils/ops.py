@@ -16,6 +16,26 @@ from torchvision.transforms import (
      v2)
 from timm.data.mixup import Mixup
 
+def get_ft_indices(site_number, ft_site_number, degradation, seed=0):
+    part_rng = np.random.default_rng(seed)
+    if degradation == '3mixed':
+        st = site_number // 3
+        ft_st = ft_site_number // 3
+        gauss = part_rng.permutation(np.arange(st))[:ft_st]
+        cl = part_rng.permutation(np.arange(st, 2*st))[:ft_st]
+        jitter = part_rng.permutation(np.arange(2*st, 3*st))[:ft_st]
+        indices = np.concatenate([gauss, cl, jitter])
+    elif degradation == 'mixed':
+        st = site_number // 2
+        ft_st = ft_site_number // 2
+        gauss = part_rng.permutation(np.arange(st))[:ft_st]
+        cl = part_rng.permutation(np.arange(st, 2*st))[:ft_st]
+        indices = np.concatenate([gauss, cl])
+    else:
+        indices = part_rng.permutation(np.arange(site_number))[:ft_site_number]
+
+    return indices
+
 def get_class_list(task, site_number, class_number, class_seed, degradation):
     rng = np.random.default_rng(seed=class_seed)
     if task == 'segmentation' and degradation == 'nothing':
