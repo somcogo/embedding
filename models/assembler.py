@@ -40,6 +40,6 @@ class ModelAssembler(nn.Module):
         self.head = get_head(mode=mode, emb_dim=emb_dim, **model_config)
 
     def forward(self, x):
-        features = self.backbone(x, self.embedding)
-        x = self.head(x, features, self.embedding)        
+        features, emb = self.backbone(x, self.embedding)
+        x = self.head(x, features, emb)
         return x

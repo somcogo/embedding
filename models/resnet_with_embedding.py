@@ -7,7 +7,7 @@ from .embedding_functionals import MODE_NAMES, GeneralConv2d, GeneralConvTranspo
 
 ### ----- Based on the official PyTorch ResNet-18 implementation ----- ###
 class CustomResnet(nn.Module):
-    def __init__(self, channels=3, layers=[2, 2, 2, 2], feature_dims=[64, 128, 256, 512], norm_layer=GeneralBatchNorm2d, cifar=False, **kwargs):
+    def __init__(self, channels=3, layers=[2, 2, 2, 2], feature_dims=[64, 128, 256, 512], norm_layer=GeneralBatchNorm2d, cifar=False, comb_gen_length=0, **kwargs):
         super().__init__()
 
         if cifar:
@@ -22,6 +22,16 @@ class CustomResnet(nn.Module):
         self.make_layer(feature_dims[0], feature_dims[1], layers[1], stride=2, norm_layer=norm_layer, **kwargs)
         self.make_layer(feature_dims[1], feature_dims[2], layers[2], stride=2, norm_layer=norm_layer, **kwargs)
         self.make_layer(feature_dims[2], feature_dims[3], layers[3], stride=2, norm_layer=norm_layer, **kwargs)
+
+        comb_gen_layers = nn.ModuleList([])
+        for i in range(comb_gen_length):
+            if i == 0:
+                comb_gen_layers.append(nn.Linear(kwargs['emb_dim'], 16))
+            else:
+                comb_gen_layers.append(nn.Linear(16, 16))
+            comb_gen_layers.append(nn.ReLU())
+        self.comb_gen_layers = comb_gen_layers
+
 
     def make_layer(self, in_channels, out_channels, depth, stride=1, norm_layer=None, **kwargs):
         downsample = None
@@ -39,6 +49,9 @@ class CustomResnet(nn.Module):
         self.layers.append(blocks)
     
     def forward(self, x, emb):
+        for layer in self.comb_gen_layers:
+            emb = layer(emb)
+
         x = self.conv1(x, emb)
         x = self.batch_norm1(x, emb)
         x = self.relu(x)
@@ -50,7 +63,7 @@ class CustomResnet(nn.Module):
                 x = block(x, emb)
             features.append(x)
 
-        return features
+        return features, emb
 
 class ResnetBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, downsample=None, norm_layer=GeneralBatchNorm2d, mode=None, **kwargs):

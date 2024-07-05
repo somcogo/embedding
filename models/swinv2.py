@@ -617,7 +617,7 @@ class SwinTransformerV2(nn.Module):
             feature = x.view(-1, H, W, self.num_features[i]).permute(0, 3, 1, 2).contiguous()
             features.append(feature)
             
-        return features
+        return features, emb
 
     def flops(self):
         flops = 0

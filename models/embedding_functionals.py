@@ -10,21 +10,21 @@ MODE_NAMES = {'embedding': 'embedding_weights',
               'fedbn':'fedbn'}
 
 class WeightGenerator(nn.Module):
-    def __init__(self, emb_dim, gen_hidden_layer, out_channels, gen_depth=None, target='const', **kwargs):
+    def __init__(self, gen_dim, gen_hidden_layer, out_channels, gen_depth=None, target='const', **kwargs):
         super().__init__()
         self.gen_depth = gen_depth
 
-        bound_w_l = - 1 / math.sqrt(emb_dim)
-        bound_w_r = 1 / math.sqrt(emb_dim)
-        bound_b_l = 1 - 1 / math.sqrt(emb_dim) if target == 'one' else - 1 / math.sqrt(emb_dim)
-        bound_b_r = 1 + 1 / math.sqrt(emb_dim) if target == 'one' else 1 / math.sqrt(emb_dim)
+        bound_w_l = - 1 / math.sqrt(gen_dim)
+        bound_w_r = 1 / math.sqrt(gen_dim)
+        bound_b_l = 1 - 1 / math.sqrt(gen_dim) if target == 'one' else - 1 / math.sqrt(gen_dim)
+        bound_b_r = 1 + 1 / math.sqrt(gen_dim) if target == 'one' else 1 / math.sqrt(gen_dim)
         if gen_depth == 1:
-            self.lin1 = nn.Linear(in_features=emb_dim, out_features=out_channels)
+            self.lin1 = nn.Linear(in_features=gen_dim, out_features=out_channels)
 
             nn.init.uniform_(self.lin1.weight, a=bound_w_l, b=bound_w_r)
             nn.init.uniform_(self.lin1.bias, a=bound_b_l, b=bound_b_r)
         if gen_depth == 2:
-            self.lin1 = nn.Linear(in_features=emb_dim, out_features=gen_hidden_layer)
+            self.lin1 = nn.Linear(in_features=gen_dim, out_features=gen_hidden_layer)
             self.lin2 = nn.Linear(in_features=gen_hidden_layer, out_features=out_channels)
 
             nn.init.uniform_(self.lin2.weight, a=bound_w_l, b=bound_w_r)
@@ -41,22 +41,22 @@ class WeightGenerator(nn.Module):
         return out
     
 class CombWeightGenerator(nn.Module):
-    def __init__(self, emb_dim, gen_hidden_layer, out_chans, gen_depth=None, targets=['const', 'one'], **kwargs):
+    def __init__(self, gen_dim, gen_hidden_layer, out_chans, gen_depth=None, targets=['const', 'one'], **kwargs):
         super().__init__()
         self.gen_depth = gen_depth
         bound_w_l, bound_w_r, bound_b_l, bound_b_r = [], [], [], []
         for target in targets:
-            bound_w_l.append(- 1 / math.sqrt(emb_dim))
-            bound_w_r.append(1 / math.sqrt(emb_dim))
-            bound_b_l.append(1 - 1 / math.sqrt(emb_dim) if target == 'one' else - 1 / math.sqrt(emb_dim))
-            bound_b_r.append(1 + 1 / math.sqrt(emb_dim) if target == 'one' else 1 / math.sqrt(emb_dim))
+            bound_w_l.append(- 1 / math.sqrt(gen_dim))
+            bound_w_r.append(1 / math.sqrt(gen_dim))
+            bound_b_l.append(1 - 1 / math.sqrt(gen_dim) if target == 'one' else - 1 / math.sqrt(gen_dim))
+            bound_b_r.append(1 + 1 / math.sqrt(gen_dim) if target == 'one' else 1 / math.sqrt(gen_dim))
         if gen_depth == 1:
-            self.lin1 = nn.Linear(in_features=emb_dim, out_features=out_chans[0])
+            self.lin1 = nn.Linear(in_features=gen_dim, out_features=out_chans[0])
 
             nn.init.uniform_(self.lin1.weight, a=bound_w_l[0], b=bound_w_r[0])
             nn.init.uniform_(self.lin1.bias, a=bound_b_l[0], b=bound_b_r[0])
         if gen_depth == 2:
-            self.lin1 = nn.Linear(in_features=emb_dim, out_features=gen_hidden_layer)
+            self.lin1 = nn.Linear(in_features=gen_dim, out_features=gen_hidden_layer)
             self.lin2s = nn.ModuleList([])
             for ndx in range(len(out_chans)):
                 lin = nn.Linear(in_features=gen_hidden_layer, out_features=out_chans[ndx])

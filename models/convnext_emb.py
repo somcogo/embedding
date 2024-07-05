@@ -131,7 +131,7 @@ class ConvNeXt(nn.Module):
             for block in self.stages[i]:
                 x = block(x, emb)
             features.append(x)
-        return features
+        return features, emb
 
 class LayerNorm(nn.Module):
     r""" LayerNorm that supports two data formats: channels_last (default) or channels_first. 

@@ -144,7 +144,7 @@ class ConvNeXt(nn.Module):
 
     def forward(self, x, emb):
         x = self.forward_features(x)
-        return x
+        return x, emb
 
 class LayerNorm(nn.Module):
     r""" LayerNorm that supports two data formats: channels_last (default) or channels_first. 

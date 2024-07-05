@@ -28,6 +28,10 @@ def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None,
         num_classes = 13
         in_channels = 3
     config = get_model_config(model_name, model_type, task, cifar, feature_dims, dataset)
+    # if model_name == 'test':
+    #     config['gen_dim'] = 16
+    # else:
+    config['gen_dim'] = embed_dim
     models = []
     for _ in range(site_number):
         model = ModelAssembler(channels=in_channels, num_classes=num_classes, emb_dim=embed_dim, **config)
@@ -144,5 +148,13 @@ def get_model_config(model_name, model_type, task, cifar, feature_dims, dataset)
         config['gen_hidden_layer'] = 64
         config['use_repl_bn'] = True
         config['comb_gen'] = True
+    elif model_type == 'deepemb':
+        config['mode'] = 'fedbn'
+        config['mode'] = 'fedbn'
+        config['gen_depth'] = 1
+        config['gen_affine'] = False
+        config['gen_hidden_layer'] = 64
+        config['use_repl_bn'] = True
+        config['comb_gen_length'] = 4
 
     return config
