@@ -5,7 +5,7 @@ import numpy as np
 
 from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, get_image_net_dataset, get_celeba_dataset, get_minicoco_dataset
 
-def partition(data_dir, dataset, partition, n_sites, alpha=None, seed=None):
+def partition_wrap(data_dir, dataset, partition, n_sites, alpha=None, seed=None):
 
     if partition == 'by-class':
         (net_dataidx_map_train, net_dataidx_map_test) = partition_by_class(data_dir, dataset, n_sites, seed)
@@ -13,7 +13,54 @@ def partition(data_dir, dataset, partition, n_sites, alpha=None, seed=None):
         (net_dataidx_map_train, net_dataidx_map_test) = partition_with_dirichlet_distribution(data_dir, dataset, n_sites, alpha, seed)
     elif partition == 'cont':
         (net_dataidx_map_train, net_dataidx_map_test) = cont_partition(data_dir, dataset, n_sites)
+    elif partition == 'classshard':
+        (net_dataidx_map_train, net_dataidx_map_test) = partition_with_shards(data_dir, dataset, n_sites)
     return (net_dataidx_map_train, net_dataidx_map_test)
+
+def partition_with_shards(data_dir, dataset, n_sites, seed=None, cl_per_site=2):
+    rng = np.random.default_rng(seed)
+    if dataset == 'cifar10':
+        train_ds, test_ds = get_cifar10_datasets(data_dir)
+        K = 10
+    elif dataset == 'cifar100':
+        train_ds, test_ds = get_cifar100_datasets(data_dir)
+        K = 100
+    elif dataset == 'mnist':
+        train_ds, test_ds = get_mnist_datasets(data_dir)
+        K = 10
+    elif dataset == 'imagenet':
+        train_ds, test_ds = get_image_net_dataset(data_dir)
+        K = 200
+    shards = cl_per_site * n_sites // K
+
+    if dataset in ['imagenet']:
+        y_train = train_ds.labels
+        y_test = test_ds.labels
+    else:
+        y_train = train_ds.targets
+        y_test = test_ds.targets
+
+    train_shards = {i: np.split(rng.permutation(np.where(y_train == i)[0]), shards) for i in range(K)}
+    test_shards = {i: np.split(rng.permutation(np.where(y_test == i)[0]), shards) for i in range(K)}
+
+    class_count = np.full((K), shards)
+
+    trn_map = {}
+    val_map = {}
+    for i in range(n_sites):
+        trn_map[i] = []
+        val_map[i] = []
+        for _ in range(cl_per_site):
+            max_class_counts = np.where(np.array(class_count) == max(class_count))[0]
+            choice = rng.choice(max_class_counts)
+            trn_map[i].append(train_shards[choice][max(class_count) - 1])
+            val_map[i].append(test_shards[choice][max(class_count) - 1])
+            class_count[choice] -= 1
+    for i in range(n_sites):
+        trn_map[i] = np.concatenate(trn_map[i], axis=0)
+        val_map[i] = np.concatenate(val_map[i], axis=0)
+
+    return trn_map, val_map
 
 def cont_partition(data_dir, dataset, n_sites):
     if dataset == 'cifar10':

@@ -8,6 +8,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
     iterations = 50
     alpha = 1e7
     emb_dim = emb_dim if emb_dim is not None else 128
+    emb_dim = None if model_type == 'vanilla' else emb_dim
 
     tr_config = {'var_add':(0.005, 1),
                 'alpha':(1.2, 1.5),
@@ -17,6 +18,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
     
     fflr = 1e-4 if model_type != 'vanilla' else None
     emb_lr = 1e-1 if model_type != 'vanilla' else None
+    ft_emb_lr = 1e-3 if model_type != 'vainlla' else None
 
     if strategy == 'fedbntrn':
         ft_strategy = 'fedbn'
@@ -28,7 +30,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
         ft_strategy = 'onlyemb'
 
     config = {'logdir':logdir,
-            'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{degradation}-s{str(site_number)}-fts{str(ft_site_number)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-fflr{fflr}-elr{emb_lr}-embdim-{emb_dim}-{dataset}-fedp-{str(fed_prox)}-proxm-{prox_map}',
+            'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{degradation}-s{str(site_number)}-fts{str(ft_site_number)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-fflr{fflr}-elr{emb_lr}-ftelr{ft_emb_lr}-embdim-{emb_dim}-{dataset}-fedp-{str(fed_prox)}-proxm-{prox_map}',
             'task':task,
             'model_name':'resnet18',
             'model_type':model_type,
@@ -40,6 +42,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
             'lr':1e-4,
             'ffwrd_lr':fflr,
             'embedding_lr':emb_lr,
+            'ft_emb_lr':ft_emb_lr,
             'weight_decay':1e-4,
             'optimizer_type':'newadam',
             'scheduler_mode':'cosine',
@@ -47,7 +50,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
             'save_model':True,
             'strategy':strategy,
             'cifar':True,
-            'data_part_seed':0,
+            'data_part_seed':3,
             'transform_gen_seed':1,
             'dataset':dataset,
             'alpha':alpha,
