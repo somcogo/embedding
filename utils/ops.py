@@ -179,13 +179,13 @@ def getTransformList(degradation, site_number, seed, device, **kwargs):
 def get_test_transforms(site_number, seed, degradation, device, **kwargs):
     rng = np.random.default_rng(seed)
     transforms = []
-    if degradation == 'mixed':
+    if degradation == 'mixed' or degradation == 'mixedv2':
         variances = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], site_number//2)
         for i in range(site_number//2):
             transforms.append(NoiseTransform(rng=rng, t_rng=None, device=device, var_add=variances[i], choice=0))
         for i in range(site_number//2):
             transforms.append(ConvertImageDtype(torch.float))
-    elif degradation == '3mixed':
+    elif degradation == '3mixed' or degradation == '3mixedv2':
         variances = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], site_number//3)
         for i in range(site_number//3):
             transforms.append(NoiseTransform(rng=rng, t_rng=None, device=device, var_add=variances[i], choice=0))
