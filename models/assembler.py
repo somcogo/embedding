@@ -34,7 +34,7 @@ class ModelAssembler(nn.Module):
     def __init__(self, mode='vanilla', emb_dim=None, **model_config):
         super().__init__()
 
-        self.embedding = nn.Parameter(torch.zeros(emb_dim)) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
+        self.embedding = nn.Parameter(torch.zeros(emb_dim, dtype=torch.float32)) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual'], MODE_NAMES['fedbn']] else None
 
         self.backbone = get_backbone(mode=mode, emb_dim=emb_dim, **model_config)
         self.head = get_head(mode=mode, emb_dim=emb_dim, **model_config)

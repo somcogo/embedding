@@ -50,7 +50,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
             'save_model':True,
             'strategy':strategy,
             'cifar':True,
-            'data_part_seed':3,
+            'data_part_seed':0,
             'transform_gen_seed':1,
             'dataset':dataset,
             'alpha':alpha,
