@@ -61,7 +61,8 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
             'ft_strategy':ft_strategy,
             'fed_prox':fed_prox,
             'proximal_map':prox_map,
-            'ft_site_number':ft_site_number}
+            'ft_site_number':ft_site_number,
+            'gl_seed':gl_seed}
     
     return config
 
