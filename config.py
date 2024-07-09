@@ -1,6 +1,6 @@
 import numpy as np
 
-def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type, fed_prox, prox_map, emb_dim, ft_site_number):
+def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type, fed_prox, prox_map, emb_dim, ft_site_number, cross_val_id, gl_seed):
     dataset = 'cifar10'
     task = 'classification'
     partition = 'dirichlet'
@@ -30,7 +30,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
         ft_strategy = 'onlyemb'
 
     config = {'logdir':logdir,
-            'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{degradation}-s{str(site_number)}-fts{str(ft_site_number)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-fflr{fflr}-elr{emb_lr}-ftelr{ft_emb_lr}-embdim-{emb_dim}-{dataset}-fedp-{str(fed_prox)}-proxm-{prox_map}',
+            'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{degradation}-s{str(site_number)}-fts{str(ft_site_number)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-fflr{fflr}-elr{emb_lr}-ftelr{ft_emb_lr}-embdim-{emb_dim}-{dataset}-fedp-{str(fed_prox)}-proxm-{prox_map}-xval{cross_val_id}-gls{gl_seed}',
             'task':task,
             'model_name':'resnet18',
             'model_type':model_type,
@@ -38,6 +38,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
             'site_number':site_number,
             'embed_dim':emb_dim,
             'batch_size':batch_size,
+            'cross_val_id':cross_val_id,
             'comm_rounds':comm_rounds,
             'lr':1e-4,
             'ffwrd_lr':fflr,

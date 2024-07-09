@@ -3,8 +3,8 @@ import os
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from torchvision.datasets import CIFAR10, CIFAR100, MNIST
-from torchvision.transforms import Compose, ToTensor, Normalize
+from torchvision.datasets import CIFAR10, CIFAR100, MNIST, USPS, SVHN
+from torchvision.transforms import Compose, ToTensor, Normalize, Resize, Lambda
 import h5py
 
 class TruncatedDataset(Dataset):
@@ -223,6 +223,36 @@ def get_mnist_datasets(data_dir, use_hdf5=False):
         val_dataset.data = val_dataset.data.unsqueeze(dim=1).permute((0, 2, 3 ,1))
 
     return dataset, val_dataset
+
+def get_usps_dataset(data_dir):
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+    transforms = Compose([Resize(32, 32),
+                          ToTensor(),
+                          Lambda(lambda x: x.repeat(3, 1, 1)),
+                          Normalize(mean, std)])
+
+    dataset = USPS(root=data_dir, train=True, download=True, transform=transforms)
+    dataset.targets = np.array(dataset.targets)
+    val_dataset = USPS(root=data_dir, train=False, transform=transforms)
+    val_dataset.targets = np.array(val_dataset.targets)
+
+    return dataset, val_dataset
+
+def get_svhn_dataset(data_dir):
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+    transforms = Compose([Resize(32, 32),
+                          ToTensor(),
+                          Normalize(mean, std)])
+
+    dataset = SVHN(root=data_dir, train=True, download=True, transform=transforms)
+    dataset.targets = np.array(dataset.labels)
+    val_dataset = SVHN(root=data_dir, train=False, transform=transforms)
+    val_dataset.targets = np.array(val_dataset.labels)
+
+    return dataset, val_dataset
+
 
 def get_image_net_dataset(data_dir):
     dataset = ImageNetDataSet(data_dir=data_dir, mode='trn')

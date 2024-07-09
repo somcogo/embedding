@@ -1,3 +1,7 @@
+import random
+
+import torch
+import numpy as np
 from torch.utils.data import DataLoader, Subset, ConcatDataset
 from sklearn.model_selection import KFold
 
@@ -5,6 +9,11 @@ from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_dat
 from .partition import partition_by_class, partition_with_dirichlet_distribution, cont_partition, partition_wrap
 
 data_path = '/home/hansel/developer/embedding/data/'
+
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 def get_datasets(data_dir, dataset, use_hdf5=False):
     if dataset == 'cifar10':
@@ -23,6 +32,9 @@ def get_datasets(data_dir, dataset, use_hdf5=False):
 
 def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, net_dataidx_map_train=None, net_dataidx_map_test=None, shuffle=True, seed=None, site_indices=None, use_hdf5=True, cross_val_id=None):
     trn_dataset, val_dataset = get_datasets(data_dir=data_path, dataset=dataset, use_hdf5=use_hdf5)
+
+    g = torch.Generator()
+    g.manual_seed(cross_val_id)
 
     if partition == 'regular':
         trn_ds_list = [Subset(trn_dataset, range(len(trn_dataset))) for _ in range(n_site)]
@@ -43,8 +55,8 @@ def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, n
         trn_ds_list = [Subset(ds, idx_map[0]) for ds, idx_map in zip(merged_ds_list, indices)]
         val_ds_list = [Subset(ds, idx_map[1]) for ds, idx_map in zip(merged_ds_list, indices)]
 
-    trn_dl_list = [DataLoader(dataset=trn_ds, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=0) for trn_ds in trn_ds_list]
-    val_dl_list = [DataLoader(dataset=val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=0) for val_ds in val_ds_list]
+    trn_dl_list = [DataLoader(dataset=trn_ds, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=0, worker_init_fn=seed_worker, generator=g) for trn_ds in trn_ds_list]
+    val_dl_list = [DataLoader(dataset=val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=0, worker_init_fn=seed_worker, generator=g) for val_ds in val_ds_list]
     if site_indices is not None:
         trn_dl_list = [trn_dl_list[i] for i in site_indices]
         val_dl_list = [val_dl_list[i] for i in site_indices]
