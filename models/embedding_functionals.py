@@ -298,23 +298,29 @@ class BatchNorm2d_emb(nn.Module):
         return x
     
 class BatchNorm2d_emb_replace(nn.Module):
-    def __init__(self, num_features,eps=1e-05, momentum=0.1, gen_affine=False, device=None, comb_gen=False, **kwargs):
+    def __init__(self, num_features,eps=1e-05, momentum=0.1, gen_affine=False, device=None, comb_gen=False, mode='vanilla', **kwargs):
         super().__init__()
         self.gen_affine = gen_affine
         self.momentum = momentum
         self.eps = eps
         self.comb_gen = comb_gen
-        self.register_buffer('running_mean', torch.zeros(num_features, device=device))
-        self.register_buffer('running_var', torch.ones(num_features, device=device))
+        self.mode = mode
+        self.num_features = num_features
+        self.device = device
+        self.kwargs = kwargs
 
-        gen_w_size = num_features
-        gen_b_size = num_features
+    def init_bn_generator_params(self):
+        self.register_buffer('running_mean', torch.zeros(self.num_features, device=self.device))
+        self.register_buffer('running_var', torch.ones(self.num_features, device=self.device))
 
-        if comb_gen:
-            self.w_b_generator = CombWeightGenerator(out_chans=[gen_w_size, gen_b_size], targets=['one', 'zero'], **kwargs)
+        gen_w_size = self.num_features
+        gen_b_size = self.num_features
+
+        if self.comb_gen:
+            self.w_b_generator = CombWeightGenerator(out_chans=[gen_w_size, gen_b_size], targets=['one', 'zero'], **self.kwargs)
         else:
-            self.weight_const_generator = WeightGenerator(out_channels=gen_w_size, target='one', **kwargs)
-            self.bias_const_generator = WeightGenerator(out_channels=gen_b_size, target='zero', **kwargs)
+            self.weight_const_generator = WeightGenerator(out_channels=gen_w_size, target='one', **self.kwargs)
+            self.bias_const_generator = WeightGenerator(out_channels=gen_b_size, target='zero', **self.kwargs)
 
     def forward(self, x, emb):
         if self.comb_gen:
@@ -422,19 +428,17 @@ class GeneralLinear(nn.Module):
         return out
     
 class GeneralBatchNorm2d(nn.Module):
-    def __init__(self, num_features,  mode='vanilla', eps=1e-05, momentum=0.1, affine=True, track_running_stats=True, device=None, dtype=None, use_repl_bn=False, **kwargs):
+    def __init__(self, num_features, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True, device=None, dtype=None, use_repl_bn=False, **kwargs):
         super().__init__()
-        self.mode = mode
+        self.use_repl_bn = use_repl_bn
 
         if use_repl_bn:
             self.batch_norm = BatchNorm2d_emb_replace(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, device=device, **kwargs)
-        elif mode == MODE_NAMES['embedding'] or mode == MODE_NAMES['fedbn']:
-            self.batch_norm = BatchNorm2d_emb(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, device=device, **kwargs)
         else:
             self.batch_norm = nn.BatchNorm2d(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, device=device)
     
     def forward(self, x, emb):
-        if self.mode == MODE_NAMES['embedding'] or self.mode == MODE_NAMES['fedbn']:
+        if self.use_repl_bn:
             out = self.batch_norm(x, emb)
         else:
             out = self.batch_norm(x)

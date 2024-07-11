@@ -3,7 +3,7 @@
 import torch
 import torch.nn as nn
 
-from models.embedding_functionals import MODE_NAMES
+from models.embedding_functionals import MODE_NAMES, BatchNorm2d_emb_replace
 from models.resnet_with_embedding import CustomResnet
 from models.convnext_emb import ConvNeXt
 from models.convnext import ConvNeXt as ConvNeXtOG
@@ -38,6 +38,14 @@ class ModelAssembler(nn.Module):
 
         self.backbone = get_backbone(mode=mode, emb_dim=emb_dim, **model_config)
         self.head = get_head(mode=mode, emb_dim=emb_dim, **model_config)
+        if type(self.backbone) == CustomResnet:
+            self.backbone.init_comb_gen_layers()
+        for m in self.backbone.modules():
+            if type(m) == BatchNorm2d_emb_replace:
+                m.init_bn_generator_params()
+        for m in self.head.modules():
+            if type(m) == BatchNorm2d_emb_replace:
+                m.init_bn_generator_params()
 
     def forward(self, x):
         features, emb = self.backbone(x, self.embedding)
