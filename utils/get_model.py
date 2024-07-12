@@ -5,7 +5,7 @@ import torch.nn as nn
 from models.embedding_functionals import GeneralBatchNorm2d
 from models.assembler import ModelAssembler
 
-def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None, task=None, cifar=True, feature_dims=None):
+def get_model(dataset, model_name, site_number, embed_dim, model_type, task, cifar=True, feature_dims=None):
     if dataset == 'cifar10':
         num_classes = 10
         in_channels = 3
@@ -38,7 +38,7 @@ def get_model(dataset, model_name, site_number, embed_dim=None, model_type=None,
         models.append(model)
     
     if config['mode'] != 'vanilla':
-        if embed_dim > 2:
+        if embed_dim != 2:
             mu_init = np.eye(site_number, embed_dim)
         else:
             mu_init = np.exp((2 * np.pi * 1j/ site_number)*np.arange(0,site_number))

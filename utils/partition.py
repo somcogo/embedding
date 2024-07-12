@@ -14,7 +14,7 @@ def partition_wrap(data_dir, dataset, partition, n_sites, alpha=None, seed=None)
     elif partition == 'cont':
         (net_dataidx_map_train, net_dataidx_map_test) = cont_partition(data_dir, dataset, n_sites)
     elif partition == 'classshard':
-        (net_dataidx_map_train, net_dataidx_map_test) = partition_with_shards(data_dir, dataset, n_sites)
+        (net_dataidx_map_train, net_dataidx_map_test) = partition_with_shards(data_dir, dataset, n_sites, seed)
     return (net_dataidx_map_train, net_dataidx_map_test)
 
 def partition_with_shards(data_dir, dataset, n_sites, seed=None, cl_per_site=2):
