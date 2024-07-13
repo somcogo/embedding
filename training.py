@@ -554,7 +554,7 @@ class EmbeddingTraining:
                                       f'{comm_round}.pt')
         os.makedirs(os.path.dirname(os.path.dirname(embedding_file_path)), mode=0o755, exist_ok=True)
         os.makedirs(os.path.dirname(embedding_file_path), mode=0o755, exist_ok=True)
-        if hasattr(self.models[0], 'embedding'):
+        if hasattr(self.models[0], 'embedding') and self.models[0].embedding is not None:
             embeddings = torch.zeros((len(self.models), self.models[0].embedding.shape[0]))
             for i, model in enumerate(self.models):
                 embeddings[i] = model.embedding
