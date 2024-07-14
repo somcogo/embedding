@@ -221,6 +221,7 @@ class EmbeddingTraining:
 
             trn_metrics = self.doTraining(trn_dls)
             self.logMetrics(comm_round, 'trn', trn_metrics)
+            self.saveEmbs(comm_round)
 
             if comm_round == 1 or comm_round % validation_cadence == 0:
                 val_metrics, imgs = self.doValidation(val_dls)
@@ -545,6 +546,20 @@ class EmbeddingTraining:
         log.debug("Saved model params to {}".format(model_file_path))
         torch.save(data_state, data_file_path)
         log.debug("Saved training metrics to {}".format(data_file_path))
+    
+    def saveEmbs(self, comm_round):
+        embedding_file_path = os.path.join('/home/hansel/developer/embedding/embeddings',
+                                      self.logdir_name,
+                                      f'{self.time_str}-{self.comment}',
+                                      f'{comm_round}.pt')
+        os.makedirs(os.path.dirname(os.path.dirname(embedding_file_path)), mode=0o755, exist_ok=True)
+        os.makedirs(os.path.dirname(embedding_file_path), mode=0o755, exist_ok=True)
+        if hasattr(self.models[0], 'embedding') and self.models[0].embedding is not None:
+            embeddings = torch.zeros((len(self.models), self.models[0].embedding.shape[0]))
+            for i, model in enumerate(self.models):
+                embeddings[i] = model.embedding
+            torch.save(embeddings, embedding_file_path)
+            log.debug("Saved embeddings to {}".format(embedding_file_path))
 
     def mergeModels(self, is_init=False, model_path=None, state_dict=None):
         if is_init:
