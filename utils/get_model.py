@@ -5,7 +5,7 @@ import torch.nn as nn
 from models.embedding_functionals import GeneralBatchNorm2d
 from models.assembler import ModelAssembler
 
-def get_model(dataset, model_name, site_number, embed_dim, model_type, task, cifar=True, feature_dims=None):
+def get_model(dataset, model_name, site_number, embed_dim, model_type, task, cifar=True, feature_dims=None, **kwargs):
     if dataset == 'cifar10':
         num_classes = 10
         in_channels = 3

@@ -144,3 +144,4 @@ execute_script.py
 results
 .vscode
 embeddings
+loss_vis
