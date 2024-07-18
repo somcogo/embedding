@@ -23,55 +23,107 @@ def load_embs(model_path):
         saved_embs[i] = saved_dict[i]['site_model_state']['embedding']
     return saved_embs
 
-def pca_grid(model_path):
-    saved_embs = load_embs(model_path)
-    pca = PCA(n_components=saved_embs.shape[1])
-    pca.fit(saved_embs)
-    tr_xy = pca.transform(saved_embs)[:2]
-    diam_x, diam_y = np.linalg.norm(tr_xy, axis=1)
-    center = tr_xy.mean(axis=1)
-    embs = []
-    for x in np.linspace(-18 * diam_x + center[0], 2 * diam_x + center[0], 100):
-        for y in np.linspace(-18 * diam_y + center[1], 2 * diam_y + center[1], 100):
-            embs.append(torch.from_numpy(pca.inverse_transform(np.array([x, y, 0, 0]))))    
-    return embs
+def pca_grid(model_path=None, vectors=None):
+    if vectors is not None:
+        saved_embs_n = vectors
+    else:
+        saved_embs_n = load_embs(model_path)
+    pca = PCA(n_components=saved_embs_n.shape[1])
+    pca.fit(saved_embs_n)
+    saved_embs_pca = pca.transform(saved_embs_n)
+    largest = np.linalg.norm(saved_embs_pca, axis=1).max()
+    res = 10
+    size = 1.5
+    embs_n = np.zeros((res*res, 4))
+    for i, x in enumerate(np.linspace(-size * largest, size * largest, res)):
+        for j, y in enumerate(np.linspace(-size * largest, size * largest, res)):
+            vector_pca = np.array([x, y, 0, 0])
+            vector_n = pca.inverse_transform(np.expand_dims(vector_pca, axis=0)).squeeze()
+            embs_n[res*i+j] = vector_n
+    return embs_n, pca
 
-def get_points(model_path, points, **config):
+# def grid_spanned_by_vectors(vectors):
+#     res = 50
+#     size = 3
+#     embs_n = np.zeros((res*res, 4))
+#     for l1 in np.linspace(-size, size, res):
+#         for l2 in np.linspace(-size, size, res):
+
+def get_points(model_path, points, vectors, **config):
     if type(points) == list:
         embs = points
+        pca = None
     elif points == 'zero':
         embs = [torch.zeros(config['embed_dim'])]
+        pca = None
     elif points == 'grid':
-        embs = pca_grid(model_path)
+        embs, pca = pca_grid(model_path, vectors)
     elif points == 'avg':
         saved_embs = load_embs(model_path)
         embs = [saved_embs.mean(dim=0)]
+        pca = None
     elif points == 'xygrid':
         embs = xygrid()
-    return embs
+        pca = None
+    return embs, pca
 
 def eval_points(embeddings, model_path, device, **config):
     state_dict = torch.load(model_path, map_location='cpu')['model_state']
 
     val_model = get_model(**config)[0][0]
     val_model.load_state_dict(state_dict)
+    val_model.to(device)
 
-    losses = []
+    ft_sites = get_ft_sites(**config)
+
+    losses = np.zeros((len(embeddings), len(ft_sites)))
+    accuracies = np.zeros((len(embeddings), len(ft_sites), 2))
     t1 = time.time()
     for i, emb in enumerate(embeddings):
+        emb = torch.tensor(emb, device=device)
         val_model.embedding = nn.Parameter(emb)
-        losses.append(eval_model(val_model=val_model, device=device, **config))
+        val_model.eval()
+        l, a = validation(ft_sites, device, val_model, **config)
+        losses[i] = l
+        accuracies[i] = a
         if i % 100 == 0:
             t2 = time.time()
             print(f'{t2-t1:.2f}')
             t1 = time.time()
+    classes = []
+    for site in ft_sites:
+        classes.append(np.unique(site['val_dl'].dataset.dataset.targets[site['val_dl'].dataset.indices]))
 
-    return losses, embeddings
+    return losses, accuracies, embeddings, classes
 
+def validation(ft_sites, device, val_model, **config):
+    losses = np.zeros(len(ft_sites))
+    acc = np.zeros((len(ft_sites), 2))
+    for i, site in enumerate(ft_sites):
+        loader = site['val_dl']
+        classes = np.unique(loader.dataset.dataset.targets[loader.dataset.indices])
+        total = np.zeros(2)
+        correct = np.zeros(2)
+        for batch_tup in loader:
+            batch, labels = batch_tup
+            batch = batch.to(device=device, non_blocking=True).float().permute(0, 3, 1, 2)
+            labels = labels.to(device=device, non_blocking=True).to(dtype=torch.long)
 
-def eval_model(val_model, device, degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_site_number, cross_val_id, gl_seed, **config):
-    val_model.eval()
-    val_model.to(device)
+            batch, labels = transform_image(batch, labels, 'val', site['transform'], config['dataset'], config['model_name'])
+            pred = val_model(batch)
+            pred_label = torch.argmax(pred, dim=1)
+            loss_fn = nn.CrossEntropyLoss()
+
+            xe_loss = loss_fn(pred, labels)
+            losses[i] += xe_loss
+            for j, cl in enumerate(classes):
+                cl_mask = labels == cl
+                total[j] += cl_mask.sum()
+                correct[j] += (pred_label == labels)[cl_mask].sum()
+        acc[i] = correct / total
+    return losses, acc
+
+def get_ft_sites(degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_site_number, cross_val_id, gl_seed, **config):
 
     trn_dl_list, val_dl_list = new_get_dl_lists(dataset=config['dataset'], batch_size=config['batch_size'], degradation=degradation, n_site=site_number, seed=data_part_seed, cross_val_id=cross_val_id, gl_seed=gl_seed)
     transform_list = get_test_transforms(site_number=site_number, seed=transform_gen_seed, degradation=degradation, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
@@ -86,24 +138,4 @@ def eval_model(val_model, device, degradation, site_number, data_part_seed, tran
     trn_site_dict = [site_dict[i] for i in range(len(site_dict)) if i not in ft_indices]
     ft_site_dict = [site_dict[i] for i in range(len(site_dict)) if i in ft_indices]
 
-    losses = np.zeros((len(ft_site_dict)), dtype=float)
-    for i, site in enumerate(ft_site_dict):
-        loader = site['val_dl']
-        for batch_tup in loader:
-            batch, labels = batch_tup
-            batch = batch.to(device=device, non_blocking=True).float()
-            labels = labels.to(device=device, non_blocking=True).to(dtype=torch.long)
-            if config['dataset'] in ['cifar10', 'cifar100']:
-                batch = batch.permute(0, 3, 1, 2)
-            if config['dataset'] in ['celeba']:
-                batch = batch.permute(0, 3, 1, 2)
-                labels = create_mask_from_onehot(labels, site['classes'])
-
-            batch, labels = transform_image(batch, labels, 'val', site['transform'], config['dataset'], config['model_name'])
-            pred = val_model(batch)
-            loss_fn = nn.CrossEntropyLoss()
-
-            xe_loss = loss_fn(pred, labels)
-            losses[i] += xe_loss
-    
-    return losses
+    return ft_site_dict

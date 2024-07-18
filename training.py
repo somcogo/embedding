@@ -19,6 +19,7 @@ from utils.data_loader import get_dl_lists
 from utils.ops import transform_image, getTransformList, create_mask_from_onehot
 from utils.merge_strategies import get_layer_list
 from utils.get_model import get_model
+from models.embedding_functionals import GeneralBatchNorm2d
 
 torchvision.disable_beta_transforms_warning()
 log = logging.getLogger(__name__)
@@ -38,7 +39,8 @@ class EmbeddingTraining:
                  model_type=None, weight_decay=1e-5, cifar=True,
                  get_transforms=False, state_dict=None, iterations=None,
                  feature_dims=None, label_smoothing=0., trn_logging=True,
-                 fed_prox=0., proximal_map=False):
+                 fed_prox=0., proximal_map=False, norm_layer='bn',
+                 no_batch_running_stats=False, ft_emb_vec=None):
         
         log.info(comment)
         self.logdir_name = logdir
@@ -58,6 +60,7 @@ class EmbeddingTraining:
         self.label_smoothing = label_smoothing
         self.fed_prox = fed_prox
         self.proximal_map = proximal_map
+        self.no_batch_running_stats = no_batch_running_stats
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
@@ -79,14 +82,14 @@ class EmbeddingTraining:
             self.trn_dls, self.val_dls = self.initDls(batch_size=batch_size, partition=partition, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
             self.site_indices = range(site_number) if site_indices is None else site_indices
         self.iterations = iterations
-        self.models = self.initModels(embed_dim=embed_dim, model_type=model_type, cifar=cifar, feature_dims=feature_dims)
+        self.models = self.initModels(embed_dim=embed_dim, model_type=model_type, cifar=cifar, feature_dims=feature_dims, norm_layer=norm_layer, ft_emb_vec=ft_emb_vec)
         self.optims, self.emb_optims = self.initOptimizers(lr, finetuning, weight_decay=weight_decay, embedding_lr=embedding_lr, ffwrd_lr=ffwrd_lr)
         self.schedulers, self.emb_schedulers = self.initSchedulers(lr, embedding_lr)
         self.trn_logging = trn_logging
         assert len(self.trn_dls) == self.site_number and len(self.val_dls) == self.site_number and len(self.models) == self.site_number and len(self.optims) == self.site_number
 
-    def initModels(self, embed_dim, model_type, cifar, feature_dims):
-        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, model_type=model_type, task=self.task, cifar=cifar, feature_dims=feature_dims)
+    def initModels(self, embed_dim, model_type, cifar, feature_dims, norm_layer, ft_emb_vec):
+        models, self.num_classes = get_model(self.dataset, self.model_name, self.site_number, embed_dim, model_type=model_type, task=self.task, cifar=cifar, feature_dims=feature_dims, norm_layer=norm_layer, ft_emb_vec=ft_emb_vec)
 
         if self.device == 'cuda':
             log.info("Using CUDA; {} devices.".format(torch.cuda.device_count()))
@@ -102,14 +105,12 @@ class EmbeddingTraining:
         for model in self.models:
             if finetuning:
                 assert self.strategy in ['finetuning', 'onlyfc', 'onlyemb', 'fffinetuning', 'fedbn', 'embbnft']
-                all_names = get_layer_list(task=self.task, strategy=self.strategy, original_list=model.state_dict().keys())
+                all_names = get_layer_list(task=self.task, strategy=self.strategy, model=model)
                 for name, param in model.named_parameters():
                     if name not in all_names:
-                    #     params_to_update.append(param)
-                    # else:
                         param.requires_grad = False
             else:
-                all_names = [name for name, _ in model.named_parameters()]
+                all_names = list(model.state_dict().keys())
             params_to_update = []
             embedding_names = [name for name in all_names if 'embedding' in name]
             ffwrd_names = [name for name in all_names if 'generator' in name]
@@ -253,6 +254,10 @@ class EmbeddingTraining:
     def doTraining(self, trn_dls):
         for model in self.models:
             model.train()
+            if self.finetuning and self.no_batch_running_stats:
+                for module in model.modules():
+                    if isinstance(module, GeneralBatchNorm2d):
+                        module.eval()
 
         metrics = []
         for ndx, trn_dl in enumerate(trn_dls):
@@ -356,9 +361,8 @@ class EmbeddingTraining:
 
         prox_term = torch.tensor(0., device=self.device)
         if self.fed_prox > 0 and not self.finetuning and not self.proximal_map:
-            name_list = list(self.global_model.state_dict().keys())
-            layers = get_layer_list(self.task, self.strategy, name_list)
-            for layer, glob_p, loc_p in zip(name_list, self.global_model.parameters(), model.parameters()):
+            layers = get_layer_list(self.task, self.strategy, model=self.global_model)
+            for (layer, glob_p), loc_p in zip(self.global_model.named_parameters(), model.parameters()):
                 if layer in layers:
                     prox_term += torch.pow(torch.norm(glob_p - loc_p), 2)
 
@@ -522,7 +526,7 @@ class EmbeddingTraining:
                       'epoch': epoch_ndx,}
         model_state = {'epoch': epoch_ndx}
         model_state['model_state'] = self.models[0].state_dict()
-        layer_list = get_layer_list(task=self.task, strategy=self.strategy, original_list=[name for name, _ in self.models[0].named_parameters()])
+        layer_list = get_layer_list(task=self.task, strategy=self.strategy, model=self.models[0])
         for ndx, model in enumerate(self.models):
             if isinstance(model, torch.nn.DataParallel):
                 model = model.module
@@ -575,15 +579,13 @@ class EmbeddingTraining:
             for model in self.models:
                 model.load_state_dict(state_dict, strict=False)
             self.global_model = copy.deepcopy(self.models[0])
-            original_list = [name for name, _ in self.models[0].named_parameters()]
-            layer_list = get_layer_list(task=self.task, strategy=self.strategy, original_list=original_list)
+            layer_list = get_layer_list(task=self.task, strategy=self.strategy, model=self.models[0])
             for model in self.models:
                 for n, p in model.named_parameters():
                     if n in layer_list and self.proximal_map:
                         p.global_weight = state_dict[n]
         else:
-            original_list = [name for name, _ in self.models[0].named_parameters()]
-            layer_list = get_layer_list(task=self.task, strategy=self.strategy, original_list=original_list)
+            layer_list = get_layer_list(task=self.task, strategy=self.strategy, model=self.models[0])
             state_dicts = [model.state_dict() for model in self.models]
             updated_params = {layer: torch.zeros_like(state_dicts[0][layer]) for layer in layer_list}
 

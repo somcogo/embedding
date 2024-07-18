@@ -114,7 +114,7 @@ def new_main(logdir, comment, degradation, site_number, data_part_seed, transfor
     ft_trainer = EmbeddingTraining(logdir=logdir, comment=comment, site_number=site_number, sites=site_dict, **config)
     ft_trainer.train()
 
-def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_strategy, state_dict, ft_site_number, only_ft, ft_emb_lr, cross_val_id, gl_seed, **config):
+def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_strategy, state_dict, ft_site_number, only_ft, ft_emb_lr, cross_val_id, gl_seed, ft_emb_vec, **config):
     save_path = os.path.join('/home/hansel/developer/embedding/results', logdir)
     os.makedirs(save_path, exist_ok=True)
     log.info(comment)
@@ -143,5 +143,5 @@ def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, 
         config['T_max'] = 200
         config['strategy'] = ft_strategy
         config['embedding_lr'] = ft_emb_lr
-        ft_trainer = EmbeddingTraining(logdir=ft_logdir, comment=ft_comment, state_dict=state_dict, sites=ft_site_dict, finetuning=True, **config)
+        ft_trainer = EmbeddingTraining(logdir=ft_logdir, comment=ft_comment, state_dict=state_dict, sites=ft_site_dict, finetuning=True, ft_emb_vec=ft_emb_vec, **config)
         ft_trainer.train()

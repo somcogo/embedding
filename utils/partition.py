@@ -60,7 +60,7 @@ def partition_with_shards(data_dir, dataset, n_sites, seed=None, cl_per_site=2):
         trn_map[i] = np.concatenate(trn_map[i], axis=0)
         val_map[i] = np.concatenate(val_map[i], axis=0)
 
-    print((y_train[trn_map[0][0]], y_train[trn_map[0][-1]]), (y_train[trn_map[1][0]], y_train[trn_map[1][-1]]), (y_train[trn_map[2][0]], y_train[trn_map[2][-1]]), (y_train[trn_map[3][0]], y_train[trn_map[3][-1]]), (y_train[trn_map[4][0]], y_train[trn_map[4][-1]]))
+    # print((y_train[trn_map[0][0]], y_train[trn_map[0][-1]]), (y_train[trn_map[1][0]], y_train[trn_map[1][-1]]), (y_train[trn_map[2][0]], y_train[trn_map[2][-1]]), (y_train[trn_map[3][0]], y_train[trn_map[3][-1]]), (y_train[trn_map[4][0]], y_train[trn_map[4][-1]]))
     return trn_map, val_map
 
 def cont_partition(data_dir, dataset, n_sites):

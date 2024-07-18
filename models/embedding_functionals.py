@@ -298,18 +298,17 @@ class BatchNorm2d_emb(nn.Module):
         return x
     
 class BatchNorm2d_emb_replace(nn.Module):
-    def __init__(self, num_features,eps=1e-05, momentum=0.1, gen_affine=False, device=None, comb_gen=False, mode='vanilla', **kwargs):
+    def __init__(self, num_features,eps=1e-05, momentum=0.1, gen_affine=False, device=None, comb_gen=False, **kwargs):
         super().__init__()
         self.gen_affine = gen_affine
         self.momentum = momentum
         self.eps = eps
         self.comb_gen = comb_gen
-        self.mode = mode
         self.num_features = num_features
         self.device = device
         self.kwargs = kwargs
 
-    def init_bn_generator_params(self):
+    def init_norm_generator_params(self):
         self.register_buffer('running_mean', torch.zeros(self.num_features, device=self.device))
         self.register_buffer('running_var', torch.ones(self.num_features, device=self.device))
 
@@ -332,6 +331,45 @@ class BatchNorm2d_emb_replace(nn.Module):
             bias = self.bias_const_generator(emb).to(x.dtype)
 
         x = F.batch_norm(x, running_mean=self.running_mean, running_var=self.running_var, weight=weight, bias=bias, training=self.training, momentum=self.momentum, eps=self.eps)
+        return x
+    
+class InstanceNorm2d_emb_replace(nn.Module):
+    def __init__(self, num_features,eps=1e-05, momentum=0.1, gen_affine=False, bias=True, device=None, comb_gen=False, **kwargs):
+        super().__init__()
+        self.gen_affine = gen_affine
+        self.momentum = momentum
+        self.eps = eps
+        self.comb_gen = comb_gen
+        self.num_features = num_features
+        self.device = device
+        self.kwargs = kwargs
+        self.bias = bias
+
+    def init_norm_generator_params(self):
+        gen_w_size = self.num_features
+        gen_b_size = self.num_features if self.bias else None
+
+        if self.comb_gen:
+            out_chans = [gen_w_size, gen_b_size] if self.bias else [gen_w_size]
+            self.w_b_generator = CombWeightGenerator(out_chans=out_chans, targets=['one', 'zero'], **self.kwargs)
+        else:
+            self.weight_const_generator = WeightGenerator(out_channels=gen_w_size, target='one', **self.kwargs)
+            self.bias_const_generator = WeightGenerator(out_channels=gen_b_size, target='zero', **self.kwargs) if self.bias else None
+
+    def forward(self, x, emb):
+        if self.comb_gen:
+            if self.bias:
+                weight, bias = self.w_b_generator(emb)
+                weight = weight.to(x.dtype)
+                bias = bias.to(x.dtype)
+            else:
+                weight = self.w_b_generator(emb)
+                weight = weight.to(x.dtype)
+        else:
+            weight = self.weight_const_generator(emb).to(x.dtype)
+            bias = self.bias_const_generator(emb).to(x.dtype) if self.bias else None
+        
+        x = F.instance_norm(x, weight=weight, bias=bias, momentum=self.momentum, eps=self.eps)
         return x
     
 class InstanceNorm2d_emb(nn.Module):
@@ -454,16 +492,16 @@ class BatchNorm2d_noemb(nn.Module):
         return out
     
 class GeneralInstanceNorm2d(nn.Module):
-    def __init__(self, num_features,  mode='vanilla', eps=1e-05, momentum=0.1, device=None, dtype=None, **kwargs):
+    def __init__(self, num_features, eps=1e-05, momentum=0.1, device=None, dtype=None, use_repl_bn=False, **kwargs):
         super().__init__()
-        self.mode = mode
-        if mode == MODE_NAMES['embedding']:
-            self.instance_norm = InstanceNorm2d_emb(num_features=num_features, eps=eps, momentum=momentum, device=device, **kwargs)
+        self.use_repl_bn = use_repl_bn
+        if use_repl_bn:
+            self.instance_norm = InstanceNorm2d_emb_replace(num_features=num_features, eps=eps, momentum=momentum, device=device, **kwargs)
         else:
             self.instance_norm = nn.InstanceNorm2d(num_features=num_features, eps=eps, momentum=momentum, device=device)
     
     def forward(self, x, emb):
-        if self.mode == MODE_NAMES['embedding']:
+        if self.use_repl_bn:
             out = self.instance_norm(x, emb)
         else:
             out = self.instance_norm(x)

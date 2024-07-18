@@ -2,10 +2,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from models.embedding_functionals import GeneralBatchNorm2d
+from models.embedding_functionals import GeneralBatchNorm2d, GeneralInstanceNorm2d
 from models.assembler import ModelAssembler
 
-def get_model(dataset, model_name, site_number, embed_dim, model_type, task, cifar=True, feature_dims=None, **kwargs):
+def get_model(dataset, model_name, site_number, embed_dim, model_type, task, norm_layer, ft_emb_vec, cifar=True, feature_dims=None, **kwargs):
     if dataset == 'cifar10':
         num_classes = 10
         in_channels = 3
@@ -27,7 +27,7 @@ def get_model(dataset, model_name, site_number, embed_dim, model_type, task, cif
     elif dataset == 'minicoco':
         num_classes = 13
         in_channels = 3
-    config = get_model_config(model_name, model_type, task, cifar, feature_dims, dataset)
+    config = get_model_config(model_name, model_type, task, cifar, feature_dims, dataset, norm_layer)
     if model_type == 'deepemb':
         config['gen_dim'] = 16
     else:
@@ -44,11 +44,14 @@ def get_model(dataset, model_name, site_number, embed_dim, model_type, task, cif
             mu_init = np.exp((2 * np.pi * 1j/ site_number)*np.arange(0,site_number))
             mu_init = np.stack([np.real(mu_init), np.imag(mu_init)], axis=1)
         for i, model in enumerate(models):
-            init_weight = torch.from_numpy(mu_init[i]).to(torch.float)
+            if ft_emb_vec is None:
+                init_weight = torch.from_numpy(mu_init[i]).to(torch.float)
+            else:
+                init_weight = ft_emb_vec
             model.embedding = torch.nn.Parameter(init_weight)
     return models, num_classes
 
-def get_model_config(model_name, model_type, task, cifar, feature_dims, dataset):
+def get_model_config(model_name, model_type, task, cifar, feature_dims, dataset, norm_layer):
     if dataset == 'imagenet':
         patch_size = 2
     elif dataset == 'cifar10':
@@ -59,34 +62,38 @@ def get_model_config(model_name, model_type, task, cifar, feature_dims, dataset)
         config = {
             'backbone_name':'resnet',
             'layers':[2, 2, 2, 2],
-            'norm_layer':GeneralBatchNorm2d,
             'cifar':cifar,
         }
-    elif model_name == 'convnext':
-        config = {
-            'backbone_name':'convnext',
-            'depths':[3, 3, 9, 3],
-            'dims':feature_dims,
-            'drop_path_rate':0.1,
-            'norm_layer':nn.BatchNorm2d,
-            'patch_size':patch_size
-        }
-    elif model_name == 'convnextog':
-        config = {
-            'backbone_name':'convnextog',
-            'depths':[3, 3, 9, 3],
-            'dims':feature_dims,
-            'drop_path_rate':0.1,
-            'norm_layer':nn.BatchNorm2d,
-            'out_indices':[0, 1, 2, 3],
-            'patch_size':patch_size
-        }
-    elif model_name == 'swinv2':
-        config = {
-            'backbone_name':'swinv2',
-            'drop_path_rate':0.2,
-            'embed_dim':feature_dims[0]
-        }
+    # elif model_name == 'convnext':
+    #     config = {
+    #         'backbone_name':'convnext',
+    #         'depths':[3, 3, 9, 3],
+    #         'dims':feature_dims,
+    #         'drop_path_rate':0.1,
+    #         'norm_layer':nn.BatchNorm2d,
+    #         'patch_size':patch_size
+    #     }
+    # elif model_name == 'convnextog':
+    #     config = {
+    #         'backbone_name':'convnextog',
+    #         'depths':[3, 3, 9, 3],
+    #         'dims':feature_dims,
+    #         'drop_path_rate':0.1,
+    #         'norm_layer':nn.BatchNorm2d,
+    #         'out_indices':[0, 1, 2, 3],
+    #         'patch_size':patch_size
+    #     }
+    # elif model_name == 'swinv2':
+    #     config = {
+    #         'backbone_name':'swinv2',
+    #         'drop_path_rate':0.2,
+    #         'embed_dim':feature_dims[0]
+    #     }
+
+    if norm_layer == 'bn':
+        config['norm_layer'] = GeneralBatchNorm2d
+    elif norm_layer == 'in':
+        config['norm_layer'] = GeneralInstanceNorm2d
 
     if task == 'classification':
         config['head_name'] = 'classifier'

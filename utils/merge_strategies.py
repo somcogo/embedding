@@ -1,4 +1,5 @@
-def get_layer_list(task, strategy, original_list):
+def get_layer_list(task, strategy, model):
+    original_list = list(model.state_dict().keys())
     if task == 'classification':
         if strategy == 'all':
             layer_list = original_list

@@ -1,6 +1,6 @@
 import numpy as np
 
-def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type, fed_prox, prox_map, emb_dim, ft_site_number, cross_val_id, gl_seed):
+def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type, fed_prox, prox_map, emb_dim, ft_site_number, cross_val_id, gl_seed, norm_layer, no_batch_running_stats):
     dataset = 'cifar10'
     task = 'classification'
     partition = 'dirichlet'
@@ -18,7 +18,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
     
     fflr = 1e-4 if model_type != 'vanilla' else None
     emb_lr = 1e-1 if model_type != 'vanilla' else None
-    ft_emb_lr = 1e-3 if model_type != 'vanilla' else None
+    ft_emb_lr = 1e-1 if model_type != 'vanilla' else None
 
     if strategy == 'fedbntrn':
         ft_strategy = 'fedbn'
@@ -30,7 +30,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
         ft_strategy = 'onlyemb'
 
     config = {'logdir':logdir,
-            'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{degradation}-s{str(site_number)}-fts{str(ft_site_number)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-fflr{fflr}-elr{emb_lr}-ftelr{ft_emb_lr}-embdim-{emb_dim}-{dataset}-fedp-{str(fed_prox)}-proxm-{prox_map}-xval{cross_val_id}-gls{gl_seed}',
+            'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{degradation}-s{str(site_number)}-fts{str(ft_site_number)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-fflr{fflr}-elr{emb_lr}-ftelr{ft_emb_lr}-embdim-{emb_dim}-{dataset}-fedp-{str(fed_prox)}-proxm-{prox_map}-xval{cross_val_id}-gls{gl_seed}-nl-{norm_layer}-rst-{no_batch_running_stats}',
             'task':task,
             'model_name':'resnet18',
             'model_type':model_type,
@@ -62,7 +62,9 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
             'fed_prox':fed_prox,
             'proximal_map':prox_map,
             'ft_site_number':ft_site_number,
-            'gl_seed':gl_seed}
+            'gl_seed':gl_seed,
+            'norm_layer':norm_layer,
+            'no_batch_running_stats':no_batch_running_stats}
     
     return config
 
