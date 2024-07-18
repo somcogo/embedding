@@ -1,6 +1,6 @@
 import numpy as np
 
-def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type, fed_prox, prox_map, emb_dim, ft_site_number, cross_val_id, gl_seed, norm_layer, no_batch_running_stats):
+def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type, fed_prox, prox_map, emb_dim, ft_site_number, cross_val_id, gl_seed, norm_layer, no_batch_running_stats, ft_emb_vec=None):
     dataset = 'cifar10'
     task = 'classification'
     partition = 'dirichlet'
@@ -64,7 +64,8 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
             'ft_site_number':ft_site_number,
             'gl_seed':gl_seed,
             'norm_layer':norm_layer,
-            'no_batch_running_stats':no_batch_running_stats}
+            'no_batch_running_stats':no_batch_running_stats,
+            'ft_emb_vec':ft_emb_vec}
     
     return config
 
