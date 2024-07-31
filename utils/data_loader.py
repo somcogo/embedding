@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader, Subset, ConcatDataset
 from sklearn.model_selection import KFold
 
 from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, get_image_net_dataset, get_celeba_dataset, get_minicoco_dataset
-from .partition import partition_by_class, partition_with_dirichlet_distribution, cont_partition, partition_wrap
+from .partition import partition_wrap
 
 data_path = '/home/hansel/developer/embedding/data/'
 
@@ -30,7 +30,7 @@ def get_datasets(data_dir, dataset, use_hdf5=False):
         trn_dataset, val_dataset = get_minicoco_dataset(data_dir=data_dir)
     return trn_dataset, val_dataset
 
-def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, net_dataidx_map_train=None, net_dataidx_map_test=None, shuffle=True, seed=None, site_indices=None, use_hdf5=True, cross_val_id=None, gl_seed=None):
+def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, net_dataidx_map_train=None, net_dataidx_map_test=None, shuffle=True, seed=None, site_indices=None, use_hdf5=True, cross_val_id=None, gl_seed=None, cl_per_site=None):
     trn_dataset, val_dataset = get_datasets(data_dir=data_path, dataset=dataset, use_hdf5=use_hdf5)
 
     g = torch.Generator()
@@ -44,7 +44,7 @@ def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, n
         trn_ds_list = [Subset(trn_dataset, idx_map) for idx_map in net_dataidx_map_train.values()]
         val_ds_list = [Subset(val_dataset, idx_map) for idx_map in net_dataidx_map_test.values()]
     else:
-        (net_dataidx_map_train, net_dataidx_map_test) = partition_wrap(data_dir=data_path, dataset=dataset, partition=partition, n_sites=n_site, alpha=alpha, seed=seed)
+        (net_dataidx_map_train, net_dataidx_map_test) = partition_wrap(data_dir=data_path, dataset=dataset, partition=partition, n_sites=n_site, alpha=alpha, seed=seed, cl_per_site=cl_per_site)
         trn_ds_list = [Subset(trn_dataset, idx_map) for idx_map in net_dataidx_map_train.values()]
         val_ds_list = [Subset(val_dataset, idx_map) for idx_map in net_dataidx_map_test.values()]
 
@@ -72,7 +72,7 @@ def deg_list_dl_list(dataset, batch_size, degradations, n_site=None, seed=None):
         val_dls.append(v)
     return sum(trn_dls, []), sum(val_dls, [])
 
-def new_get_dl_lists(dataset, batch_size, degradation, n_site=None, seed=None, cross_val_id=None, gl_seed=None):
+def new_get_dl_lists(dataset, batch_size, degradation, n_site=None, seed=None, cross_val_id=None, gl_seed=None, cl_per_site=None):
     if degradation == 'mixed':
         trn_l1, val_l1 = get_dl_lists(dataset=dataset, batch_size=batch_size, partition='dirichlet', n_site=n_site // 2, alpha=1e7, seed=seed, cross_val_id=cross_val_id, gl_seed=gl_seed)
         trn_l2, val_l2 = get_dl_lists(dataset=dataset, batch_size=batch_size, partition='cont', n_site=n_site // 2, seed=seed, cross_val_id=cross_val_id, gl_seed=gl_seed)
@@ -80,7 +80,7 @@ def new_get_dl_lists(dataset, batch_size, degradation, n_site=None, seed=None, c
         val_dl_list = val_l1 + val_l2
     elif degradation == 'mixedv2':
         trn_l1, val_l1 = get_dl_lists(dataset=dataset, batch_size=batch_size, partition='dirichlet', n_site=n_site // 2, alpha=1e7, seed=seed, cross_val_id=cross_val_id, gl_seed=gl_seed)
-        trn_l2, val_l2 = get_dl_lists(dataset=dataset, batch_size=batch_size, partition='classshard', n_site=n_site // 2, seed=seed, cross_val_id=cross_val_id, gl_seed=gl_seed)
+        trn_l2, val_l2 = get_dl_lists(dataset=dataset, batch_size=batch_size, partition='classshard', n_site=n_site // 2, seed=seed, cross_val_id=cross_val_id, gl_seed=gl_seed, cl_per_site=cl_per_site)
         trn_dl_list = trn_l1 + trn_l2
         val_dl_list = val_l1 + val_l2
     elif degradation == '3mixed':
@@ -91,7 +91,7 @@ def new_get_dl_lists(dataset, batch_size, degradation, n_site=None, seed=None, c
         val_dl_list = val_l1 + val_l2 + val_l3
     elif degradation == '3mixedv2':
         trn_l1, val_l1 = get_dl_lists(dataset=dataset, batch_size=batch_size, partition='dirichlet', n_site=n_site // 3, alpha=1e7, seed=seed, cross_val_id=cross_val_id, gl_seed=gl_seed)
-        trn_l2, val_l2 = get_dl_lists(dataset=dataset, batch_size=batch_size, partition='classshard', n_site=n_site // 3, seed=seed, cross_val_id=cross_val_id, gl_seed=gl_seed)
+        trn_l2, val_l2 = get_dl_lists(dataset=dataset, batch_size=batch_size, partition='classshard', n_site=n_site // 3, seed=seed, cross_val_id=cross_val_id, gl_seed=gl_seed, cl_per_site=cl_per_site)
         trn_l3, val_l3 = get_dl_lists(dataset=dataset, batch_size=batch_size, partition='dirichlet', n_site=n_site // 3, alpha=1e7, seed=seed, cross_val_id=cross_val_id, gl_seed=gl_seed)
         trn_dl_list = trn_l1 + trn_l2 + trn_l3
         val_dl_list = val_l1 + val_l2 + val_l3
@@ -102,6 +102,6 @@ def new_get_dl_lists(dataset, batch_size, degradation, n_site=None, seed=None, c
     elif degradation == 'classsep':
         trn_dl_list, val_dl_list = get_dl_lists(dataset=dataset, batch_size=batch_size, partition='by_class', n_site=n_site, seed=seed, cross_val_id=cross_val_id, gl_seed=gl_seed)
     elif degradation == 'classshard':
-        trn_dl_list, val_dl_list = get_dl_lists(dataset=dataset, batch_size=batch_size, partition='classshard', n_site=n_site, seed=seed, cross_val_id=cross_val_id, gl_seed=gl_seed)
+        trn_dl_list, val_dl_list = get_dl_lists(dataset=dataset, batch_size=batch_size, partition='classshard', n_site=n_site, seed=seed, cross_val_id=cross_val_id, gl_seed=gl_seed, cl_per_site=cl_per_site)
 
     return trn_dl_list, val_dl_list

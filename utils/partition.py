@@ -5,7 +5,7 @@ import numpy as np
 
 from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, get_image_net_dataset, get_celeba_dataset, get_minicoco_dataset
 
-def partition_wrap(data_dir, dataset, partition, n_sites, alpha=None, seed=None):
+def partition_wrap(data_dir, dataset, partition, n_sites, alpha=None, seed=None, cl_per_site=None):
 
     if partition == 'by-class':
         (net_dataidx_map_train, net_dataidx_map_test) = partition_by_class(data_dir, dataset, n_sites, seed)
@@ -14,10 +14,11 @@ def partition_wrap(data_dir, dataset, partition, n_sites, alpha=None, seed=None)
     elif partition == 'cont':
         (net_dataidx_map_train, net_dataidx_map_test) = cont_partition(data_dir, dataset, n_sites)
     elif partition == 'classshard':
-        (net_dataidx_map_train, net_dataidx_map_test) = partition_with_shards(data_dir, dataset, n_sites, seed)
+        (net_dataidx_map_train, net_dataidx_map_test) = partition_with_shards(data_dir, dataset, n_sites, seed, cl_per_site)
     return (net_dataidx_map_train, net_dataidx_map_test)
 
-def partition_with_shards(data_dir, dataset, n_sites, seed=None, cl_per_site=2):
+def partition_with_shards(data_dir, dataset, n_sites, seed=None, cl_per_site=None):
+    cl_per_site = 2 if cl_per_site is None else cl_per_site
     rng = np.random.default_rng(seed)
     if dataset == 'cifar10':
         train_ds, test_ds = get_cifar10_datasets(data_dir)
