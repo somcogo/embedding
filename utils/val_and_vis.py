@@ -75,9 +75,11 @@ def eval_points(embeddings, model_path, device, **config):
     val_model.to(device)
 
     ft_sites = get_ft_sites(**config)
+    cl_number = len(np.unique(ft_sites[0]['val_dl'].dataset.dataset.targets[ft_sites[0]['val_dl'].dataset.indices]))
+    print(cl_number, config['cl_per_site'])
 
     losses = np.zeros((len(embeddings), len(ft_sites)))
-    accuracies = np.zeros((len(embeddings), len(ft_sites), 2))
+    accuracies = np.zeros((len(embeddings), len(ft_sites), cl_number))
     t1 = time.time()
     for i, emb in enumerate(embeddings):
         emb = torch.tensor(emb, device=device)
@@ -98,12 +100,13 @@ def eval_points(embeddings, model_path, device, **config):
 
 def validation(ft_sites, device, val_model, **config):
     losses = np.zeros(len(ft_sites))
-    acc = np.zeros((len(ft_sites), 2))
+    cl_number = len(np.unique(ft_sites[0]['val_dl'].dataset.dataset.targets[ft_sites[0]['val_dl'].dataset.indices]))
+    acc = np.zeros((len(ft_sites), cl_number))
     for i, site in enumerate(ft_sites):
         loader = site['val_dl']
         classes = np.unique(loader.dataset.dataset.targets[loader.dataset.indices])
-        total = np.zeros(2)
-        correct = np.zeros(2)
+        total = np.zeros(cl_number)
+        correct = np.zeros(cl_number)
         for batch_tup in loader:
             batch, labels = batch_tup
             batch = batch.to(device=device, non_blocking=True).float().permute(0, 3, 1, 2)
@@ -123,9 +126,9 @@ def validation(ft_sites, device, val_model, **config):
         acc[i] = correct / total
     return losses, acc
 
-def get_ft_sites(degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_site_number, cross_val_id, gl_seed, **config):
+def get_ft_sites(degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_site_number, cross_val_id, gl_seed, cl_per_site, **config):
 
-    trn_dl_list, val_dl_list = new_get_dl_lists(dataset=config['dataset'], batch_size=config['batch_size'], degradation=degradation, n_site=site_number, seed=data_part_seed, cross_val_id=cross_val_id, gl_seed=gl_seed)
+    trn_dl_list, val_dl_list = new_get_dl_lists(dataset=config['dataset'], batch_size=config['batch_size'], degradation=degradation, n_site=site_number, seed=data_part_seed, cross_val_id=cross_val_id, gl_seed=gl_seed, cl_per_site=cl_per_site)
     transform_list = get_test_transforms(site_number=site_number, seed=transform_gen_seed, degradation=degradation, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
     class_list = get_class_list(task='classification', site_number=site_number, class_number=18 if config['dataset'] == 'celeba' else None, class_seed=2, degradation=degradation)
     site_dict = [{'trn_dl': trn_dl_list[ndx],
