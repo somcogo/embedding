@@ -12,6 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid
 import torchvision
 import numpy as np
+from sklearn.mixture import GaussianMixture
 
 from st_adam import Adam as ProxAdam
 from utils.logconf import logging
@@ -40,7 +41,7 @@ class EmbeddingTraining:
                  get_transforms=False, state_dict=None, iterations=None,
                  feature_dims=None, label_smoothing=0., trn_logging=True,
                  fed_prox=0., proximal_map=False, norm_layer='bn',
-                 no_batch_running_stats=False, ft_emb_vec=None):
+                 no_batch_running_stats=False, ft_emb_vec=None, gmm_comps=0):
         
         log.info(comment)
         self.logdir_name = logdir
@@ -61,6 +62,7 @@ class EmbeddingTraining:
         self.fed_prox = fed_prox
         self.proximal_map = proximal_map
         self.no_batch_running_stats = no_batch_running_stats
+        self.gmm_comps = gmm_comps
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
@@ -183,6 +185,14 @@ class EmbeddingTraining:
         trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
         return trn_dls, val_dls
 
+    def initGMMModels(self, gmm):
+        if gmm is not None:
+            return gmm
+        elif self.gmm_comps > 0:
+            return GaussianMixture(n_components=gmm, warm_start=True)
+        else:
+            return None
+
     def initTensorboardWriters(self):
         tensorboard_dir = os.path.join('/home/hansel/developer/embedding/runs', self.logdir_name)
         os.makedirs(tensorboard_dir, exist_ok=True)
@@ -192,10 +202,11 @@ class EmbeddingTraining:
             self.val_writer = SummaryWriter(
                 log_dir=tensorboard_dir + '/val-' + self.comment)
 
-    def train(self, state_dict=None):
+    def train(self, state_dict=None, gmm=None):
         log.info("Starting {}".format(type(self).__name__))
         state_dict = self.state_dict if self.state_dict is not None else state_dict
         self.mergeModels(is_init=True, model_path=self.model_path, state_dict=state_dict)
+        self.gmms = self.initGMMModels(gmm)
 
         trn_dls = self.trn_dls
         val_dls = self.val_dls
@@ -222,7 +233,8 @@ class EmbeddingTraining:
 
             trn_metrics = self.doTraining(trn_dls)
             self.logMetrics(comm_round, 'trn', trn_metrics)
-            self.saveEmbs(comm_round)
+            self.fitGMM()
+            self.saveEmbsGMM(comm_round)
 
             if comm_round == 1 or comm_round % validation_cadence == 0:
                 val_metrics, imgs = self.doValidation(val_dls)
@@ -233,6 +245,7 @@ class EmbeddingTraining:
                 if self.save_model and metric_to_report==saving_criterion:
                     self.saveModel(comm_round, val_metrics, trn_dls, val_dls)
                     best_state_dict = self.models[0].state_dict()
+                    gmm_for_best_model = self.gmms
                 if logging_index:
                     log.info('Round {} of {}, accuracy/dice {}, val loss {}'.format(comm_round, self.comm_rounds, metric_to_report, val_metrics['mean loss']))
             
@@ -249,7 +262,7 @@ class EmbeddingTraining:
             self.trn_writer.close()
             self.val_writer.close()
 
-        return saving_criterion, best_state_dict
+        return saving_criterion, best_state_dict, gmm_for_best_model
 
     def doTraining(self, trn_dls):
         for model in self.models:
@@ -378,7 +391,11 @@ class EmbeddingTraining:
             return loss.sum(), img_list
         else:
             return loss.sum(), None
-
+        
+    def fitGMM(self):
+        if self.gmms is not None:
+            embs = self.getEmbs()
+            self.gmms.fit(embs)
     
     def get_empty_metrics(self):
         metrics = {'loss':0,
@@ -550,19 +567,29 @@ class EmbeddingTraining:
         log.debug("Saved model params to {}".format(model_file_path))
         torch.save(data_state, data_file_path)
         log.debug("Saved training metrics to {}".format(data_file_path))
+
+    def getEmbs(self):
+        if hasattr(self.models[0], 'embedding') and self.models[0].embedding is not None:
+            embeddings = torch.zeros((len(self.models), self.models[0].embedding.shape[0]))
+            for i, model in enumerate(self.models):
+                embeddings[i] = model.embedding
+        else:
+            embeddings = None
+        return embeddings
+
     
-    def saveEmbs(self, comm_round):
+    def saveEmbsGMM(self, comm_round):
         embedding_file_path = os.path.join('/home/hansel/developer/embedding/embeddings',
                                       self.logdir_name,
                                       f'{self.time_str}-{self.comment}',
                                       f'{comm_round}.pt')
         os.makedirs(os.path.dirname(os.path.dirname(embedding_file_path)), mode=0o755, exist_ok=True)
         os.makedirs(os.path.dirname(embedding_file_path), mode=0o755, exist_ok=True)
-        if hasattr(self.models[0], 'embedding') and self.models[0].embedding is not None:
-            embeddings = torch.zeros((len(self.models), self.models[0].embedding.shape[0]))
-            for i, model in enumerate(self.models):
-                embeddings[i] = model.embedding
-            torch.save(embeddings, embedding_file_path)
+        embeddings = self.getEmbs()
+        if embeddings is not None:
+            dict_to_save = {'embedding':embeddings,
+                            'gmm':self.gmms}
+            torch.save(dict_to_save, embedding_file_path)
             log.debug("Saved embeddings to {}".format(embedding_file_path))
 
     def mergeModels(self, is_init=False, model_path=None, state_dict=None):
@@ -593,7 +620,7 @@ class EmbeddingTraining:
             for layer in layer_list:
                 for weight, state_dict in zip(site_weights, state_dicts):
                     updated_params[layer] += weight * state_dict[layer]
-                updated_params[layer] /= site_weights.sum()
+                updated_params[layer] = updated_params[layer] / site_weights.sum()
 
             self.global_model.load_state_dict(updated_params, strict=False)
             for model in self.models:
