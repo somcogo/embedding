@@ -188,7 +188,7 @@ class EmbeddingTraining:
     def initGMMModels(self, gmm):
         if gmm is not None:
             return gmm
-        elif self.gmm_comps > 0:
+        elif self.gmm_comps > 0 and self.getEmbs() is not None:
             return BayesianGaussianMixture(n_components=self.gmm_comps, warm_start=True)
         else:
             return None
