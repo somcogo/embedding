@@ -2,8 +2,8 @@ import os
 
 import torch
 
-from utils.data_loader import get_dl_lists, new_get_dl_lists
-from utils.ops import getTransformList, get_class_list, get_test_transforms, get_ft_indices
+from utils.data_loader import get_dl_lists, new_get_dl_lists, refactored_get_dls
+from utils.ops import getTransformList, get_class_list, get_test_transforms, get_ft_indices, refactored_get_transforms
 from training import EmbeddingTraining
 from utils.logconf import logging
 
@@ -119,8 +119,8 @@ def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, 
     os.makedirs(save_path, exist_ok=True)
     log.info(comment)
 
-    trn_dl_list, val_dl_list = new_get_dl_lists(dataset=config['dataset'], batch_size=config['batch_size'], degradation=degradation, n_site=site_number, seed=data_part_seed, cross_val_id=cross_val_id, gl_seed=gl_seed, cl_per_site=cl_per_site)
-    transform_list = get_test_transforms(site_number=site_number, seed=transform_gen_seed, degradation=degradation, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
+    trn_dl_list, val_dl_list = refactored_get_dls(dataset=config['dataset'], batch_size=config['batch_size'], degs=degradation, n_sites=site_number, seed=data_part_seed, cross_val_id=cross_val_id, gl_seed=gl_seed, cl_per_site=cl_per_site, alpha=config['alpha'])
+    transform_list = refactored_get_transforms(site_number=site_number, seed=transform_gen_seed, degs=degradation, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
     class_list = get_class_list(task='classification', site_number=site_number, class_number=18 if config['dataset'] == 'celeba' else None, class_seed=2, degradation=degradation)
     site_dict = [{'trn_dl': trn_dl_list[ndx],
                     'val_dl': val_dl_list[ndx],

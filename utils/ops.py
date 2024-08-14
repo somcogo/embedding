@@ -176,6 +176,18 @@ def getTransformList(degradation, site_number, seed, device, **kwargs):
             
     return transforms
 
+def refactored_get_transforms(site_number, seed, degs, device, **kwargs):
+    if type(degs) != list:
+        degs = [degs]
+
+    assert site_number % len(degs) == 0
+    site_per_deg = site_number // len(degs)
+    transforms = []
+    for i, deg in enumerate(degs):
+        deg_transforms = get_test_transforms(site_per_deg, seed, deg, device, **kwargs)
+        transforms.extend(deg_transforms)
+    return transforms
+
 def get_test_transforms(site_number, seed, degradation, device, **kwargs):
     rng = np.random.default_rng(seed)
     transforms = []
@@ -235,7 +247,7 @@ def get_test_transforms(site_number, seed, degradation, device, **kwargs):
             if i == site_number // 2:
                 mu = 1
             transforms.append(NoiseTransform(rng=rng, t_rng=None, device=device, var_add=mu + var[i], choice=0))
-    elif degradation in ['classsep', 'classskew', 'classshard']:
+    elif degradation in ['classsep', 'classskew', 'classshard', 'alphascale']:
         for i in range(site_number):
             transforms.append(ConvertImageDtype(torch.float))
 

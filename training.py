@@ -12,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid
 import torchvision
 import numpy as np
-from sklearn.mixture import GaussianMixture
+from sklearn.mixture import BayesianGaussianMixture
 
 from st_adam import Adam as ProxAdam
 from utils.logconf import logging
@@ -189,7 +189,7 @@ class EmbeddingTraining:
         if gmm is not None:
             return gmm
         elif self.gmm_comps > 0:
-            return GaussianMixture(n_components=gmm, warm_start=True)
+            return BayesianGaussianMixture(n_components=self.gmm_comps, warm_start=True)
         else:
             return None
 
@@ -395,7 +395,8 @@ class EmbeddingTraining:
     def fitGMM(self):
         if self.gmms is not None:
             embs = self.getEmbs()
-            self.gmms.fit(embs)
+            detached_embs = embs.detach().clone().numpy()
+            self.gmms.fit(detached_embs)
     
     def get_empty_metrics(self):
         metrics = {'loss':0,

@@ -29,8 +29,10 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
     elif strategy == 'pureemb':
         ft_strategy = 'onlyemb'
 
+    deg_string = ''.join([name[:2] for name in degradation]) if type(degradation) == list else degradation
+
     config = {'logdir':logdir,
-            'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{degradation}-s{str(site_number)}-fts{str(ft_site_number)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-fflr{fflr}-elr{emb_lr}-ftelr{ft_emb_lr}-embdim-{emb_dim}-{dataset}-fedp-{str(fed_prox)}-proxm-{prox_map}-xval{cross_val_id}-gls{gl_seed}-nl-{norm_layer}-rst-{no_batch_running_stats}-clpr{cl_per_site}-gmm{gmm_comps}',
+            'comment':f'{comment}-{strategy}-{task}-resnet18-{model_type}-{deg_string}-s{str(site_number)}-fts{str(ft_site_number)}-b{str(batch_size)}-commr{str(comm_rounds)}-iter{str(iterations)}-lr1e-4-fflr{fflr}-elr{emb_lr}-ftelr{ft_emb_lr}-embdim-{emb_dim}-{dataset}-fedp-{str(fed_prox)}-proxm-{prox_map}-xval{cross_val_id}-gls{gl_seed}-nl-{norm_layer}-rst-{no_batch_running_stats}-clpr{cl_per_site}-gmm{gmm_comps}',
             'task':task,
             'model_name':'resnet18',
             'model_type':model_type,
