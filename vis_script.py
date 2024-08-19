@@ -11,12 +11,12 @@ from utils.val_and_vis import eval_points, get_points, load_embs
 os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 torch.set_num_threads(8)
 
-site = 20
-fts = 4
-deg = 'classshard'
-comment = 'size1-5res10trnftpca20-4site'
+site = 10
+fts = 2
+deg = 'alphascale'
+comment = 'size1-5res10trnftpca20-2site'
 # comment = 'ftembeval'
-logdir = '4clpersite'
+logdir = 'degs'
 comm_rounds = 1000
 norm_layer = 'bn'
 no_batch_running_stats = True
@@ -31,13 +31,13 @@ prox_map = False
 
 main_fn = new_main_plus_ft
 
-model_path = 'saved_models/seededruns/2024_07_18-17_23_17-moresites-pureemb-classification-resnet18-embbn4-classshard-s20-fts4-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-4-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-bn-rst-True-clpr4.state'
+model_path = 'saved_models/gmm/2024_08_14-18_32_44-degs-pureemb-classification-resnet18-embbn4-al-s10-fts2-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-4-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-bn-rst-True-clpr4-gmm3.state'
 cross_val_id = None
 gl_seed = 0
 
 p_mode = 'grid'
-saved_ft_embs = load_embs('saved_models/seededruns_ft/2024_07_18-23_11_23-moresites-pureemb-classification-resnet18-embbn4-classshard-s20-fts4-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-4-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-bn-rst-True-clpr4-onlyemb.state')
-saved_embs = load_embs('saved_models/seededruns/2024_07_18-17_23_17-moresites-pureemb-classification-resnet18-embbn4-classshard-s20-fts4-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-4-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-bn-rst-True-clpr4.state')
+saved_ft_embs = load_embs('saved_models/gmm_ft/2024_08_15-18_02_02-degs-pureemb-classification-resnet18-embbn4-al-s10-fts2-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-4-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-bn-rst-True-clpr4-gmm0-onlyemb.state')
+saved_embs = load_embs('saved_models/gmm/2024_08_14-18_32_44-degs-pureemb-classification-resnet18-embbn4-al-s10-fts2-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-4-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-bn-rst-True-clpr4-gmm3.state')
 vectors = np.zeros((10, 4))
 for i in range(8):
     vectors[i] = saved_embs[i]

@@ -36,6 +36,17 @@ def get_ft_indices(site_number, ft_site_number, degradation, seed=0):
 
     return indices
 
+def refactored_get_ft_indices(site_number, ft_site_number, degs, seed=0):
+    part_rng = np.random.default_rng(seed)
+    site_per_deg = site_number // len(degs)
+    ft_site_per_deg = ft_site_number // len(degs)
+    indices = []
+    for i in range(len(degs)):
+        indices.append(part_rng.permutation(np.arange(i * site_per_deg, (i+1) * site_per_deg))[:ft_site_per_deg])
+    indices = np.concatenate(indices)
+
+    return indices
+
 def get_class_list(task, site_number, class_number, class_seed, degradation):
     rng = np.random.default_rng(seed=class_seed)
     if task == 'segmentation' and degradation == 'nothing':

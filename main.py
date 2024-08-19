@@ -3,7 +3,7 @@ import os
 import torch
 
 from utils.data_loader import get_dl_lists, new_get_dl_lists, refactored_get_dls
-from utils.ops import getTransformList, get_class_list, get_test_transforms, get_ft_indices, refactored_get_transforms
+from utils.ops import getTransformList, get_class_list, get_test_transforms, get_ft_indices, refactored_get_transforms, refactored_get_ft_indices
 from training import EmbeddingTraining
 from utils.logconf import logging
 
@@ -128,13 +128,15 @@ def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, 
                     'classes': class_list[ndx]}
                     for ndx in range(site_number)]
 
-    ft_indices = get_ft_indices(site_number, ft_site_number, degradation)
+    ft_indices = refactored_get_ft_indices(site_number, ft_site_number, degradation)
     trn_site_dict = [site_dict[i] for i in range(len(site_dict)) if i not in ft_indices]
     ft_site_dict = [site_dict[i] for i in range(len(site_dict)) if i in ft_indices]
     
     if site_number > 0 and not only_ft:
         trainer = EmbeddingTraining(logdir=logdir, comment=comment, sites=trn_site_dict, **config)
         acc, state_dict, gmm = trainer.train()
+    else:
+        gmm = None
 
     if ft_site_number > 0:
         ft_comment = comment + '-' + ft_strategy

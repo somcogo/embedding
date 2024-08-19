@@ -5,8 +5,8 @@ import torch
 import torch.nn as nn
 from sklearn.decomposition import PCA
 
-from utils.data_loader import new_get_dl_lists
-from utils.ops import get_test_transforms, get_class_list, get_ft_indices, create_mask_from_onehot, transform_image
+from utils.data_loader import new_get_dl_lists, refactored_get_dls
+from utils.ops import get_test_transforms, get_class_list, get_ft_indices, create_mask_from_onehot, transform_image, refactored_get_transforms, refactored_get_ft_indices
 from utils.get_model import get_model
 
 def xygrid():
@@ -75,7 +75,7 @@ def eval_points(embeddings, model_path, device, **config):
     val_model.to(device)
 
     ft_sites = get_ft_sites(**config)
-    cl_number = len(np.unique(ft_sites[0]['val_dl'].dataset.dataset.targets[ft_sites[0]['val_dl'].dataset.indices]))
+    cl_number = max([len(np.unique(s['val_dl'].dataset.dataset.targets[s['val_dl'].dataset.indices])) for s in ft_sites])
     print(cl_number, config['cl_per_site'])
 
     losses = np.zeros((len(embeddings), len(ft_sites)))
@@ -100,7 +100,7 @@ def eval_points(embeddings, model_path, device, **config):
 
 def validation(ft_sites, device, val_model, **config):
     losses = np.zeros(len(ft_sites))
-    cl_number = len(np.unique(ft_sites[0]['val_dl'].dataset.dataset.targets[ft_sites[0]['val_dl'].dataset.indices]))
+    cl_number = max([len(np.unique(s['val_dl'].dataset.dataset.targets[s['val_dl'].dataset.indices])) for s in ft_sites])
     acc = np.zeros((len(ft_sites), cl_number))
     for i, site in enumerate(ft_sites):
         loader = site['val_dl']
@@ -128,8 +128,8 @@ def validation(ft_sites, device, val_model, **config):
 
 def get_ft_sites(degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_site_number, cross_val_id, gl_seed, cl_per_site, **config):
 
-    trn_dl_list, val_dl_list = new_get_dl_lists(dataset=config['dataset'], batch_size=config['batch_size'], degradation=degradation, n_site=site_number, seed=data_part_seed, cross_val_id=cross_val_id, gl_seed=gl_seed, cl_per_site=cl_per_site)
-    transform_list = get_test_transforms(site_number=site_number, seed=transform_gen_seed, degradation=degradation, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
+    trn_dl_list, val_dl_list = refactored_get_dls(dataset=config['dataset'], batch_size=config['batch_size'], degs=degradation, n_sites=site_number, seed=data_part_seed, cross_val_id=cross_val_id, gl_seed=gl_seed, cl_per_site=cl_per_site)
+    transform_list = refactored_get_transforms(site_number=site_number, seed=transform_gen_seed, degs=degradation, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
     class_list = get_class_list(task='classification', site_number=site_number, class_number=18 if config['dataset'] == 'celeba' else None, class_seed=2, degradation=degradation)
     site_dict = [{'trn_dl': trn_dl_list[ndx],
                     'val_dl': val_dl_list[ndx],
@@ -137,7 +137,7 @@ def get_ft_sites(degradation, site_number, data_part_seed, transform_gen_seed, t
                     'classes': class_list[ndx]}
                     for ndx in range(site_number)]
 
-    ft_indices = get_ft_indices(site_number, ft_site_number, degradation)
+    ft_indices = refactored_get_ft_indices(site_number, ft_site_number, degradation)
     trn_site_dict = [site_dict[i] for i in range(len(site_dict)) if i not in ft_indices]
     ft_site_dict = [site_dict[i] for i in range(len(site_dict)) if i in ft_indices]
 
