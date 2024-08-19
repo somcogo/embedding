@@ -3,7 +3,7 @@ import random
 
 import numpy as np
 
-from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, get_image_net_dataset, get_celeba_dataset, get_minicoco_dataset
+from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, get_image_net_dataset, get_celeba_dataset, get_minicoco_dataset, get_digits_dataset
 
 def partition_wrap(data_dir, dataset, partition, n_sites, alpha=None, seed=None, cl_per_site=None):
 
@@ -43,17 +43,20 @@ def get_classes(data_dir, dataset):
 def new_partition_wrap(data_dir, dataset, degs, n_sites, alpha=None, seed=None, cl_per_site=None):
     if type(degs) != list:
         degs = [degs]
-    cl_num, trn_classes, val_classes = get_classes(data_dir, dataset)
-    trn_idx_by_deg, val_idx_by_deg = new_partition_with_shards(np.arange(len(trn_classes)), np.arange(len(val_classes)), trn_classes, val_classes, n_sites=len(degs), cl_num=cl_num, seed=seed, cl_per_site=cl_num)
+    if dataset == 'digits':
+        trn_map, val_map = partition_digits(data_dir, n_sites, seed)
+    else:
+        cl_num, trn_classes, val_classes = get_classes(data_dir, dataset)
+        trn_idx_by_deg, val_idx_by_deg = new_partition_with_shards(np.arange(len(trn_classes)), np.arange(len(val_classes)), trn_classes, val_classes, n_sites=len(degs), cl_num=cl_num, seed=seed, cl_per_site=cl_num)
 
-    assert n_sites % len(degs) == 0
-    site_per_deg = n_sites // len(degs)
-    trn_map, val_map = {}, {}
-    for i, deg in enumerate(degs):
-        deg_trn_map, deg_val_map = new_partition(trn_idx_by_deg[i], val_idx_by_deg[i], trn_classes[trn_idx_by_deg[i]], val_classes[val_idx_by_deg[i]], deg, site_per_deg, alpha, seed, cl_per_site, cl_num)
-        for j in range(site_per_deg):
-            trn_map[site_per_deg*i + j] = deg_trn_map[j]
-            val_map[site_per_deg*i + j] = deg_val_map[j]
+        assert n_sites % len(degs) == 0
+        site_per_deg = n_sites // len(degs)
+        trn_map, val_map = {}, {}
+        for i, deg in enumerate(degs):
+            deg_trn_map, deg_val_map = new_partition(trn_idx_by_deg[i], val_idx_by_deg[i], trn_classes[trn_idx_by_deg[i]], val_classes[val_idx_by_deg[i]], deg, site_per_deg, alpha, seed, cl_per_site, cl_num)
+            for j in range(site_per_deg):
+                trn_map[site_per_deg*i + j] = deg_trn_map[j]
+                val_map[site_per_deg*i + j] = deg_val_map[j]
 
     return trn_map, val_map
 
@@ -76,6 +79,31 @@ def new_partition(trn_indices, val_indices, trn_classes, val_classes, deg, n_sit
         trn_map, val_map = new_partition_dirichlet(trn_indices, val_indices, trn_classes, val_classes, n_sites, cl_num, alpha, seed)
     else:
         trn_map, val_map = new_partition_dirichlet(trn_indices, val_indices, trn_classes, val_classes, n_sites, cl_num, 1e7, seed)
+    return trn_map, val_map
+
+def partition_digits(data_dir, n_sites, seed):
+    trn_ds, val_ds = get_digits_dataset(data_dir)
+    # trn_lengths = [60000, 7291, 73257, 10000]
+    # val_lengths = [10000, 2007, 26032, 2000]
+    # [ 60000,  67291, 140548, 150548], [10000, 12007, 38039, 40039]
+    m_trn_ndx, m_val_ndx = np.arange(60000), np.arange(10000)
+    u_trn_ndx, u_val_ndx = np.arange(60000, 67291), np.arange(10000, 12007)
+    sv_trn_ndx, sv_val_ndx = np.arange(67291, 140548), np.arange(12007, 38039)
+    sy_trn_ndx, sy_val_ndx = np.arange(140548, 150548), np.arange(38039, 40039)
+    sites_per_domain = n_sites // 4
+
+    per_digit_maps = []
+    per_digit_maps.append(new_partition_dirichlet(m_trn_ndx, m_val_ndx, trn_ds.datasets[0].targets, val_ds.datasets[0].targets, sites_per_domain, cl_num=10, alpha=1e7, seed=seed))
+    per_digit_maps.append(new_partition_dirichlet(u_trn_ndx, u_val_ndx, trn_ds.datasets[1].targets, val_ds.datasets[1].targets, sites_per_domain, cl_num=10, alpha=1e7, seed=seed))
+    per_digit_maps.append(new_partition_dirichlet(sv_trn_ndx, sv_val_ndx, trn_ds.datasets[2].targets, val_ds.datasets[2].targets, sites_per_domain, cl_num=10, alpha=1e7, seed=seed))
+    per_digit_maps.append(new_partition_dirichlet(sy_trn_ndx, sy_val_ndx, trn_ds.datasets[3].targets, val_ds.datasets[3].targets, sites_per_domain, cl_num=10, alpha=1e7, seed=seed))
+
+    trn_map, val_map = {}, {}
+    for i, (trn_m, val_m) in enumerate(per_digit_maps):
+        for j in range(sites_per_domain):
+            trn_map[i * sites_per_domain + j] = trn_m[j]
+            val_map[i * sites_per_domain + j] = val_m[j]
+
     return trn_map, val_map
 
 def partition_with_shards(data_dir, dataset, n_sites, seed=None, cl_per_site=None):
@@ -386,7 +414,7 @@ def new_partition_dirichlet(trn_indices, val_indices, trn_classes, val_classes, 
         trn_map[j] = np.array(trn_idx_batch[j])
         val_map[j] = np.array(val_idx_batch[j])
 
-    return (trn_map, val_map)
+    return trn_map, val_map
 
 def partition_class_samples_with_dirichlet_distribution(N, alpha, n_sites, idx_batch_train, idx_batch_test, train_idx_k, test_idx_k, rng):
 

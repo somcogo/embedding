@@ -258,7 +258,7 @@ def get_test_transforms(site_number, seed, degradation, device, **kwargs):
             if i == site_number // 2:
                 mu = 1
             transforms.append(NoiseTransform(rng=rng, t_rng=None, device=device, var_add=mu + var[i], choice=0))
-    elif degradation in ['classsep', 'classskew', 'classshard', 'alphascale']:
+    elif degradation in ['classsep', 'classskew', 'classshard', 'alphascale', 'digits']:
         for i in range(site_number):
             transforms.append(ConvertImageDtype(torch.float))
 

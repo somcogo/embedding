@@ -5,7 +5,7 @@ import numpy as np
 from torch.utils.data import DataLoader, Subset, ConcatDataset
 from sklearn.model_selection import KFold
 
-from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, get_image_net_dataset, get_celeba_dataset, get_minicoco_dataset
+from .datasets import get_cifar10_datasets, get_cifar100_datasets, get_mnist_datasets, get_image_net_dataset, get_celeba_dataset, get_minicoco_dataset, get_digits_dataset
 from .partition import partition_wrap, new_partition_wrap
 
 data_path = '/home/hansel/developer/embedding/data/'
@@ -28,6 +28,8 @@ def get_datasets(data_dir, dataset, use_hdf5=False):
         trn_dataset, val_dataset = get_celeba_dataset(data_dir=data_dir)
     elif dataset == 'minicoco':
         trn_dataset, val_dataset = get_minicoco_dataset(data_dir=data_dir)
+    elif dataset == 'digits':
+        trn_dataset, val_dataset = get_digits_dataset(data_dir=data_dir)
     return trn_dataset, val_dataset
 
 def get_dl_lists(dataset, batch_size, partition=None, n_site=None, alpha=None, net_dataidx_map_train=None, net_dataidx_map_test=None, shuffle=True, seed=None, site_indices=None, use_hdf5=True, cross_val_id=None, gl_seed=None, cl_per_site=None):

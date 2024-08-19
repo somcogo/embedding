@@ -1,9 +1,11 @@
 import os
+import bisect
 
+from PIL import Image
 import numpy as np
 import torch
-from torch.utils.data import Dataset
-from torchvision.datasets import CIFAR10, CIFAR100, MNIST, USPS, SVHN
+from torch.utils.data import Dataset, ConcatDataset
+from torchvision.datasets import CIFAR10, CIFAR100, MNIST, USPS, SVHN, VisionDataset, utils, ImageFolder
 from torchvision.transforms import Compose, ToTensor, Normalize, Resize, Lambda
 import h5py
 
@@ -211,30 +213,33 @@ def get_mnist_datasets(data_dir, use_hdf5=False):
         dataset = MNISTDataSet(data_dir, 'trn')
         val_dataset = MNISTDataSet(data_dir, 'val')
     else:
-        mean = 0.1307
-        std = 0.3081
-        transforms = Compose([ToTensor(), Normalize(mean, std)])
+        mean=[0.485, 0.456, 0.406]
+        std=[0.229, 0.224, 0.225]
+        transforms = Compose([
+            Resize((32, 32)),
+            ToTensor(),
+            Lambda(lambda x: x.repeat(3, 1, 1)),
+            Normalize(mean, std)
+        ])
 
         dataset = MNIST(root=data_dir, train=True, download=True, transform=transforms)
         dataset.targets = np.array(dataset.targets)
-        dataset.data = dataset.data.unsqueeze(dim=1).permute((0, 2, 3, 1))
         val_dataset = MNIST(root=data_dir, train=False, transform=transforms)
         val_dataset.targets = np.array(val_dataset.targets)
-        val_dataset.data = val_dataset.data.unsqueeze(dim=1).permute((0, 2, 3 ,1))
 
     return dataset, val_dataset
 
 def get_usps_dataset(data_dir):
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
-    transforms = Compose([Resize(32, 32),
+    transforms = Compose([Resize((32, 32)),
                           ToTensor(),
                           Lambda(lambda x: x.repeat(3, 1, 1)),
                           Normalize(mean, std)])
 
     dataset = USPS(root=data_dir, train=True, download=True, transform=transforms)
     dataset.targets = np.array(dataset.targets)
-    val_dataset = USPS(root=data_dir, train=False, transform=transforms)
+    val_dataset = USPS(root=data_dir, train=False, download=True, transform=transforms)
     val_dataset.targets = np.array(val_dataset.targets)
 
     return dataset, val_dataset
@@ -242,17 +247,57 @@ def get_usps_dataset(data_dir):
 def get_svhn_dataset(data_dir):
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
-    transforms = Compose([Resize(32, 32),
+    transforms = Compose([Resize((32, 32)),
                           ToTensor(),
                           Normalize(mean, std)])
 
-    dataset = SVHN(root=data_dir, train=True, download=True, transform=transforms)
+    dataset = SVHN(root=data_dir, split='train', download=True, transform=transforms)
     dataset.targets = np.array(dataset.labels)
-    val_dataset = SVHN(root=data_dir, train=False, transform=transforms)
+    val_dataset = SVHN(root=data_dir, split='test', download=True, transform=transforms)
     val_dataset.targets = np.array(val_dataset.labels)
 
     return dataset, val_dataset
 
+def get_syn_dataset(data_dir):
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+    transforms = Compose([Resize((32, 32)),
+                          ToTensor(),
+                          Normalize(mean, std)])
+
+    dataset = ImageFolder(root=os.path.join(data_dir, 'synthetic_digits', 'imgs_train'), transform=transforms)
+    dataset.targets = np.array(dataset.targets)
+    val_dataset = ImageFolder(root=os.path.join(data_dir, 'synthetic_digits', 'imgs_valid'), transform=transforms)
+    val_dataset.targets = np.array(val_dataset.targets)
+
+    return dataset, val_dataset
+
+def get_digits_dataset(data_dir):
+    mnist, val_mnist = get_mnist_datasets(data_dir)
+    usps, val_usps = get_usps_dataset(data_dir)
+    svhn, val_svhn = get_svhn_dataset(data_dir)
+    syn, val_syn = get_syn_dataset(data_dir)
+
+    return ConcatWithTargets([mnist, usps, svhn, syn]), ConcatWithTargets([val_mnist, val_usps, val_svhn, val_syn])
+
+
+class ConcatWithTargets(Dataset):
+    def __init__(self, datasets):
+        super().__init__()
+        self.datasets = datasets
+        self.targets = np.concatenate([dset.targets for dset in datasets])
+        self.cumulative_sizes = [len(dset) for dset in self.datasets]
+
+    def __len__(self):
+        return len(self.targets)
+
+    def __getitem__(self, idx):
+        dataset_idx = bisect.bisect_right(self.cumulative_sizes, idx)
+        if dataset_idx == 0:
+            sample_idx = idx
+        else:
+            sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
+        return self.datasets[dataset_idx][sample_idx]
 
 def get_image_net_dataset(data_dir):
     dataset = ImageNetDataSet(data_dir=data_dir, mode='trn')
