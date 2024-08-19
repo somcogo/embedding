@@ -41,7 +41,7 @@ class EmbeddingTraining:
                  get_transforms=False, state_dict=None, iterations=None,
                  feature_dims=None, label_smoothing=0., trn_logging=True,
                  fed_prox=0., proximal_map=False, norm_layer='bn',
-                 no_batch_running_stats=False, ft_emb_vec=None, gmm_comps=0):
+                 no_batch_running_stats=False, ft_emb_vec=None):
         
         log.info(comment)
         self.logdir_name = logdir
@@ -62,7 +62,6 @@ class EmbeddingTraining:
         self.fed_prox = fed_prox
         self.proximal_map = proximal_map
         self.no_batch_running_stats = no_batch_running_stats
-        self.gmm_comps = gmm_comps
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
@@ -185,14 +184,6 @@ class EmbeddingTraining:
         trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
         return trn_dls, val_dls
 
-    def initGMMModels(self, gmm):
-        if gmm is not None:
-            return gmm
-        elif self.gmm_comps > 0 and self.getEmbs() is not None:
-            return BayesianGaussianMixture(n_components=self.gmm_comps, warm_start=True)
-        else:
-            return None
-
     def initTensorboardWriters(self):
         tensorboard_dir = os.path.join('/home/hansel/developer/embedding/runs', self.logdir_name)
         os.makedirs(tensorboard_dir, exist_ok=True)
@@ -202,11 +193,10 @@ class EmbeddingTraining:
             self.val_writer = SummaryWriter(
                 log_dir=tensorboard_dir + '/val-' + self.comment)
 
-    def train(self, state_dict=None, gmm=None):
+    def train(self, state_dict=None):
         log.info("Starting {}".format(type(self).__name__))
         state_dict = self.state_dict if self.state_dict is not None else state_dict
         self.mergeModels(is_init=True, model_path=self.model_path, state_dict=state_dict)
-        self.gmms = self.initGMMModels(gmm)
 
         trn_dls = self.trn_dls
         val_dls = self.val_dls
@@ -233,8 +223,7 @@ class EmbeddingTraining:
 
             trn_metrics = self.doTraining(trn_dls)
             self.logMetrics(comm_round, 'trn', trn_metrics)
-            self.fitGMM()
-            self.saveEmbsGMM(comm_round)
+            self.saveEmbs(comm_round)
 
             if comm_round == 1 or comm_round % validation_cadence == 0:
                 val_metrics, imgs = self.doValidation(val_dls)
@@ -245,7 +234,6 @@ class EmbeddingTraining:
                 if self.save_model and metric_to_report==saving_criterion:
                     self.saveModel(comm_round, val_metrics, trn_dls, val_dls)
                     best_state_dict = self.models[0].state_dict()
-                    gmm_for_best_model = self.gmms
                 if logging_index:
                     log.info('Round {} of {}, accuracy/dice {}, val loss {}'.format(comm_round, self.comm_rounds, metric_to_report, val_metrics['mean loss']))
             
@@ -262,7 +250,7 @@ class EmbeddingTraining:
             self.trn_writer.close()
             self.val_writer.close()
 
-        return saving_criterion, best_state_dict, gmm_for_best_model
+        return saving_criterion, best_state_dict
 
     def doTraining(self, trn_dls):
         for model in self.models:
@@ -391,12 +379,6 @@ class EmbeddingTraining:
             return loss.sum(), img_list
         else:
             return loss.sum(), None
-        
-    def fitGMM(self):
-        if self.gmms is not None:
-            embs = self.getEmbs()
-            detached_embs = embs.detach().clone().numpy()
-            self.gmms.fit(detached_embs)
     
     def get_empty_metrics(self):
         metrics = {'loss':0,
@@ -579,7 +561,7 @@ class EmbeddingTraining:
         return embeddings
 
     
-    def saveEmbsGMM(self, comm_round):
+    def saveEmbs(self, comm_round):
         embedding_file_path = os.path.join('/home/hansel/developer/embedding/embeddings',
                                       self.logdir_name,
                                       f'{self.time_str}-{self.comment}',
@@ -588,8 +570,7 @@ class EmbeddingTraining:
         os.makedirs(os.path.dirname(embedding_file_path), mode=0o755, exist_ok=True)
         embeddings = self.getEmbs()
         if embeddings is not None:
-            dict_to_save = {'embedding':embeddings,
-                            'gmm':self.gmms}
+            dict_to_save = {'embedding':embeddings}
             torch.save(dict_to_save, embedding_file_path)
             log.debug("Saved embeddings to {}".format(embedding_file_path))
 
