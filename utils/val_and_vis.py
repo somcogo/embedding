@@ -32,8 +32,8 @@ def pca_grid(model_path=None, vectors=None):
     pca.fit(saved_embs_n)
     saved_embs_pca = pca.transform(saved_embs_n)
     largest = np.linalg.norm(saved_embs_pca, axis=1).max()
-    res = 10
-    size = 1.5
+    res = 20
+    size = 2
     embs_n = np.zeros((res*res, 4))
     for i, x in enumerate(np.linspace(-size * largest, size * largest, res)):
         for j, y in enumerate(np.linspace(-size * largest, size * largest, res)):

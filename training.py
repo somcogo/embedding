@@ -41,7 +41,8 @@ class EmbeddingTraining:
                  get_transforms=False, state_dict=None, iterations=None,
                  feature_dims=None, label_smoothing=0., trn_logging=True,
                  fed_prox=0., proximal_map=False, norm_layer='bn',
-                 no_batch_running_stats=False, ft_emb_vec=None):
+                 no_batch_running_stats=False, ft_emb_vec=None,
+                 ncc_lambda=0.):
         
         log.info(comment)
         self.logdir_name = logdir
@@ -62,6 +63,7 @@ class EmbeddingTraining:
         self.fed_prox = fed_prox
         self.proximal_map = proximal_map
         self.no_batch_running_stats = no_batch_running_stats
+        self.ncc_lambda = ncc_lambda
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
@@ -74,6 +76,7 @@ class EmbeddingTraining:
             self.val_dls = [site['val_dl'] for site in sites]
             self.transforms = [site['transform'] for site in sites]
             self.classes = [site['classes'] for site in sites] if sites[0]['classes'] is not None else None
+            self.degs = torch.tensor([site['deg'] for site in sites], device=self.device)
             if task == 'segmentation':
                 self.present_classes = [c for c_l in self.classes for c in c_l] if self.classes is not None else np.arange(18 if self.dataset == 'celeba' else 12)
             self.site_number = len(sites)
@@ -183,6 +186,11 @@ class EmbeddingTraining:
     def initDls(self, batch_size, partition, alpha, k_fold_val_id, seed, site_indices):
         trn_dls, val_dls = get_dl_lists(dataset=self.dataset, partition=partition, n_site=self.site_number, batch_size=batch_size, alpha=alpha, k_fold_val_id=k_fold_val_id, seed=seed, site_indices=site_indices)
         return trn_dls, val_dls
+    
+    def updateGlobalEmbs(self):
+        embs = self.getEmbs()
+        if embs is not None:
+            self.global_embs = embs.clone().detach()
 
     def initTensorboardWriters(self):
         tensorboard_dir = os.path.join('/home/hansel/developer/embedding/runs', self.logdir_name)
@@ -197,6 +205,7 @@ class EmbeddingTraining:
         log.info("Starting {}".format(type(self).__name__))
         state_dict = self.state_dict if self.state_dict is not None else state_dict
         self.mergeModels(is_init=True, model_path=self.model_path, state_dict=state_dict)
+        self.updateGlobalEmbs()
 
         trn_dls = self.trn_dls
         val_dls = self.val_dls
@@ -224,6 +233,7 @@ class EmbeddingTraining:
             trn_metrics = self.doTraining(trn_dls)
             self.logMetrics(comm_round, 'trn', trn_metrics)
             self.saveEmbs(comm_round)
+            self.updateGlobalEmbs()
 
             if comm_round == 1 or comm_round % validation_cadence == 0:
                 val_metrics, imgs = self.doValidation(val_dls)
@@ -367,8 +377,19 @@ class EmbeddingTraining:
                 if layer in layers:
                     prox_term += torch.pow(torch.norm(glob_p - loc_p), 2)
 
+        ncc_term = torch.tensor(0., device=self.device)
+        if model.embedding is not None:
+            emb_normed = (model.embedding / model.embedding.norm()).unsqueeze(0).unsqueeze(0)
+            gl_emb_normed = (self.global_embs / self.global_embs.norm(dim=-1, keepdim=True)).unsqueeze(1).to(self.device)
+            ncc = nn.functional.conv1d(emb_normed, gl_emb_normed).squeeze()
+            ncc = torch.stack([ncc, torch.zeros_like(ncc)])
+            ncc, _ = torch.max(ncc, 0)
+            similarity = torch.ones((self.site_number), device=self.device)
+            similarity[self.degs == self.degs[site_id]] *= -1
+            ncc_term = (1 + similarity * ncc).sum()
+
         xe_loss = loss_fn(pred, labels)
-        loss = xe_loss + self.fed_prox / 2 * prox_term
+        loss = xe_loss + self.fed_prox / 2 * prox_term + self.ncc_lambda * ncc_term
 
         metrics = self.calculateLocalMetrics(pred_label, labels, loss, metrics, mode) if metrics is not None else None
 
