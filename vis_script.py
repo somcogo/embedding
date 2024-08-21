@@ -12,11 +12,11 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 torch.set_num_threads(8)
 
 site = 10
-fts = 2
+fts = 10
 deg = 'alphascale'
-comment = 'size1-5res10trnftpca20-2site'
+comment = 'size2res20trnftpca20-2site'
 # comment = 'ftembeval'
-logdir = 'degs'
+logdir = 'alpha'
 comm_rounds = 1000
 norm_layer = 'bn'
 no_batch_running_stats = True
@@ -31,13 +31,13 @@ prox_map = False
 
 main_fn = new_main_plus_ft
 
-model_path = 'saved_models/gmm/2024_08_14-18_32_44-degs-pureemb-classification-resnet18-embbn4-al-s10-fts2-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-4-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-bn-rst-True-clpr4-gmm3.state'
+model_path = 'saved_models/alpha/2024_08_19-11_14_20-idxfix-pureemb-classification-resnet18-embbn4-al-s10-fts2-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-4-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-bn-rst-True-clpr4.state'
 cross_val_id = None
 gl_seed = 0
 
 p_mode = 'grid'
-saved_ft_embs = load_embs('saved_models/gmm_ft/2024_08_15-18_02_02-degs-pureemb-classification-resnet18-embbn4-al-s10-fts2-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-4-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-bn-rst-True-clpr4-gmm0-onlyemb.state')
-saved_embs = load_embs('saved_models/gmm/2024_08_14-18_32_44-degs-pureemb-classification-resnet18-embbn4-al-s10-fts2-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-4-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-bn-rst-True-clpr4-gmm3.state')
+saved_embs = load_embs('saved_models/alpha/2024_08_19-11_14_20-idxfix-pureemb-classification-resnet18-embbn4-al-s10-fts2-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-4-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-bn-rst-True-clpr4.state')
+saved_ft_embs = load_embs('saved_models/alpha_ft/2024_08_19-14_24_03-idxfix-pureemb-classification-resnet18-embbn4-al-s10-fts2-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-4-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-bn-rst-True-clpr4-onlyemb.state')
 vectors = np.zeros((10, 4))
 for i in range(8):
     vectors[i] = saved_embs[i]

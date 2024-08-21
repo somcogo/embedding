@@ -46,6 +46,14 @@ def vis_embedding(trn_path, ft_path, trn_sites, ft_sites, deg, x_dim=0, y_dim=1,
         title = ''
         site_per_deg = trn_sites // 3
         ft_site_per_deg = ft_sites // 3
+    elif deg == 'adcoal' or deg == 'adjial':
+        colors = ['red', 'blue', 'green']
+        ft_colors = ['lightcoral', 'cyan', 'mediumspringgreen']
+        labels = ['Gaussian noise ', 'colorjitter ', 'alphascale ']
+        # title = '10 noisy sites, 10 class skewed sites, 10 colorjitter sites'
+        title = ''
+        site_per_deg = trn_sites // 3
+        ft_site_per_deg = ft_sites // 3
     elif deg == 'jittermix':
         colors = ['red', 'blue', 'green', 'orange']
         ft_colors = ['lightcoral', 'cyan', 'mediumspringgreen', 'khaki']
