@@ -54,6 +54,14 @@ def vis_embedding(trn_path, ft_path, trn_sites, ft_sites, deg, x_dim=0, y_dim=1,
         title = ''
         site_per_deg = trn_sites // 4
         ft_site_per_deg = ft_sites // 4
+    elif deg == 'digits':
+        colors = ['red', 'blue', 'green', 'orange']
+        ft_colors = ['lightcoral', 'cyan', 'mediumspringgreen', 'khaki']
+        labels = ['mnist ', 'usps ', 'svhn ', 'syn ']
+        # title = '10 brightness sites, 10 contrast sites, 10 saturation sites, 10 hue sites'
+        title = ''
+        site_per_deg = trn_sites // 4
+        ft_site_per_deg = ft_sites // 4
     else:
         colors = ['red']
         ft_colors = ['lightcoral']
