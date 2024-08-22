@@ -28,16 +28,17 @@ def pca_grid(model_path=None, vectors=None):
         saved_embs_n = vectors
     else:
         saved_embs_n = load_embs(model_path)
-    pca = PCA(n_components=saved_embs_n.shape[1])
+    pca = PCA(n_components=min(saved_embs_n.shape))
     pca.fit(saved_embs_n)
     saved_embs_pca = pca.transform(saved_embs_n)
     largest = np.linalg.norm(saved_embs_pca, axis=1).max()
     res = 20
     size = 2
-    embs_n = np.zeros((res*res, 4))
+    embs_n = np.zeros((res*res, saved_embs_n.shape[1]))
     for i, x in enumerate(np.linspace(-size * largest, size * largest, res)):
         for j, y in enumerate(np.linspace(-size * largest, size * largest, res)):
-            vector_pca = np.array([x, y, 0, 0])
+            vector_pca = np.zeros((saved_embs_n.shape[0]))
+            vector_pca[:2] = [x, y]
             vector_n = pca.inverse_transform(np.expand_dims(vector_pca, axis=0)).squeeze()
             embs_n[res*i+j] = vector_n
     return embs_n, pca

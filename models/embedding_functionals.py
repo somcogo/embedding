@@ -498,7 +498,7 @@ class GeneralInstanceNorm2d(nn.Module):
         if use_repl_bn:
             self.instance_norm = InstanceNorm2d_emb_replace(num_features=num_features, eps=eps, momentum=momentum, device=device, **kwargs)
         else:
-            self.instance_norm = nn.InstanceNorm2d(num_features=num_features, eps=eps, momentum=momentum, device=device)
+            self.instance_norm = nn.InstanceNorm2d(num_features=num_features, eps=eps, momentum=momentum, device=device, affine=True)
     
     def forward(self, x, emb):
         if self.use_repl_bn:
