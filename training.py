@@ -382,8 +382,9 @@ class EmbeddingTraining:
             emb_normed = (model.embedding / model.embedding.norm()).unsqueeze(0).unsqueeze(0)
             gl_emb_normed = (self.global_embs / self.global_embs.norm(dim=-1, keepdim=True)).unsqueeze(1).to(self.device)
             ncc = nn.functional.conv1d(emb_normed, gl_emb_normed).squeeze()
-            ncc = torch.stack([ncc, torch.zeros_like(ncc)])
-            ncc, _ = torch.max(ncc, 0)
+            ncc = nn.Tanh(5*ncc - 2.5)
+            # ncc = torch.stack([ncc, torch.zeros_like(ncc)])
+            # ncc, _ = torch.max(ncc, 0)
             similarity = torch.ones((self.site_number), device=self.device)
             similarity[self.degs == self.degs[site_id]] *= -1
             ncc_term = (1 + similarity * ncc).sum()
