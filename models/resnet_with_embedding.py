@@ -16,7 +16,7 @@ class CustomResnet(nn.Module):
             self.conv1 = GeneralConv2d(channels, feature_dims[0], kernel_size=3, stride=1, padding=1, bias=False, **kwargs)
         else:
             self.conv1 = GeneralConv2d(channels, feature_dims[0], kernel_size=7, stride=2, padding=3, bias=False, **kwargs)
-        self.batch_norm1 = norm_layer(num_features=feature_dims[0], **kwargs)
+        self.norm1 = norm_layer(num_features=feature_dims[0], **kwargs)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.layers = nn.ModuleList([])
@@ -56,7 +56,7 @@ class CustomResnet(nn.Module):
             emb = layer(emb)
 
         x = self.conv1(x, emb)
-        x = self.batch_norm1(x, emb)
+        x = self.norm1(x, emb)
         x = self.relu(x)
         x = self.maxpool(x)
 
@@ -75,15 +75,15 @@ class ResnetBlock(nn.Module):
         self.residual_const_generator = WeightGenerator(out_channels=out_channels, **kwargs) if mode in [MODE_NAMES['embedding'], MODE_NAMES['residual']] else None
 
         self.conv1 = GeneralConv2d(mode=mode, in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=stride, padding=1, **kwargs)
-        self.batch_norm1 = norm_layer(mode=mode, num_features=out_channels, **kwargs)
+        self.norm1 = norm_layer(mode=mode, num_features=out_channels, **kwargs)
         self.relu = nn.ReLU(inplace=True)
         self.conv2 = GeneralConv2d(mode=mode, in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=1, **kwargs)
-        self.batch_norm2 = norm_layer(mode=mode, num_features=out_channels, **kwargs)
+        self.norm2 = norm_layer(mode=mode, num_features=out_channels, **kwargs)
         self.downsample = downsample
 
     def forward(self, x, emb):
         out = self.conv1(x, emb)
-        out = self.batch_norm1(out, emb)
+        out = self.norm1(out, emb)
         out = self.relu(out)
 
         if self.residual_affine_generator is not None:
@@ -92,7 +92,7 @@ class ResnetBlock(nn.Module):
             out = scale*out + const
 
         out = self.conv2(out, emb)
-        out = self.batch_norm2(out, emb)
+        out = self.norm2(out, emb)
 
         if self.downsample is not None:
             x = self.downsample[0](x, emb)
