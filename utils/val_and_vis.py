@@ -69,14 +69,18 @@ def get_points(model_path, points, vectors, **config):
     return embs, pca
 
 def eval_points(embeddings, model_path, device, **config):
+    print(device)
     state_dict = torch.load(model_path, map_location='cpu')['model_state']
+    for key in list(state_dict.keys()):
+        new_key = key.replace('batch_norm1', 'norm1').replace('batch_norm2', 'norm2')
+        state_dict[new_key] = state_dict.pop(key)
 
     val_model = get_model(**config)[0][0]
     val_model.load_state_dict(state_dict)
     val_model.to(device)
 
     ft_sites = get_ft_sites(**config)
-    cl_number = max([len(np.unique(s['val_dl'].dataset.dataset.targets[s['val_dl'].dataset.indices])) for s in ft_sites])
+    cl_number = max([len(np.unique(s['trn_dl'].dataset.dataset.targets[s['trn_dl'].dataset.indices])) for s in ft_sites])
     print(cl_number, config['cl_per_site'])
 
     losses = np.zeros((len(embeddings), len(ft_sites)))
@@ -95,22 +99,24 @@ def eval_points(embeddings, model_path, device, **config):
             t1 = time.time()
     classes = []
     for site in ft_sites:
-        classes.append(np.unique(site['val_dl'].dataset.dataset.targets[site['val_dl'].dataset.indices]))
+        classes.append(np.unique(site['trn_dl'].dataset.dataset.targets[site['trn_dl'].dataset.indices]))
 
     return losses, accuracies, embeddings, classes
 
 def validation(ft_sites, device, val_model, **config):
     losses = np.zeros(len(ft_sites))
-    cl_number = max([len(np.unique(s['val_dl'].dataset.dataset.targets[s['val_dl'].dataset.indices])) for s in ft_sites])
+    cl_number = max([len(np.unique(s['trn_dl'].dataset.dataset.targets[s['trn_dl'].dataset.indices])) for s in ft_sites])
     acc = np.zeros((len(ft_sites), cl_number))
     for i, site in enumerate(ft_sites):
-        loader = site['val_dl']
+        loader = site['trn_dl']
         classes = np.unique(loader.dataset.dataset.targets[loader.dataset.indices])
         total = np.zeros(cl_number)
         correct = np.zeros(cl_number)
         for batch_tup in loader:
             batch, labels = batch_tup
-            batch = batch.to(device=device, non_blocking=True).float().permute(0, 3, 1, 2)
+            batch = batch.to(device=device, non_blocking=True).float()
+            if config['dataset'] == 'cifar10':
+                batch = batch.permute(0, 3, 1, 2)
             labels = labels.to(device=device, non_blocking=True).to(dtype=torch.long)
 
             batch, labels = transform_image(batch, labels, 'val', site['transform'], config['dataset'], config['model_name'])

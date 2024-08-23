@@ -27,6 +27,9 @@ def get_model(dataset, model_name, site_number, embed_dim, model_type, task, nor
     elif dataset == 'minicoco':
         num_classes = 13
         in_channels = 3
+    elif dataset == 'digits':
+        num_classes = 10
+        in_channels = 3
     config = get_model_config(model_name, model_type, task, cifar, feature_dims, dataset, norm_layer)
     if model_type == 'deepemb':
         config['gen_dim'] = 16

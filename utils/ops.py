@@ -38,10 +38,16 @@ def get_ft_indices(site_number, ft_site_number, degradation, seed=0):
 
 def refactored_get_ft_indices(site_number, ft_site_number, degs, seed=0):
     part_rng = np.random.default_rng(seed)
-    site_per_deg = site_number // len(degs)
-    ft_site_per_deg = ft_site_number // len(degs)
+    if degs == ['digits']:
+        deg_nr = 4
+        site_per_deg = site_number // 4
+        ft_site_per_deg = ft_site_number // 4
+    else:
+        deg_nr = len(degs)
+        site_per_deg = site_number // len(degs)
+        ft_site_per_deg = ft_site_number // len(degs)
     indices = []
-    for i in range(len(degs)):
+    for i in range(deg_nr):
         indices.append(part_rng.permutation(np.arange(i * site_per_deg, (i+1) * site_per_deg))[:ft_site_per_deg])
     indices = np.concatenate(indices)
 

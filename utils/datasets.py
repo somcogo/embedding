@@ -286,7 +286,7 @@ class ConcatWithTargets(Dataset):
         super().__init__()
         self.datasets = datasets
         self.targets = np.concatenate([dset.targets for dset in datasets])
-        self.cumulative_sizes = [len(dset) for dset in self.datasets]
+        self.cumulative_sizes = np.cumsum(np.array([len(dset) for dset in self.datasets]))
 
     def __len__(self):
         return len(self.targets)

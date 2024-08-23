@@ -123,8 +123,11 @@ def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, 
     trn_dl_list, val_dl_list = refactored_get_dls(dataset=config['dataset'], batch_size=config['batch_size'], degs=degradation, n_sites=site_number, seed=data_part_seed, cross_val_id=cross_val_id, gl_seed=gl_seed, cl_per_site=cl_per_site, alpha=config['alpha'])
     transform_list = refactored_get_transforms(site_number=site_number, seed=transform_gen_seed, degs=degradation, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
     class_list = get_class_list(task='classification', site_number=site_number, class_number=18 if config['dataset'] == 'celeba' else None, class_seed=2, degradation=degradation)
-    site_per_deg = site_number // len(degradation) if type(degradation) == list else site_number
-    site_degs = np.repeat(np.arange(site_number // site_per_deg), site_per_deg)
+    if degradation == ['digits']:
+        site_degs = np.repeat(np.arange(4), site_number // 4)
+    else:
+        site_per_deg = site_number // len(degradation) if type(degradation) == list else site_number
+        site_degs = np.repeat(np.arange(site_number // site_per_deg), site_per_deg)
     site_dict = [{'trn_dl': trn_dl_list[ndx],
                     'val_dl': val_dl_list[ndx],
                     'transform': transform_list[ndx],
