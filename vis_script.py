@@ -14,11 +14,11 @@ torch.set_num_threads(8)
 site = 40
 fts = 8
 deg = ['digits']
-# comment = 'size2res20ftpca20trnembs'
-comment = 'debug4'
+comment = 'size1-5res40gridtrnftembs'
+# comment = 'debug4'
 logdir = '4digits'
 comm_rounds = 1000
-norm_layer = 'bn'
+norm_layer = 'in'
 no_batch_running_stats = True
 cl_per_site = 4
 
@@ -32,13 +32,16 @@ ncc_lambda = 0.
 
 main_fn = new_main_plus_ft
 
-model_path = 'saved_models/4digits/2024_08_20-12_04_49-edim-pureemb-classification-resnet18-embbn4-di-s40-fts8-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-64-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-bn-rst-True-clpr4.state'
+model_path = 'saved_models/4digits/2024_08_25-02_47_21-ncc-pureemb-classification-resnet18-embbn4-di-s40-fts8-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-64-digits-fedp-0-proxm-False-xvalNone-gls0-nl-in-rst-True-clpr4-ncc0.001.state'
+# model_path = 'saved_models/alpha/2024_08_24-14_05_56-ncc-pureemb-classification-resnet18-embbn4-adcoal-s30-fts6-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-64-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-in-rst-True-clpr4-ncc0.0.state'
 cross_val_id = None
 gl_seed = 0
 
-p_mode = 'grid'
-saved_embs = load_embs('saved_models/4digits/2024_08_20-12_04_49-edim-pureemb-classification-resnet18-embbn4-di-s40-fts8-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-64-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-bn-rst-True-clpr4.state')
-saved_ft_embs = load_embs('saved_models/4digits_ft/2024_08_21-00_36_28-edim-pureemb-classification-resnet18-embbn4-di-s40-fts8-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-64-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-bn-rst-True-clpr4-onlyemb.state')
+p_mode = 'xygrid'
+saved_embs = load_embs('saved_models/4digits/2024_08_25-02_47_21-ncc-pureemb-classification-resnet18-embbn4-di-s40-fts8-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-64-digits-fedp-0-proxm-False-xvalNone-gls0-nl-in-rst-True-clpr4-ncc0.001.state')
+saved_ft_embs = load_embs('saved_models/4digits_ft/2024_08_26-07_28_46-ncc-pureemb-classification-resnet18-embbn4-di-s40-fts8-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-64-digits-fedp-0-proxm-False-xvalNone-gls0-nl-in-rst-True-clpr4-ncc0.001-onlyemb.state')
+# saved_embs = load_embs('saved_models/alpha/2024_08_24-14_05_56-ncc-pureemb-classification-resnet18-embbn4-adcoal-s30-fts6-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-64-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-in-rst-True-clpr4-ncc0.0.state')
+# saved_ft_embs = load_embs('saved_models/alpha_ft/2024_08_25-02_21_23-ncc-pureemb-classification-resnet18-embbn4-adcoal-s30-fts6-b64-commr1000-iter50-lr1e-4-fflr0.0001-elr0.1-ftelr0.1-embdim-64-cifar10-fedp-0-proxm-False-xvalNone-gls0-nl-in-rst-True-clpr4-ncc0.0-onlyemb.state')
 vectors = np.zeros((site, emb_dim))
 for i in range(site - fts):
     vectors[i] = saved_embs[i]

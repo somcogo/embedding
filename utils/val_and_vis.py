@@ -9,12 +9,22 @@ from utils.data_loader import new_get_dl_lists, refactored_get_dls
 from utils.ops import get_test_transforms, get_class_list, get_ft_indices, create_mask_from_onehot, transform_image, refactored_get_transforms, refactored_get_ft_indices
 from utils.get_model import get_model
 
-def xygrid():
-    embs = []
-    for x in np.linspace(-20, 20, 25):
-        for y in np.linspace(-10, 20, 25):
-            embs.append(torch.tensor([x, y, 0, 0]))
-    return embs
+def xygrid(model_path=None, vectors=None):
+    if vectors is not None:
+        saved_embs_n = vectors
+    else:
+        saved_embs_n = load_embs(model_path)
+    largest = np.linalg.norm(saved_embs_n, axis=1)
+    mean = saved_embs_n.mean(axis=1)
+    res = 40
+    size = 1.5
+    embs_n = np.zeros((res*res, saved_embs_n.shape[1]))
+    for i, x in enumerate(np.linspace(-size * largest[0] + mean[0], size * largest[0] + mean[0], res)):
+        for j, y in enumerate(np.linspace(-size * largest[1] + mean[1], size * largest[1] + mean[1], res)):
+            vector = np.zeros((saved_embs_n.shape[1]))
+            vector[:2] = [x, y]
+            embs_n[res*i+j] = vector
+    return embs_n
 
 def load_embs(model_path):
     saved_dict = torch.load(model_path)
@@ -32,8 +42,8 @@ def pca_grid(model_path=None, vectors=None):
     pca.fit(saved_embs_n)
     saved_embs_pca = pca.transform(saved_embs_n)
     largest = np.linalg.norm(saved_embs_pca, axis=1).max()
-    res = 20
-    size = 2
+    res = 40
+    size = 1.5
     embs_n = np.zeros((res*res, saved_embs_n.shape[1]))
     for i, x in enumerate(np.linspace(-size * largest, size * largest, res)):
         for j, y in enumerate(np.linspace(-size * largest, size * largest, res)):
@@ -64,7 +74,7 @@ def get_points(model_path, points, vectors, **config):
         embs = [saved_embs.mean(dim=0)]
         pca = None
     elif points == 'xygrid':
-        embs = xygrid()
+        embs = xygrid(model_path, vectors)
         pca = None
     return embs, pca
 
@@ -93,9 +103,9 @@ def eval_points(embeddings, model_path, device, **config):
         l, a = validation(ft_sites, device, val_model, **config)
         losses[i] = l
         accuracies[i] = a
-        if i % 100 == 0:
+        if i % 50 == 0:
             t2 = time.time()
-            print(f'{t2-t1:.2f}')
+            print(f'{i+1}/{len(embeddings)} {t2-t1:.2f}')
             t1 = time.time()
     classes = []
     for site in ft_sites:
