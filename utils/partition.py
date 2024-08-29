@@ -64,7 +64,7 @@ def new_partition(trn_indices, val_indices, trn_classes, val_classes, deg, n_sit
     if deg == 'classshard':
         trn_map, val_map = new_partition_with_shards(trn_indices, val_indices, trn_classes, val_classes, n_sites, cl_num, seed, cl_per_site)
     elif deg == 'alphascale':
-        trn_map_per_alpha, val_map_per_alpha = new_partition_with_shards(trn_indices, val_indices, trn_classes, val_classes, n_sites=n_sites//2, cl_num=cl_num, cl_per_site=cl_num)
+        trn_map_per_alpha, val_map_per_alpha = new_partition_with_shards(trn_indices, val_indices, trn_classes, val_classes, n_sites=n_sites//2, cl_num=cl_num, cl_per_site=cl_num, seed=seed)
         alphas = np.logspace(-1, 1, n_sites//2)
         trn_map, val_map = {}, {}
         for i in range(n_sites//2):

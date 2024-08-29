@@ -108,7 +108,7 @@ class EmbeddingTraining:
         emb_optims = []
         for model in self.models:
             if finetuning:
-                assert self.strategy in ['finetuning', 'onlyfc', 'onlyemb', 'fffinetuning', 'fedbn', 'embbnft']
+                assert self.strategy in ['finetuning', 'onlyfc', 'onlyemb', 'fffinetuning', 'fedbn', 'embbnft', 'nomerge']
                 all_names = get_layer_list(task=self.task, strategy=self.strategy, model=model)
                 for name, param in model.named_parameters():
                     if name not in all_names:
@@ -247,7 +247,7 @@ class EmbeddingTraining:
                 if logging_index:
                     log.info('Round {} of {}, accuracy/dice {}, val loss {}'.format(comm_round, self.comm_rounds, metric_to_report, val_metrics['mean loss']))
             
-            if self.scheduler_mode in ['cosine', 'warmcos'] and not self.finetuning:
+            if self.scheduler_mode in ['cosine', 'warmcos']:
                 for scheduler in self.schedulers:
                     scheduler.step()
                 for emb_scheduler in self.emb_schedulers:

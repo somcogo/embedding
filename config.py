@@ -28,6 +28,8 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
         ft_strategy = 'embbnft'
     elif strategy == 'pureemb':
         ft_strategy = 'onlyemb'
+    elif strategy == 'all':
+        ft_strategy = 'nomerge'
 
     deg_string = ''.join([name[:2] for name in degradation]) if type(degradation) == list else degradation
 

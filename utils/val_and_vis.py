@@ -145,7 +145,7 @@ def validation(ft_sites, device, val_model, **config):
 
 def get_ft_sites(degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_site_number, cross_val_id, gl_seed, cl_per_site, **config):
 
-    trn_dl_list, val_dl_list = refactored_get_dls(dataset=config['dataset'], batch_size=config['batch_size'], degs=degradation, n_sites=site_number, seed=data_part_seed, cross_val_id=cross_val_id, gl_seed=gl_seed, cl_per_site=cl_per_site)
+    trn_dl_list, val_dl_list = refactored_get_dls(dataset=config['dataset'], batch_size=config['batch_size'], degs=degradation, n_sites=site_number, seed=data_part_seed, cross_val_id=cross_val_id, gl_seed=gl_seed, cl_per_site=cl_per_site, shuffle=False)
     transform_list = refactored_get_transforms(site_number=site_number, seed=transform_gen_seed, degs=degradation, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
     class_list = get_class_list(task='classification', site_number=site_number, class_number=18 if config['dataset'] == 'celeba' else None, class_seed=2, degradation=degradation)
     site_dict = [{'trn_dl': trn_dl_list[ndx],
@@ -159,3 +159,51 @@ def get_ft_sites(degradation, site_number, data_part_seed, transform_gen_seed, t
     ft_site_dict = [site_dict[i] for i in range(len(site_dict)) if i in ft_indices]
 
     return ft_site_dict
+
+def new_vis(case, state_path, vectors):
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    if case == 'mixed':
+        degs = ['addgauss', 'colorjitter', 'alphascale']
+    elif case == 'digits':
+        degs = ['digits']
+    dataset = 'digits' if degs == ['digits'] else 'cifar10'
+    site_number = 40 if degs == ['digits'] else 30
+    fts = 8 if degs == ['digits'] else 6
+
+    dls = refactored_get_dls(dataset, 1024, degs, site_number, seed=0, gl_seed=0, shuffle=False)
+    transforms = refactored_get_transforms(site_number, 0, degs, device, var_add=(0.005, 1))
+
+    model = get_model(dataset, 'resnet18', site_number, 64, 'embbn4', 'classification', 'in', ft_emb_vec=None)[0][0]
+    model = model.to(device)
+    state_dt = torch.load(state_path)['model_state']
+    for key in list(state_dt.keys()):
+        new_key = key.replace('batch_norm1', 'norm1').replace('batch_norm2', 'norm2')
+        state_dt[new_key] = state_dt.pop(key)
+
+    losses = np.zeros((site_number, len(vectors)))
+    imgs = np.zeros((site_number, 3, 32, 32))
+    loss_fn = nn.CrossEntropyLoss()
+    vectors = torch.from_numpy(vectors)
+    t1 = time.time()
+    for v_i, vector in enumerate(vectors):
+        model.load_state_dict(state_dt)
+        model.embedding = nn.Parameter(vectors[v_i].to(device))
+        model.eval()
+        for ndx in range(site_number):
+            for batch_tup in dls[0][ndx]:
+                batch, labels = batch_tup
+                batch = batch.to(device=device, non_blocking=True).float()
+                if dataset == 'cifar10':
+                    batch = batch.permute(0, 3, 1, 2)
+                labels = labels.to(device=device, non_blocking=True).to(dtype=torch.long)
+
+                batch, labels = transform_image(batch, labels, 'val', transforms[ndx], dataset, 'resnet18')
+                pred = model(batch)
+                losses[ndx, v_i] += loss_fn(pred, labels)
+            imgs[ndx] = batch[0].detach().cpu().numpy()
+        if v_i % 50 == 0:
+            t2 = time.time()
+            print(f'{v_i+1}/{len(vectors)}, {t2-t1}')
+            t1 = time.time()
+
+    return losses, imgs, vectors

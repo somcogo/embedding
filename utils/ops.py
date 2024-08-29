@@ -2,6 +2,7 @@ import math
 import numpy as np
 import torch
 from torchvision.transforms import (
+     functional,
      Compose,
      Pad,
      RandomCrop,
@@ -164,7 +165,7 @@ def getTransformList(degradation, site_number, seed, device, **kwargs):
             con = rng.uniform(endpoints[con_ndx[site]], endpoints[con_ndx[site]+1])
             sat = rng.uniform(endpoints[sat_ndx[site]], endpoints[sat_ndx[site]+1])
             hue = rng.uniform(endpoints[hue_ndx[site]], endpoints[hue_ndx[site]+1]) - 1
-            transforms.append(deterministicColorjitter(bri, con, sat, hue))
+            transforms.append(deterministicColorjitter(bri, con, sat, hue, rng))
 
     elif degradation == '3noises':
         var_add = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], math.ceil(site_number/3))
@@ -222,7 +223,7 @@ def get_test_transforms(site_number, seed, degradation, device, **kwargs):
             transforms.append(ConvertImageDtype(torch.float))
         jitters = np.linspace(0.5, 1.5, site_number//3)
         for j in jitters:
-            transforms.append(deterministicColorjitter(j, j, j, j - 1))
+            transforms.append(deterministicColorjitter(j, j, j, j - 1, rng))
     elif degradation == 'colorjitter':
         endpoints = np.linspace(0.5, 1.5, site_number+1)
         bri_ndx = rng.permutation(np.arange(site_number))
@@ -234,7 +235,7 @@ def get_test_transforms(site_number, seed, degradation, device, **kwargs):
             con = rng.uniform(endpoints[con_ndx[site]], endpoints[con_ndx[site]+1])
             sat = rng.uniform(endpoints[sat_ndx[site]], endpoints[sat_ndx[site]+1])
             hue = rng.uniform(endpoints[hue_ndx[site]], endpoints[hue_ndx[site]+1]) - 1
-            transforms.append(deterministicColorjitter(bri, con, sat, hue))
+            transforms.append(deterministicColorjitter(bri, con, sat, hue, rng))
     elif degradation == 'addgauss':
         variances = np.linspace(kwargs['var_add'][0], kwargs['var_add'][1], site_number)
         for i in range(site_number):
@@ -242,20 +243,20 @@ def get_test_transforms(site_number, seed, degradation, device, **kwargs):
     elif degradation == 'jitter':
         jitters = np.linspace(0.5, 1.5, site_number)
         for j in jitters:
-            transforms.append(deterministicColorjitter(j, j, j, j - 1))
+            transforms.append(deterministicColorjitter(j, j, j, j - 1, rng))
     elif degradation == 'jittermix':
         bri = np.linspace(0.2, 1.8, site_number//4)
         for b in bri:
-            transforms.append(deterministicColorjitter(b, 1., 1., 0.))
+            transforms.append(deterministicColorjitter(b, 1., 1., 0., rng))
         con = np.linspace(0.2, 1.8, site_number//4)
         for c in con:
-            transforms.append(deterministicColorjitter(1., c, 1., 0.))
+            transforms.append(deterministicColorjitter(1., c, 1., 0., rng))
         sat = np.linspace(0.2, 1.8, site_number//4)
         for s in sat:
-            transforms.append(deterministicColorjitter(1., 1., s, 0.))
+            transforms.append(deterministicColorjitter(1., 1., s, 0., rng))
         hue = np.linspace(-0.5, 0.5, site_number//4)
         for h in hue:
-            transforms.append(deterministicColorjitter(1., 1., 1., h))
+            transforms.append(deterministicColorjitter(1., 1., 1., h, rng))
     elif degradation == 'randgauss':
         var = rng.standard_normal((site_number)) * 0.05
         var[var < -0.049] = -0.049
@@ -295,12 +296,22 @@ class NoiseTransform:
         return img.float()
 
 class deterministicColorjitter:
-    def __init__(self, bri, con, sat, hue):
+    def __init__(self, bri, con, sat, hue, rng):
         self.bri = bri
         self.con = con
         self.sat = sat
         self.hue = hue
-        self.jitter = ColorJitter((self.bri, self.bri), (self.con, self.con), (self.sat, self.sat), (self.hue, self.hue))
+        self.rng = rng
     
     def __call__(self, img:torch.Tensor):
-        return self.jitter(img)
+        fn_idx = self.rng.permutation(4)
+        for fn_id in fn_idx:
+            if fn_id == 0:
+                img = functional.adjust_brightness(img, self.bri)
+            if fn_id == 1:
+                img = functional.adjust_contrast(img, self.con)
+            if fn_id == 2:
+                img = functional.adjust_saturation(img, self.sat)
+            if fn_id == 3:
+                img = functional.adjust_hue(img, self.hue)
+        return img
