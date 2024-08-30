@@ -47,10 +47,7 @@ def get_model(dataset, model_name, site_number, embed_dim, model_type, task, nor
             mu_init = np.exp((2 * np.pi * 1j/ site_number)*np.arange(0,site_number))
             mu_init = np.stack([np.real(mu_init), np.imag(mu_init)], axis=1)
         for i, model in enumerate(models):
-            if ft_emb_vec is None:
-                init_weight = torch.from_numpy(mu_init[i]).to(torch.float)
-            else:
-                init_weight = ft_emb_vec
+            init_weight = torch.from_numpy(mu_init[i]).to(torch.float) if ft_emb_vec is None else ft_emb_vec
             model.embedding = torch.nn.Parameter(init_weight)
     return models, num_classes
 
