@@ -18,7 +18,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
     
     fflr = 1e-4 if model_type != 'vanilla' else None
     emb_lr = 1e-1 if model_type != 'vanilla' else None
-    ft_emb_lr = 1e-1 if model_type != 'vanilla' else None
+    ft_emb_lr = 1e-2 if model_type != 'vanilla' else None
 
     if strategy == 'fedbntrn':
         ft_strategy = 'fedbn'

@@ -232,7 +232,7 @@ class EmbeddingTraining:
 
             trn_metrics = self.doTraining(trn_dls)
             self.logMetrics(comm_round, 'trn', trn_metrics)
-            self.saveEmbs(comm_round)
+            self.saveEmbs(comm_round, trn_metrics)
             self.updateGlobalEmbs()
 
             if comm_round == 1 or comm_round % validation_cadence == 0:
@@ -583,7 +583,7 @@ class EmbeddingTraining:
         return embeddings
 
     
-    def saveEmbs(self, comm_round):
+    def saveEmbs(self, comm_round, metrics):
         embedding_file_path = os.path.join('/home/hansel/developer/embedding/embeddings',
                                       self.logdir_name,
                                       f'{self.time_str}-{self.comment}',
@@ -592,7 +592,8 @@ class EmbeddingTraining:
         os.makedirs(os.path.dirname(embedding_file_path), mode=0o755, exist_ok=True)
         embeddings = self.getEmbs()
         if embeddings is not None:
-            dict_to_save = {'embedding':embeddings}
+            dict_to_save = {'embedding':embeddings,
+                            'metrics':metrics}
             torch.save(dict_to_save, embedding_file_path)
             log.debug("Saved embeddings to {}".format(embedding_file_path))
 

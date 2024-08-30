@@ -16,7 +16,7 @@ def xygrid(model_path=None, vectors=None):
         saved_embs_n = load_embs(model_path)
     largest = np.linalg.norm(saved_embs_n, axis=1)
     mean = saved_embs_n.mean(axis=1)
-    res = 40
+    res = 10
     size = 1.5
     embs_n = np.zeros((res*res, saved_embs_n.shape[1]))
     for i, x in enumerate(np.linspace(-size * largest[0] + mean[0], size * largest[0] + mean[0], res)):
