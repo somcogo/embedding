@@ -378,7 +378,7 @@ class EmbeddingTraining:
                     prox_term += torch.pow(torch.norm(glob_p - loc_p), 2)
 
         ncc_term = torch.tensor(0., device=self.device)
-        if model.embedding is not None:
+        if model.embedding is not None and model.embedding.norm() > 0 and (self.global_embs.norm(dim=-1) > 0).all():
             emb_normed = (model.embedding / model.embedding.norm()).unsqueeze(0).unsqueeze(0)
             gl_emb_normed = (self.global_embs / self.global_embs.norm(dim=-1, keepdim=True)).unsqueeze(1).to(self.device)
             ncc = nn.functional.conv1d(emb_normed, gl_emb_normed).squeeze()
