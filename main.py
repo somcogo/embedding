@@ -136,7 +136,6 @@ def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, 
                     for ndx in range(site_number)]
 
     ft_indices = refactored_get_ft_indices(site_number, ft_site_number, degradation)
-    # ft_indices = np.array([0, 10, 20])
     trn_site_dict = [site_dict[i] for i in range(len(site_dict)) if i not in ft_indices]
     ft_site_dict = [site_dict[i] for i in range(len(site_dict)) if i in ft_indices]
     
