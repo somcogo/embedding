@@ -1,7 +1,7 @@
 import numpy as np
 
-def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type, fed_prox, prox_map, emb_dim, ft_site_number, cross_val_id, gl_seed, norm_layer, no_batch_running_stats, cl_per_site, ncc_lambda, ft_emb_vec=None):
-    dataset = 'digits' if degradation == ['digits'] else 'cifar10'
+def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type, fed_prox, prox_map, emb_dim, ft_site_number, cross_val_id, gl_seed, norm_layer, no_batch_running_stats, cl_per_site, ncc_lambda, dataset, ft_emb_vec=None):
+    dataset = 'digits' if degradation == ['digits'] else dataset
     task = 'classification'
     partition = 'dirichlet'
     batch_size = 64
