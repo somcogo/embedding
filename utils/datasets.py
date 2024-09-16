@@ -72,7 +72,7 @@ class CIFAR10DataSet(Dataset):
         return self.data.shape[0]
     
     def __getitem__(self, index):
-        img = torch.from_numpy(np.transpose(self.data[index], (1, 2, 0)))
+        img = torch.from_numpy(self.data[index])
         target = self.targets[index]
         return img, target
 

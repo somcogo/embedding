@@ -12,33 +12,28 @@ MODE_NAMES = {'embedding': 'embedding_weights',
 class WeightGenerator(nn.Module):
     def __init__(self, gen_dim, gen_hidden_layer, out_channels, gen_depth=None, target='const', **kwargs):
         super().__init__()
-        self.gen_depth = gen_depth
 
-        bound_w_l = - 1 / math.sqrt(gen_dim)
-        bound_w_r = 1 / math.sqrt(gen_dim)
-        bound_b_l = 1 - 1 / math.sqrt(gen_dim) if target == 'one' else - 1 / math.sqrt(gen_dim)
-        bound_b_r = 1 + 1 / math.sqrt(gen_dim) if target == 'one' else 1 / math.sqrt(gen_dim)
-        if gen_depth == 1:
-            self.lin1 = nn.Linear(in_features=gen_dim, out_features=out_channels)
+        self.layers = nn.ModuleList()
+        for i in range(gen_depth):
+            in_dim = gen_dim if i == 0 else gen_hidden_layer * 2**(i-1)
+            out_dim = out_channels if i == gen_depth -1 else gen_hidden_layer * 2**i
+            self.layers.append(nn.Linear(in_features=in_dim, out_features=out_dim))
+            if i < gen_depth - 1 :
+                self.layers.append(nn.ReLU())
 
-            nn.init.uniform_(self.lin1.weight, a=bound_w_l, b=bound_w_r)
-            nn.init.uniform_(self.lin1.bias, a=bound_b_l, b=bound_b_r)
-        if gen_depth == 2:
-            self.lin1 = nn.Linear(in_features=gen_dim, out_features=gen_hidden_layer)
-            self.lin2 = nn.Linear(in_features=gen_hidden_layer, out_features=out_channels)
-
-            nn.init.uniform_(self.lin2.weight, a=bound_w_l, b=bound_w_r)
-            nn.init.uniform_(self.lin2.bias, a=bound_b_l, b=bound_b_r)
+        fan_in = self.layers[-1].in_features
+        bound_w_l = - 1 / math.sqrt(fan_in)
+        bound_w_r = 1 / math.sqrt(fan_in)
+        bound_b_l = 1 - 1 / math.sqrt(fan_in) if target == 'one' else - 1 / math.sqrt(fan_in)
+        bound_b_r = 1 + 1 / math.sqrt(fan_in) if target == 'one' else 1 / math.sqrt(fan_in)
+        nn.init.uniform_(self.layers[-1].weight, a=bound_w_l, b=bound_w_r)
+        nn.init.uniform_(self.layers[-1].bias, a=bound_b_l, b=bound_b_r)
     
     def forward(self, x):
         x = x.to(torch.float)
-        if self.gen_depth == 1:
-            out = self.lin1(x)
-        if self.gen_depth == 2:
-            x = self.lin1(x)
-            x = nn.functional.relu(x)
-            out = self.lin2(x)
-        return out
+        for layer in self.layers:
+            x = layer(x)
+        return x
     
 class CombWeightGenerator(nn.Module):
     def __init__(self, gen_dim, gen_hidden_layer, out_chans, gen_depth=None, targets=['const', 'one'], **kwargs):
@@ -474,6 +469,23 @@ class GeneralBatchNorm2d(nn.Module):
             self.batch_norm = BatchNorm2d_emb_replace(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, device=device, **kwargs)
         else:
             self.batch_norm = nn.BatchNorm2d(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, device=device)
+    
+    def forward(self, x, emb):
+        if self.use_repl_bn:
+            out = self.batch_norm(x, emb)
+        else:
+            out = self.batch_norm(x)
+        return out
+    
+class GeneralBatchNorm1d(nn.Module):
+    def __init__(self, num_features, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True, device=None, dtype=None, use_repl_bn=False, **kwargs):
+        super().__init__()
+        self.use_repl_bn = use_repl_bn
+
+        if use_repl_bn:
+            self.batch_norm = BatchNorm2d_emb_replace(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, device=device, **kwargs)
+        else:
+            self.batch_norm = nn.BatchNorm1d(num_features=num_features, eps=eps, momentum=momentum, affine=affine, track_running_stats=track_running_stats, device=device)
     
     def forward(self, x, emb):
         if self.use_repl_bn:
