@@ -218,43 +218,48 @@ class EmbeddingTraining:
             self.logMetrics(0, 'val', val_metrics, imgs)
             metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['average/mean dice']
             log.info('Round {} of {}, accuracy/dice {}, val loss {}'.format(0, self.comm_rounds, metric_to_report, val_metrics['mean loss']))
+        
+        if self.strategy == 'nomerge' and self.finetuning:
+            saving_criterion = max(metric_to_report, saving_criterion)
+            self.saveModel(comm_round, val_metrics, trn_dls, val_dls)
+            best_state_dict = self.models[0].state_dict()
+        else:
+            for comm_round in range(1, self.comm_rounds + 1):
+                logging_index = comm_round % 10**(math.floor(math.log(comm_round, 10))) == 0
 
-        for comm_round in range(1, self.comm_rounds + 1):
-            logging_index = comm_round % 10**(math.floor(math.log(comm_round, 10))) == 0
+                if comm_round == 1:
+                    log.info("Round {} of {}, training on {} sites, using {} device".format(
+                        comm_round,
+                        self.comm_rounds,
+                        len(trn_dls),
+                        (torch.cuda.device_count() if self.device == 'cuda' else 1),
+                    ))
 
-            if comm_round == 1:
-                log.info("Round {} of {}, training on {} sites, using {} device".format(
-                    comm_round,
-                    self.comm_rounds,
-                    len(trn_dls),
-                    (torch.cuda.device_count() if self.device == 'cuda' else 1),
-                ))
+                trn_metrics = self.doTraining(trn_dls)
+                self.logMetrics(comm_round, 'trn', trn_metrics)
+                self.saveEmbs(comm_round, trn_metrics)
+                self.updateGlobalEmbs()
 
-            trn_metrics = self.doTraining(trn_dls)
-            self.logMetrics(comm_round, 'trn', trn_metrics)
-            self.saveEmbs(comm_round, trn_metrics)
-            self.updateGlobalEmbs()
+                if comm_round == 1 or comm_round % validation_cadence == 0:
+                    val_metrics, imgs = self.doValidation(val_dls)
+                    self.logMetrics(comm_round, 'val', val_metrics, imgs)
+                    metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['average/mean dice']
+                    saving_criterion = max(metric_to_report, saving_criterion)
 
-            if comm_round == 1 or comm_round % validation_cadence == 0:
-                val_metrics, imgs = self.doValidation(val_dls)
-                self.logMetrics(comm_round, 'val', val_metrics, imgs)
-                metric_to_report = val_metrics['overall/accuracy'] if 'overall/accuracy' in val_metrics.keys() else val_metrics['average/mean dice']
-                saving_criterion = max(metric_to_report, saving_criterion)
+                    if self.save_model and metric_to_report==saving_criterion:
+                        self.saveModel(comm_round, val_metrics, trn_dls, val_dls)
+                        best_state_dict = self.models[0].state_dict()
+                    if logging_index:
+                        log.info('Round {} of {}, accuracy/dice {}, val loss {}'.format(comm_round, self.comm_rounds, metric_to_report, val_metrics['mean loss']))
+                
+                if self.scheduler_mode in ['cosine', 'warmcos']:
+                    for scheduler in self.schedulers:
+                        scheduler.step()
+                    for emb_scheduler in self.emb_schedulers:
+                        emb_scheduler.step()
 
-                if self.save_model and metric_to_report==saving_criterion:
-                    self.saveModel(comm_round, val_metrics, trn_dls, val_dls)
-                    best_state_dict = self.models[0].state_dict()
-                if logging_index:
-                    log.info('Round {} of {}, accuracy/dice {}, val loss {}'.format(comm_round, self.comm_rounds, metric_to_report, val_metrics['mean loss']))
-            
-            if self.scheduler_mode in ['cosine', 'warmcos']:
-                for scheduler in self.schedulers:
-                    scheduler.step()
-                for emb_scheduler in self.emb_schedulers:
-                    emb_scheduler.step()
-
-            if self.site_number > 1 and not self.finetuning:
-                self.mergeModels()
+                if self.site_number > 1 and not self.finetuning:
+                    self.mergeModels()
 
         if hasattr(self, 'trn_writer'):
             self.trn_writer.close()
