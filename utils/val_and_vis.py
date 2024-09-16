@@ -207,3 +207,53 @@ def new_vis(case, state_path, vectors):
             t1 = time.time()
 
     return losses, imgs, vectors
+
+def validate_vanilla(case, state_path, params, keys):
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    if case == 'mixed':
+        degs = ['addgauss', 'colorjitter', 'alphascale']
+    elif case == 'digits':
+        degs = ['digits']
+    dataset = 'digits' if degs == ['digits'] else 'cifar10'
+    site_number = 40 if degs == ['digits'] else 30
+    fts = 8 if degs == ['digits'] else 6
+
+    dls = refactored_get_dls(dataset, 1024, degs, site_number, seed=0, gl_seed=0, shuffle=False)
+    transforms = refactored_get_transforms(site_number, 0, degs, device, var_add=(0.005, 1))
+    ft_indices = refactored_get_ft_indices(site_number, fts, degs)
+    trn_indices = [i for i in range(site_number) if i not in ft_indices]
+    site_indices = trn_indices + ft_indices.tolist()
+    # trn_indices = np.arange(30)
+
+    
+    models = get_model(dataset, 'resnet18', site_number, None, 'vanilla', 'classification', 'in', ft_emb_vec=None)[0][:len(site_indices)]
+    vanilla_dict = torch.load(state_path, map_location='cpu')['model_state']
+    dicts = [{} for i in range(len(models))]
+    for key, param in zip(keys, params):
+        for i in range(len(models)):
+            dicts[i][key] = param[i]
+    for i in range(len(models)):
+        models[i].load_state_dict(vanilla_dict, strict=False)
+        models[i].load_state_dict(dicts[i], strict=False)
+        models[i] = models[i].to(device)
+        models[i].eval()
+
+
+    corrects = np.zeros(len(models))
+    totals = np.zeros(len(models))
+    for model_ndx, site_ndx in enumerate(site_indices):
+        model = models[model_ndx]
+        for batch_tup in dls[1][site_ndx]:
+            batch, labels = batch_tup
+            batch = batch.to(device=device, non_blocking=True).float()
+            # if dataset == 'cifar10':
+            #     batch = batch.permute(0, 3, 1, 2)
+            labels = labels.to(device=device, non_blocking=True).to(dtype=torch.long)
+
+            batch, labels = transform_image(batch, labels, 'val', transforms[site_ndx], dataset, 'resnet18')
+            pred = model(batch)
+            pred_label = torch.argmax(pred, dim=1)
+            totals[model_ndx] += pred_label.shape[0]
+            corrects[model_ndx] += (pred_label == labels).sum()
+    accuracies = corrects / totals
+    return accuracies

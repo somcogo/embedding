@@ -145,3 +145,4 @@ results
 .vscode
 embeddings
 loss_vis
+emb_finetune
