@@ -279,35 +279,12 @@ class EmbeddingTraining:
         for ndx, trn_dl in enumerate(trn_dls):
             iter_ndx = 0
             site_metrics = self.get_empty_metrics()
-            if self.iterations is not None:
-                while iter_ndx < self.iterations:
+            while iter_ndx < self.iterations:
 
-                    for batch_tuple in trn_dl:
-                        # with torch.autograd.detect_anomaly():
-                            self.optims[ndx].zero_grad()
-                            if len(self.emb_optims) > 0:
-                                self.emb_optims[ndx].zero_grad()
-                            loss, _ = self.computeBatchLoss(
-                                batch_tuple,
-                                self.models[ndx],
-                                site_metrics,
-                                'trn',
-                                ndx)
-                            loss.backward()
-                            self.optims[ndx].step()
-                            if len(self.emb_optims) > 0:
-                                self.emb_optims[ndx].step()
-                            if self.scheduler_mode == 'onecyc' and not self.finetuning:
-                                for scheduler in self.schedulers:
-                                    scheduler.step()
-                                for emb_scheduler in self.emb_schedulers:
-                                    emb_scheduler.step()
-                            iter_ndx += 1
-                            if iter_ndx >= self.iterations:
-                                break
-            else:
                 for batch_tuple in trn_dl:
                     # with torch.autograd.detect_anomaly():
+                        if batch_tuple[0].shape[0] == 1:
+                            continue
                         self.optims[ndx].zero_grad()
                         if len(self.emb_optims) > 0:
                             self.emb_optims[ndx].zero_grad()
@@ -326,6 +303,9 @@ class EmbeddingTraining:
                                 scheduler.step()
                             for emb_scheduler in self.emb_schedulers:
                                 emb_scheduler.step()
+                        iter_ndx += 1
+                        if iter_ndx >= self.iterations:
+                            break
 
             metrics.append(site_metrics)
         trn_metrics = self.calculateGlobalMetricsFromLocal(metrics, mode='trn')
