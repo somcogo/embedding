@@ -221,7 +221,7 @@ class EmbeddingTraining:
         
         if self.strategy == 'nomerge' and self.finetuning:
             saving_criterion = max(metric_to_report, saving_criterion)
-            self.saveModel(comm_round, val_metrics, trn_dls, val_dls)
+            self.saveModel(0, val_metrics, trn_dls, val_dls)
             best_state_dict = self.models[0].state_dict()
         else:
             for comm_round in range(1, self.comm_rounds + 1):
