@@ -174,5 +174,11 @@ def get_model_config(model_name, model_type, task, cifar, feature_dims, dataset,
         config['gen_hidden_layer'] = 64
         config['use_repl_bn'] = True
         config['comb_gen_length'] = 4
+    elif model_type == 'embbn8':
+        config['mode'] = 'fedbn'
+        config['gen_depth'] = 3
+        config['gen_affine'] = False
+        config['gen_hidden_layer'] = 64
+        config['use_repl_bn'] = True
 
     return config
