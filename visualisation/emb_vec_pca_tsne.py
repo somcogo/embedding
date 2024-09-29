@@ -49,7 +49,7 @@ def vis_embedding(trn_path, ft_path, trn_sites, ft_sites, deg, x_dim=0, y_dim=1,
     elif deg == 'adcoal' or deg == 'adjial':
         colors = ['red', 'blue', 'green']
         ft_colors = ['lightcoral', 'cyan', 'mediumspringgreen']
-        labels = ['Gaussian noise ', 'colorjitter ', 'alphascale ']
+        labels = ['Noise ', 'Colorjitter ', 'Class imbalance ']
         # title = '10 noisy sites, 10 class skewed sites, 10 colorjitter sites'
         title = ''
         site_per_deg = trn_sites // 3
@@ -111,8 +111,9 @@ def vis_embedding(trn_path, ft_path, trn_sites, ft_sites, deg, x_dim=0, y_dim=1,
     y = v[:, 1]
     for i in range(len(colors)):
         ax[1].scatter(x[site_per_deg*i:site_per_deg*(i+1)], y[site_per_deg*i:site_per_deg*(i+1)], c=colors[i], label=labels[i]+'trn')
-    for i in range(len(ft_colors)):
-        ax[1].scatter(x[trn_sites + ft_site_per_deg*i:trn_sites + ft_site_per_deg*(i+1)], y[trn_sites + ft_site_per_deg*i:trn_sites + ft_site_per_deg*(i+1)], c=ft_colors[i], label=labels[i]+'ft')
+    if ft_path is not None:
+        for i in range(len(ft_colors)):
+            ax[1].scatter(x[trn_sites + ft_site_per_deg*i:trn_sites + ft_site_per_deg*(i+1)], y[trn_sites + ft_site_per_deg*i:trn_sites + ft_site_per_deg*(i+1)], c=ft_colors[i], label=labels[i]+'ft')
     diam, cent_x, cent_y = max(x.max()-x.min(), y.max()-y.min()), x.mean(), y.mean()
     ax[1].set_xlim(cent_x - diam, cent_x + diam)
     ax[1].set_ylim(cent_y - diam, cent_y + diam)
