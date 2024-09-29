@@ -115,10 +115,11 @@ def new_main(logdir, comment, degradation, site_number, data_part_seed, transfor
     ft_trainer = EmbeddingTraining(logdir=logdir, comment=comment, site_number=site_number, sites=site_dict, **config)
     ft_trainer.train()
 
-def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_strategy, state_dict, ft_site_number, only_ft, ft_emb_lr, cross_val_id, gl_seed, ft_emb_vec, cl_per_site, **config):
+def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_strategy, state_dict, ft_site_number, only_ft, ft_emb_lr, cross_val_id, gl_seed, ft_emb_vec, cl_per_site, trn_set_size, **config):
     log.info(comment)
 
-    trn_dl_list, val_dl_list = refactored_get_dls(dataset=config['dataset'], batch_size=config['batch_size'], degs=degradation, n_sites=site_number, seed=data_part_seed, cross_val_id=cross_val_id, gl_seed=gl_seed, cl_per_site=cl_per_site, alpha=config['alpha'])
+    trn_dl_list, val_dl_list = refactored_get_dls(dataset=config['dataset'], batch_size=config['batch_size'], degs=degradation, n_sites=site_number, seed=data_part_seed, cross_val_id=cross_val_id, gl_seed=gl_seed, cl_per_site=cl_per_site, alpha=config['alpha'], trn_set_size=trn_set_size)
+    print([len(dl.dataset) for dl in trn_dl_list])
     transform_list = refactored_get_transforms(site_number=site_number, seed=transform_gen_seed, degs=degradation, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
     class_list = get_class_list(task='classification', site_number=site_number, class_number=18 if config['dataset'] == 'celeba' else None, class_seed=2, degradation=degradation)
     if degradation == ['digits']:

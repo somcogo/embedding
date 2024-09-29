@@ -74,7 +74,7 @@ def deg_list_dl_list(dataset, batch_size, degradations, n_site=None, seed=None):
         val_dls.append(v)
     return sum(trn_dls, []), sum(val_dls, [])
 
-def refactored_get_dls(dataset, batch_size, degs, n_sites, alpha=None, trn_map=None, val_map=None, shuffle=True, seed=None, site_indices=None, use_hdf5=True, cross_val_id=None, gl_seed=None, cl_per_site=None):
+def refactored_get_dls(dataset, batch_size, degs, n_sites, alpha=None, trn_map=None, val_map=None, shuffle=True, seed=None, site_indices=None, use_hdf5=True, cross_val_id=None, gl_seed=None, cl_per_site=None, trn_set_size=None):
     trn_dataset, val_dataset = get_datasets(data_dir=data_path, dataset=dataset, use_hdf5=use_hdf5)
 
     g = torch.Generator()
@@ -99,6 +99,9 @@ def refactored_get_dls(dataset, batch_size, degs, n_sites, alpha=None, trn_map=N
         indices = [split[cross_val_id] for split in splits]
         trn_ds_list = [Subset(ds, idx_map[0]) for ds, idx_map in zip(merged_ds_list, indices)]
         val_ds_list = [Subset(ds, idx_map[1]) for ds, idx_map in zip(merged_ds_list, indices)]
+
+    if trn_set_size is not None:
+        trn_ds_list = [Subset(ds, np.arange(trn_set_size)) for ds in trn_ds_list]
 
     trn_dl_list = [DataLoader(dataset=trn_ds, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=0, worker_init_fn=seed_worker, generator=g) for trn_ds in trn_ds_list]
     val_dl_list = [DataLoader(dataset=val_ds, batch_size=1024, shuffle=False, pin_memory=True, num_workers=0, worker_init_fn=seed_worker, generator=g) for val_ds in val_ds_list]

@@ -1,6 +1,6 @@
 import numpy as np
 
-def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type, fed_prox, prox_map, emb_dim, ft_site_number, cross_val_id, gl_seed, norm_layer, no_batch_running_stats, cl_per_site, ncc_lambda, dataset, feature_dim, ft_emb_vec=None):
+def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strategy, model_type, fed_prox, prox_map, emb_dim, ft_site_number, cross_val_id, gl_seed, norm_layer, no_batch_running_stats, cl_per_site, ncc_lambda, dataset, feature_dim, trn_set_size, ft_emb_vec=None):
     dataset = 'digits' if degradation == ['digits'] else dataset
     task = 'classification'
     partition = 'dirichlet'
@@ -36,7 +36,7 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
     feature_dim = feature_dim * np.array([1, 2, 4, 8])
 
     config = {'logdir':logdir,
-            'comment':f'{comment}-{strategy}-{model_type}-{deg_string}-s{str(site_number)}-fts{str(ft_site_number)}-lr1e-4-fflr{fflr}-elr{emb_lr}-ftelr{ft_emb_lr}-embdim-{emb_dim}-{dataset}-fedp-{str(fed_prox)}-xval{cross_val_id}-gls{gl_seed}-nl-{norm_layer}-fd-{feat_dim_string}',
+            'comment':f'{comment}-{strategy}-{model_type}-{deg_string}-s{str(site_number)}-fts{str(ft_site_number)}-lr1e-4-fflr{fflr}-elr{emb_lr}-ftelr{ft_emb_lr}-embdim-{emb_dim}-{dataset}-fedp-{str(fed_prox)}-xval{cross_val_id}-gls{gl_seed}-nl-{norm_layer}-fd-{feat_dim_string}-tss-{trn_set_size}',
             'task':task,
             'model_name':'resnet18',
             'model_type':model_type,
@@ -74,7 +74,8 @@ def get_new_config(logdir, comment, site_number, degradation, comm_rounds, strat
             'ft_emb_vec':ft_emb_vec,
             'cl_per_site':cl_per_site,
             'ncc_lambda':ncc_lambda,
-            'feature_dims':feature_dim}
+            'feature_dims':feature_dim,
+            'trn_set_size':trn_set_size}
     
     return config
 
