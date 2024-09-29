@@ -119,7 +119,6 @@ def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, 
     log.info(comment)
 
     trn_dl_list, val_dl_list = refactored_get_dls(dataset=config['dataset'], batch_size=config['batch_size'], degs=degradation, n_sites=site_number, seed=data_part_seed, cross_val_id=cross_val_id, gl_seed=gl_seed, cl_per_site=cl_per_site, alpha=config['alpha'], trn_set_size=trn_set_size)
-    print([len(dl.dataset) for dl in trn_dl_list])
     transform_list = refactored_get_transforms(site_number=site_number, seed=transform_gen_seed, degs=degradation, device='cuda' if torch.cuda.is_available() else 'cpu', **tr_config)
     class_list = get_class_list(task='classification', site_number=site_number, class_number=18 if config['dataset'] == 'celeba' else None, class_seed=2, degradation=degradation)
     if degradation == ['digits']:
