@@ -42,7 +42,7 @@ class EmbeddingTraining:
                  feature_dims=None, label_smoothing=0., trn_logging=True,
                  fed_prox=0., proximal_map=False, norm_layer='bn',
                  no_batch_running_stats=False, ft_emb_vec=None,
-                 ncc_lambda=0.):
+                 ncc_lambda=0., fed_bn_emb_ft=False):
         
         log.info(comment)
         self.logdir_name = logdir
@@ -64,6 +64,7 @@ class EmbeddingTraining:
         self.proximal_map = proximal_map
         self.no_batch_running_stats = no_batch_running_stats
         self.ncc_lambda = ncc_lambda
+        self.fed_bn_emb_ft = fed_bn_emb_ft
         self.time_str = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
@@ -115,6 +116,13 @@ class EmbeddingTraining:
                         param.requires_grad = False
             else:
                 all_names = list(model.state_dict().keys())
+
+            if self.fed_bn_emb_ft:
+                non_norms = get_layer_list(task=self.task, strategy='embgennorm', model=model)
+                for name, param in model.named_parameters():
+                    if name in non_norms:
+                        param.requires_grad = False
+
             params_to_update = []
             embedding_names = [name for name in all_names if 'embedding' in name]
             ffwrd_names = [name for name in all_names if 'generator' in name]
@@ -270,7 +278,7 @@ class EmbeddingTraining:
     def doTraining(self, trn_dls):
         for model in self.models:
             model.train()
-            if self.finetuning and self.no_batch_running_stats:
+            if (self.finetuning and self.no_batch_running_stats) or self.fed_bn_emb_ft:
                 for module in model.modules():
                     if isinstance(module, GeneralBatchNorm2d):
                         module.eval()

@@ -115,7 +115,7 @@ def new_main(logdir, comment, degradation, site_number, data_part_seed, transfor
     ft_trainer = EmbeddingTraining(logdir=logdir, comment=comment, site_number=site_number, sites=site_dict, **config)
     ft_trainer.train()
 
-def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_strategy, state_dict, ft_site_number, only_ft, ft_emb_lr, cross_val_id, gl_seed, ft_emb_vec, cl_per_site, **config):
+def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, transform_gen_seed, tr_config, ft_strategy, state_dict, trn_state_dict, ft_site_number, only_ft, ft_emb_lr, cross_val_id, gl_seed, ft_emb_vec, cl_per_site, **config):
     log.info(comment)
 
     trn_dl_list, val_dl_list = refactored_get_dls(dataset=config['dataset'], batch_size=config['batch_size'], degs=degradation, n_sites=site_number, seed=data_part_seed, cross_val_id=cross_val_id, gl_seed=gl_seed, cl_per_site=cl_per_site, alpha=config['alpha'])
@@ -139,7 +139,7 @@ def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, 
     
     res = {}
     if site_number > 0 and not only_ft:
-        trainer = EmbeddingTraining(logdir=logdir, comment=comment, sites=trn_site_dict, **config)
+        trainer = EmbeddingTraining(logdir=logdir, comment=comment, sites=trn_site_dict, state_dict=trn_state_dict, **config)
         acc, state_dict = trainer.train()
         res['trn'] = acc
 

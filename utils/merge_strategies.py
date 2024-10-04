@@ -11,8 +11,16 @@ def get_layer_list(task, strategy, model):
             layer_list = [name for name in original_list if not ('embedding' in name or 'fc' in name or 'norm' in name)]
         elif strategy == 'embbn':
             layer_list = [name for name in original_list if not ('embedding' in name or 'norm' in name)]
+        elif strategy == 'embandgen':
+            layer_list = [name for name in original_list if not ('embedding' in name or 'generator' in name)]
+        elif strategy == 'embgennorm':
+            layer_list = [name for name in original_list if not ('embedding' in name or 'generator' in name or 'norm' in name)]
         elif strategy == 'nomerge':
             layer_list = []
+        elif strategy == 'embandgenft':
+            layer_list = [name for name in original_list if 'embedding' in name or 'generator' in name]
+        elif strategy == 'embgennormft':
+            layer_list = [name for name in original_list if 'embedding' in name or 'generator' in name or 'norm' in name]
         elif strategy == 'finetuning':
             layer_list = [name for name in original_list if 'embedding' in name or 'fc' in name]
         elif strategy == 'fedbn':
