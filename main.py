@@ -52,7 +52,7 @@ def new_main_plus_ft(logdir, comment, degradation, site_number, data_part_seed, 
         res['ft'] = ft_acc
     
     if len(res.keys()) > 0:
-        save_path = os.path.join('/home/hansel/developer/embedding/results', logdir)
+        save_path = os.path.join('path/to/results', logdir)
         os.makedirs(save_path, exist_ok=True)
         res['strats'] = [trn_strategy, ft_strategy]
         torch.save(res, os.path.join(save_path, comment + '.pt'))
